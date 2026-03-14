@@ -1,0 +1,2 @@
+# This file should be loaded AFTER ErnPerkFramework.omwscripts.
+PLAYER:scripts/ErnExamplePerkPack/dummy.lua

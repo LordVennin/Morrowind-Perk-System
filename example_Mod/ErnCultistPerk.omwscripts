@@ -1,0 +1,3 @@
+# This file should be loaded AFTER ErnPerkFramework.omwscripts.
+PLAYER:scripts/ErnCultistPerk/player.lua
+CREATURE:scripts/ErnCultistPerk/creature.lua

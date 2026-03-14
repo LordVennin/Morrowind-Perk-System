@@ -79,6 +79,37 @@ local function grantRetroactiveMilestones()
     end
 end
 
+local function reconcileSaveState()
+    local perks = interfaces[MOD_NAME].getPerks()
+    local filteredActivePerks = {}
+    local recomputedSpentBySkill = {}
+
+    for _, skillID in ipairs(getSkillIds()) do
+        recomputedSpentBySkill[skillID] = 0
+    end
+
+    for _, perkID in ipairs(activePerks) do
+        local perk = perks[perkID]
+        if perk ~= nil then
+            table.insert(filteredActivePerks, perkID)
+            recomputedSpentBySkill[perk.skill] = (recomputedSpentBySkill[perk.skill] or 0) + perk.cost
+        else
+            print("[" .. MOD_NAME .. "] Dropping missing active perk from save: " .. tostring(perkID))
+        end
+    end
+
+    activePerks = filteredActivePerks
+    spentPointsBySkill = recomputedSpentBySkill
+
+    for _, skillID in ipairs(getSkillIds()) do
+        local earned = earnedPoints(skillID)
+        local spent = spentPoints(skillID)
+        if spent > earned then
+            spentPointsBySkill[skillID] = earned
+        end
+    end
+end
+
 local function addPerk(data)
     if type(data) ~= "table" or type(data.perkID) ~= "string" then
         error("addPerk() requires { perkID = string }")
@@ -200,6 +231,7 @@ local function onLoad(data)
     earnedMilestonesBySkill = (data and data.earnedMilestonesBySkill) or {}
     spentPointsBySkill = (data and data.spentPointsBySkill) or {}
     activePerks = (data and data.activePerks) or {}
+    reconcileSaveState()
     grantRetroactiveMilestones()
 end
 

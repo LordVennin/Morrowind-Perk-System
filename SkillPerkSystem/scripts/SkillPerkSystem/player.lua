@@ -147,10 +147,40 @@ local function printSkillMenu(filterSkill)
     print("-----------------------")
 end
 
+local function respecAllPerks()
+    local perks = interfaces[MOD_NAME].getPerks()
+    local refundsBySkill = {}
+    local removedCount = 0
+
+    for _, perkID in ipairs(activePerks) do
+        local perk = perks[perkID]
+        if perk ~= nil then
+            refundsBySkill[perk.skill] = (refundsBySkill[perk.skill] or 0) + perk.cost
+            perk.onRemove()
+            removedCount = removedCount + 1
+        else
+            print("[" .. MOD_NAME .. "] Skipping unknown active perk during respec: " .. tostring(perkID))
+        end
+    end
+
+    activePerks = {}
+    for _, skillID in ipairs(getSkillIds()) do
+        spentPointsBySkill[skillID] = 0
+    end
+
+    print("[" .. MOD_NAME .. "] Respec complete: removed " .. removedCount .. " perks")
+    print("[" .. MOD_NAME .. "] Points refunded by skill:")
+    for _, skillID in ipairs(getSkillIds()) do
+        print(string.format("  %s: %d", skillID, refundsBySkill[skillID] or 0))
+    end
+end
+
 local function onConsoleCommand(mode, command, selectedObject)
     local lower = command:lower()
     if lower == "lua skillperks" then
         printSkillMenu(nil)
+    elseif lower == "lua skillperksrespec" then
+        respecAllPerks()
     elseif lower:sub(1, 15) == "lua skillperks " then
         local skillID = command:sub(16)
         printSkillMenu(skillID)

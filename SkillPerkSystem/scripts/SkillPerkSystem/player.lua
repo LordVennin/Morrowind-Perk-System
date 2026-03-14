@@ -59,6 +59,14 @@ local function hasPerk(perkID)
     return false
 end
 
+local function getActivePerks()
+    local out = {}
+    for _, perkID in ipairs(activePerks) do
+        table.insert(out, perkID)
+    end
+    return out
+end
+
 local function grantRetroactiveMilestones()
     for _, skillID in ipairs(getSkillIds()) do
         local currentMilestones = milestonesForSkill(skillID)
@@ -174,6 +182,14 @@ local function onSave()
 end
 
 return {
+    interfaceName = MOD_NAME .. "Player",
+    interface = {
+        earnedPoints = earnedPoints,
+        spentPoints = spentPoints,
+        availablePoints = availablePoints,
+        hasPerk = hasPerk,
+        getActivePerks = getActivePerks,
+    },
     eventHandlers = {
         [MOD_NAME .. "addPerk"] = addPerk,
         [MOD_NAME .. "removePerk"] = removePerk,

@@ -206,8 +206,30 @@ local function respecAllPerks()
     end
 end
 
+local function normalizeConsoleArgs(mode, command)
+    if type(mode) == "table" then
+        command = mode.command
+        mode = mode.mode
+    elseif command == nil and type(mode) == "string" then
+        -- Some OpenMW revisions only pass the command string.
+        command = mode
+        mode = nil
+    end
+
+    local normalizedCommand = type(command) == "string" and command:match("^%s*(.-)%s*$") or nil
+    local normalizedMode = type(mode) == "string" and mode:lower() or nil
+
+    return normalizedMode, normalizedCommand
+end
+
 local function onConsoleCommand(mode, command, selectedObject)
-    local lower = command:lower()
+    local normalizedMode, normalizedCommand = normalizeConsoleArgs(mode, command)
+    if normalizedCommand == nil or normalizedCommand == "" then
+        return
+    end
+
+    local lower = normalizedCommand:lower()
+    local lowerWithMode = normalizedMode ~= nil and (normalizedMode .. " " .. lower) or nil
 
     local function getSuffixForCmd(prefix)
         local lowerPrefix = prefix:lower()
@@ -217,13 +239,28 @@ local function onConsoleCommand(mode, command, selectedObject)
 
         local prefixWithSpace = lowerPrefix .. " "
         if lower:sub(1, #prefixWithSpace) == prefixWithSpace then
-            return command:sub(#prefixWithSpace + 1):match("^%s*(.-)%s*$")
+            return normalizedCommand:sub(#prefixWithSpace + 1):match("^%s*(.-)%s*$")
+        end
+
+        if lowerWithMode ~= nil then
+            if lowerWithMode == lowerPrefix then
+                return ""
+            end
+
+            local modePrefix = normalizedMode .. " "
+            if lowerPrefix:sub(1, #modePrefix) == modePrefix then
+                local commandPrefix = lowerPrefix:sub(#modePrefix + 1)
+                local commandPrefixWithSpace = commandPrefix .. " "
+                if lower:sub(1, #commandPrefixWithSpace) == commandPrefixWithSpace then
+                    return normalizedCommand:sub(#commandPrefixWithSpace + 1):match("^%s*(.-)%s*$")
+                end
+            end
         end
 
         return nil
     end
 
-    if lower == "lua skillperksrespec" then
+    if lower == "lua skillperksrespec" or lower == "skillperksrespec" or lowerWithMode == "lua skillperksrespec" then
         respecAllPerks()
     else
         local suffix = getSuffixForCmd("skillperks")

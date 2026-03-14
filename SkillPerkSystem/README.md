@@ -20,9 +20,13 @@ content=SkillPerkSystem.omwscripts
 
 ## Console commands
 
-- `lua skillperks` — prints the full skill perk menu to the console.
-- `lua skillperks <skillId>` — prints one skill section.
+- `skillperks` — prints the full skill perk menu to the console (preferred direct form).
+- `skillperks <skillId>` — prints one skill section (preferred direct form).
+- `lua skillperks` — compatibility form that prints the full skill perk menu.
+- `lua skillperks <skillId>` — compatibility form that prints one skill section.
 - `lua skillperksrespec` — removes all active perks, resets spent points to 0 for every skill, and prints a per-skill refund summary.
+
+OpenMW versions differ in Lua console context behavior; if `lua ...` prints context usage text, use the direct command forms above.
 
 ## Registering perks from another mod
 

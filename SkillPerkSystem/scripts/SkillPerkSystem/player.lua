@@ -6,11 +6,19 @@ local types = require("openmw.types")
 
 local MOD_NAME = settings.MOD_NAME
 local MILESTONE_STEP = settings.MILESTONE_STEP
+local DEBUG_LOGS = settings.DEBUG_LOGS == true
 
 local earnedMilestonesBySkill = {}
 local spentPointsBySkill = {}
 local activePerks = {}
 local updateTimer = 0
+
+local function debugPrint(message)
+    if not DEBUG_LOGS then
+        return
+    end
+    print("[" .. MOD_NAME .. "][debug] " .. message)
+end
 
 local function getSkillIds()
     local out = {}
@@ -69,9 +77,17 @@ end
 
 local function grantRetroactiveMilestones()
     for _, skillID in ipairs(getSkillIds()) do
+        local oldMilestones = earnedPoints(skillID)
         local currentMilestones = milestonesForSkill(skillID)
-        if currentMilestones > earnedPoints(skillID) then
+        if currentMilestones > oldMilestones then
             earnedMilestonesBySkill[skillID] = currentMilestones
+            debugPrint(string.format(
+                "Retroactive milestones increased for %s: %d -> %d (available=%d)",
+                skillID,
+                oldMilestones,
+                currentMilestones,
+                availablePoints(skillID)
+            ))
         end
         if spentPointsBySkill[skillID] == nil then
             spentPointsBySkill[skillID] = 0
@@ -325,6 +341,23 @@ local function onLoad(data)
     activePerks = (data and data.activePerks) or {}
     reconcileSaveState()
     grantRetroactiveMilestones()
+
+    local totalEarned = 0
+    local totalSpent = 0
+    for _, skillID in ipairs(getSkillIds()) do
+        totalEarned = totalEarned + earnedPoints(skillID)
+        totalSpent = totalSpent + spentPoints(skillID)
+    end
+
+    print(string.format(
+        "[%s] Loaded (skills=%d, activePerks=%d, earned=%d, spent=%d, available=%d)",
+        MOD_NAME,
+        #getSkillIds(),
+        #activePerks,
+        totalEarned,
+        totalSpent,
+        totalEarned - totalSpent
+    ))
 end
 
 local function onSave()

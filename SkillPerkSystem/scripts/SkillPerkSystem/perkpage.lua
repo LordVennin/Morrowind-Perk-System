@@ -1,0 +1,331 @@
+local core = require("openmw.core")
+local ui = require("openmw.ui")
+local util = require("openmw.util")
+local async = require("openmw.async")
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local settings = require("scripts.SkillPerkSystem.settings")
+
+local MOD_NAME = settings.MOD_NAME
+
+local menu = nil
+local selectedSkillIndex = 1
+local selectedPerkIndex = 1
+
+local skillIDs = {}
+local filteredPerkIDs = {}
+
+local buildLayout
+
+local function getSkillIDs()
+    local out = {}
+    for skillID, _ in pairs(core.stats.Skill.records) do
+        table.insert(out, skillID)
+    end
+    table.sort(out)
+    return out
+end
+
+local function hasPerk(perkID)
+    return interfaces[MOD_NAME .. "Player"].hasPerk(perkID)
+end
+
+local function getSelectedSkillID()
+    return skillIDs[selectedSkillIndex]
+end
+
+local function updateFilteredPerks()
+    local selectedSkillID = getSelectedSkillID()
+    if selectedSkillID == nil then
+        filteredPerkIDs = {}
+        return
+    end
+    filteredPerkIDs = interfaces[MOD_NAME].getPerkIDsForSkill(selectedSkillID)
+    table.sort(filteredPerkIDs)
+    if selectedPerkIndex > #filteredPerkIDs then
+        selectedPerkIndex = #filteredPerkIDs
+    end
+    if selectedPerkIndex < 1 then
+        selectedPerkIndex = 1
+    end
+end
+
+local function requirementSatisfied(perk)
+    for _, requirement in ipairs(perk.requirements or {}) do
+        if type(requirement.check) == "function" and not requirement.check() then
+            return false
+        end
+    end
+    return true
+end
+
+local function canPurchasePerk(perkID)
+    local perk = interfaces[MOD_NAME].getPerks()[perkID]
+    if perk == nil or hasPerk(perkID) then
+        return false
+    end
+    if not requirementSatisfied(perk) then
+        return false
+    end
+    return interfaces[MOD_NAME .. "Player"].availablePoints(perk.skill) >= perk.cost
+end
+
+local function createButton(label, onPress, enabled)
+    local buttonTemplate = enabled and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxDisabled
+    local fontTemplate = enabled and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled
+
+    return {
+        type = ui.TYPE.Container,
+        template = buttonTemplate,
+        props = {
+            size = util.vector2(140, 28),
+        },
+        events = enabled and {
+            mouseClick = async:callback(function()
+                onPress()
+            end),
+        } or nil,
+        content = ui.content {
+            {
+                type = ui.TYPE.Text,
+                template = fontTemplate,
+                props = {
+                    text = label,
+                    textAlignH = ui.ALIGNMENT.Center,
+                    textAlignV = ui.ALIGNMENT.Center,
+                    relativeSize = util.vector2(1, 1),
+                }
+            }
+        }
+    }
+end
+
+local function buildSkillPane()
+    local rows = {}
+    for i, skillID in ipairs(skillIDs) do
+        local earned = interfaces[MOD_NAME .. "Player"].earnedPoints(skillID)
+        local spent = interfaces[MOD_NAME .. "Player"].spentPoints(skillID)
+        local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
+        local isSelected = i == selectedSkillIndex
+
+        table.insert(rows, {
+            type = ui.TYPE.Text,
+            template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+            events = {
+                mouseClick = async:callback(function()
+                    selectedSkillIndex = i
+                    selectedPerkIndex = 1
+                    updateFilteredPerks()
+                    menu.layout = buildLayout()
+                    menu:update()
+                end),
+            },
+            props = {
+                text = string.format("%s  E:%d S:%d A:%d", skillID, earned, spent, available),
+            }
+        })
+    end
+
+    return {
+        type = ui.TYPE.Flex,
+        template = interfaces.MWUI.templates.borders,
+        props = {
+            horizontal = false,
+            size = util.vector2(300, 500),
+        },
+        content = ui.content(rows)
+    }
+end
+
+local function buildPerkPane()
+    local perksCol = {}
+    for i, perkID in ipairs(filteredPerkIDs) do
+        local perk = interfaces[MOD_NAME].getPerks()[perkID]
+        local owned = hasPerk(perkID) and " [owned]" or ""
+        local isSelected = i == selectedPerkIndex
+        table.insert(perksCol, {
+            type = ui.TYPE.Text,
+            template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+            events = {
+                mouseClick = async:callback(function()
+                    selectedPerkIndex = i
+                    menu.layout = buildLayout()
+                    menu:update()
+                end),
+            },
+            props = {
+                text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
+            }
+        })
+    end
+
+    local perkDetail = {
+        type = ui.TYPE.Text,
+        template = interfaces.MWUI.templates.textNormal,
+        props = {
+            text = "Select a perk",
+            autoSize = false,
+            size = util.vector2(330, 120),
+            textWrap = true,
+        }
+    }
+
+    local selectedPerkID = filteredPerkIDs[selectedPerkIndex]
+    if selectedPerkID ~= nil then
+        local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
+        local owned = hasPerk(selectedPerkID)
+        local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
+        perkDetail.props.text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status)
+    end
+
+    local function purchasePerk()
+        local perkID = filteredPerkIDs[selectedPerkIndex]
+        if perkID == nil then
+            return
+        end
+        pself:sendEvent(MOD_NAME .. "addPerk", { perkID = perkID })
+        menu.layout = buildLayout()
+        menu:update()
+    end
+
+    local function removePerk()
+        local perkID = filteredPerkIDs[selectedPerkIndex]
+        if perkID == nil then
+            return
+        end
+        pself:sendEvent(MOD_NAME .. "removePerk", { perkID = perkID })
+        menu.layout = buildLayout()
+        menu:update()
+    end
+
+    local purchaseEnabled = selectedPerkID ~= nil and canPurchasePerk(selectedPerkID)
+    local removeEnabled = selectedPerkID ~= nil and hasPerk(selectedPerkID)
+
+    return {
+        type = ui.TYPE.Flex,
+        template = interfaces.MWUI.templates.borders,
+        props = {
+            horizontal = false,
+            size = util.vector2(500, 500),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = false,
+                    autoSize = false,
+                    size = util.vector2(480, 330),
+                },
+                content = ui.content(perksCol)
+            },
+            perkDetail,
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = true,
+                },
+                content = ui.content {
+                    createButton("Purchase", purchasePerk, purchaseEnabled),
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = util.vector2(16, 1) },
+                    },
+                    createButton("Remove", removePerk, removeEnabled),
+                }
+            }
+        }
+    }
+end
+
+buildLayout = function()
+    return {
+        type = ui.TYPE.Window,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            position = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Text,
+                        template = interfaces.MWUI.templates.textHeader,
+                        props = {
+                            text = "Skill Perks",
+                            textAlignH = ui.ALIGNMENT.Center,
+                        }
+                    },
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                        },
+                        content = ui.content {
+                            buildSkillPane(),
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = util.vector2(16, 1) },
+                            },
+                            buildPerkPane(),
+                        }
+                    }
+                }
+            }
+        }
+    }
+end
+
+local function showMenu()
+    if menu ~= nil then
+        return
+    end
+    skillIDs = getSkillIDs()
+    selectedSkillIndex = math.max(1, math.min(selectedSkillIndex, #skillIDs))
+    selectedPerkIndex = 1
+    updateFilteredPerks()
+
+    interfaces.UI.setMode("Interface", { windows = {} })
+    menu = ui.create(buildLayout())
+end
+
+local function closeMenu()
+    if menu == nil then
+        return
+    end
+    menu:destroy()
+    menu = nil
+    interfaces.UI.setMode("Interface", { windows = { "Inventory", "Map", "Stats" } })
+end
+
+local function toggleMenu()
+    if menu == nil then
+        showMenu()
+    else
+        closeMenu()
+    end
+end
+
+local function onConsoleCommand(mode, command, selectedObject)
+    if command:lower() == "lua skillperksui" then
+        toggleMenu()
+    end
+end
+
+return {
+    eventHandlers = {
+        [MOD_NAME .. "togglePerkUI"] = toggleMenu,
+        [MOD_NAME .. "showPerkUI"] = showMenu,
+        [MOD_NAME .. "closePerkUI"] = closeMenu,
+    },
+    engineHandlers = {
+        onConsoleCommand = onConsoleCommand,
+    }
+}

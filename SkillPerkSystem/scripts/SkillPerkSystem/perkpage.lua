@@ -313,8 +313,32 @@ local function toggleMenu()
     end
 end
 
+local function normalizeConsoleArgs(mode, command)
+    if type(mode) == "table" then
+        command = mode.command
+        mode = mode.mode
+    elseif command == nil and type(mode) == "string" then
+        -- Some OpenMW revisions only pass the command string.
+        command = mode
+        mode = nil
+    end
+
+    local normalizedCommand = type(command) == "string" and command:match("^%s*(.-)%s*$") or nil
+    local normalizedMode = type(mode) == "string" and mode:lower() or nil
+
+    return normalizedMode, normalizedCommand
+end
+
 local function onConsoleCommand(mode, command, selectedObject)
-    if command:lower() == "lua skillperksui" then
+    local normalizedMode, normalizedCommand = normalizeConsoleArgs(mode, command)
+    if normalizedCommand == nil or normalizedCommand == "" then
+        return
+    end
+
+    local lower = normalizedCommand:lower()
+    local lowerWithMode = normalizedMode ~= nil and (normalizedMode .. " " .. lower) or nil
+
+    if lower == "skillperksui" or lower == "lua skillperksui" or lowerWithMode == "lua skillperksui" then
         toggleMenu()
     end
 end

@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+
+<html data-content_root="" lang="en" x-data="{activeSection: ''}">
+<head>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta charset="utf-8"/>
+<meta content="#ffffff" media="(prefers-color-scheme: light)" name="theme-color"/>
+<meta content="#030711" media="(prefers-color-scheme: dark)" name="theme-color"/>
+<meta content="Docutils 0.18.1: http://docutils.sourceforge.net/" name="generator"/>
+<title>Overview | OpenMW</title>
+<meta content="Overview | OpenMW" property="og:title"/>
+<meta content="Overview | OpenMW" name="twitter:title"/>
+<link href="../../_static/pygments.css?v=3283ee3e" rel="stylesheet" type="text/css"/>
+<link href="../../_static/theme.css?v=9a73a926" rel="stylesheet" type="text/css"/>
+<link href="../../_static/omw-directives.css?v=3fdb64b4" rel="stylesheet" type="text/css"/>
+<link href="../../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" rel="stylesheet" type="text/css"/>
+<link href="../../_static/theme-override.css?v=76aed969" rel="stylesheet" type="text/css"/>
+<link href="../../_static/luadoc.css?v=ecc67366" rel="stylesheet" type="text/css"/>
+<link href="../../_static/figures.css?v=b123e50f" rel="stylesheet" type="text/css"/>
+<link href="../../_static/prism.css?v=d290edb3" rel="stylesheet" type="text/css"/>
+<link href="../../_static/prism-dark.css?v=8d5245fe" rel="stylesheet" type="text/css"/>
+<link href="../../_static/awesome-sphinx-design.css?v=15e0fffa" rel="stylesheet" type="text/css"/>
+<link href="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/_static/images/favicon.png" rel="icon"/>
+<link href="../../search.html" rel="search" title="Search"/>
+<link href="../../genindex.html" rel="index" title="Index"/>
+<link href="api.html" rel="next" title="API Reference"/>
+<link href="../postprocessing/lua.html" rel="prev" title="Lua Integration"/>
+<script async type="text/javascript" src="/_/static/javascript/readthedocs-addons.js"></script><meta name="readthedocs-project-slug" content="openmw" /><meta name="readthedocs-version-slug" content="latest" /><meta name="readthedocs-resolver-filename" content="/reference/lua-scripting/overview.html" /><meta name="readthedocs-http-status" content="200" /></head>
+<body :class="{ 'overflow-hidden': showSidebar }" class="min-h-screen font-sans antialiased bg-background text-foreground" x-data="{ showSidebar: false, showScrollTop: false }">
+<div @click.self="showSidebar = false" class="fixed inset-0 z-50 overflow-hidden bg-background/80 backdrop-blur-sm md:hidden" x-cloak="" x-show="showSidebar"></div><div class="relative flex flex-col min-h-screen" id="page"><a class="absolute top-0 left-0 z-[100] block bg-background p-4 text-xl transition -translate-x-full opacity-0 focus:translate-x-0 focus:opacity-100" href="#content">
+      Skip to content
+    </a><header class="sticky top-0 z-40 w-full border-b shadow-sm border-border bg-background/90 backdrop-blur"><div class="container flex items-center h-14">
+<div class="hidden mr-4 md:flex">
+<a class="flex items-center mr-6" href="../../index.html">
+<img alt="Logo" class="mr-2 dark:invert" height="24" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/_static/images/openmw.png" width="24"/><span class="hidden font-bold sm:inline-block text-clip whitespace-nowrap">OpenMW</span>
+</a><nav class="flex items-center gap-6 text-sm font-medium">
+<a class="transition-colors hover:text-foreground/80 text-foreground/60" href="../modding/index.html">Modding</a>
+<a class="transition-colors hover:text-foreground/80 text-foreground" href="#">Lua API</a>
+<a class="transition-colors hover:text-foreground/80 text-foreground/60" href="../postprocessing/index.html">Post-Processing</a>
+</nav></div><button @click="showSidebar = true" class="inline-flex items-center justify-center h-10 px-0 py-2 mr-2 text-base font-medium transition-colors rounded-md hover:text-accent-foreground hover:bg-transparent md:hidden" type="button">
+<svg aria-hidden="true" fill="currentColor" height="24" viewbox="0 96 960 960" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M152.587 825.087q-19.152 0-32.326-13.174t-13.174-32.326q0-19.152 13.174-32.326t32.326-13.174h440q19.152 0 32.326 13.174t13.174 32.326q0 19.152-13.174 32.326t-32.326 13.174h-440Zm0-203.587q-19.152 0-32.326-13.174T107.087 576q0-19.152 13.174-32.326t32.326-13.174h320q19.152 0 32.326 13.174T518.087 576q0 19.152-13.174 32.326T472.587 621.5h-320Zm0-203.587q-19.152 0-32.326-13.174t-13.174-32.326q0-19.152 13.174-32.326t32.326-13.174h440q19.152 0 32.326 13.174t13.174 32.326q0 19.152-13.174 32.326t-32.326 13.174h-440ZM708.913 576l112.174 112.174q12.674 12.674 12.674 31.826t-12.674 31.826Q808.413 764.5 789.261 764.5t-31.826-12.674l-144-144Q600 594.391 600 576t13.435-31.826l144-144q12.674-12.674 31.826-12.674t31.826 12.674q12.674 12.674 12.674 31.826t-12.674 31.826L708.913 576Z"></path>
+</svg>
+<span class="sr-only">Toggle navigation menu</span>
+</button>
+<div class="flex items-center justify-between flex-1 gap-2 sm:gap-4 md:justify-end">
+<div class="flex-1 w-full md:w-auto md:flex-none"><form @keydown.k.window.meta="$refs.search.focus()" action="../../search.html" class="relative flex items-center group" id="searchbox" method="get">
+<input aria-label="Search the docs" class="inline-flex items-center font-medium transition-colors bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background border border-input hover:bg-accent focus:bg-accent hover:text-accent-foreground focus:text-accent-foreground hover:placeholder-accent-foreground py-2 px-4 relative h-9 w-full justify-start rounded-[0.5rem] text-sm text-muted-foreground sm:pr-12 md:w-40 lg:w-64" id="search-input" name="q" placeholder="Search ..." type="search" x-ref="search"/>
+<kbd class="pointer-events-none absolute right-1.5 top-2 hidden h-5 select-none text-muted-foreground items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex group-hover:bg-accent group-hover:text-accent-foreground">
+<span class="text-xs">⌘</span>
+    K
+  </kbd>
+</form>
+</div>
+<nav class="flex items-center gap-1">
+</nav>
+</div>
+</div>
+</header>
+<div class="flex-1"><div class="container md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10"><aside :aria-hidden="!showSidebar" :class="{ 'translate-x-0': showSidebar }" class="fixed inset-y-0 left-0 md:top-14 z-50 md:z-30 bg-background md:bg-transparent transition-all duration-100 -translate-x-full md:translate-x-0 ml-0 p-6 md:p-0 md:-ml-2 md:h-[calc(100vh-3.5rem)] w-5/6 md:w-full overflow-y-auto border-r border-border md:sticky" id="left-sidebar">
+<a class="justify-start text-sm md:!hidden bg-background" href="../../index.html">
+<img alt="Logo" class="mr-2 dark:invert" height="16" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/_static/images/openmw.png" width="16"/><span class="font-bold text-clip whitespace-nowrap">OpenMW</span>
+</a>
+<div class="relative overflow-hidden md:overflow-auto my-4 md:my-0">
+<div class="overflow-y-auto h-full w-full relative pr-6"><nav class="flex md:hidden flex-col font-medium mt-4">
+<a href="../modding/index.html">Modding</a>
+<a href="#">Lua API</a>
+<a href="../postprocessing/index.html">Post-Processing</a>
+</nav><nav class="table w-full min-w-full my-6 lg:my-8">
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../modding/index.html">Modding<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l2"><a class="reference internal" href="../modding/foreword.html">Foreword</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/differences.html">Modding OpenMW vs Morrowind</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/mod-install.html">How To Install and Use Mods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/openmw-game-template.html">OpenMW Game Template</a></li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../modding/settings/index.html">Advanced Settings Configuration<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/camera.html">Camera</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/cells.html">Cells</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/fog.html">Fog</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/game.html">Game</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/general.html">General</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/groundcover.html">Groundcover</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/GUI.html">GUI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/HUD.html">HUD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/input.html">Input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/lua.html">Lua</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/map.html">Map</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/models.html">Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/navigator.html">Navigator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/physics.html">Physics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/postprocessing.html">Post-Processing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/shaders.html">Shaders</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/shadows.html">Shadows</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/saves.html">Saves</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/sound.html">Sound</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/stereo.html">Stereo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/stereoview.html">Stereo View</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/terrain.html">Terrain</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/video.html">Video</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/water.html">Water</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/settings/windows.html">Windows</a></li>
+</ul>
+</li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../modding/texture-modding/index.html">Texture Modding<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="../modding/texture-modding/texture-basics.html">Texture Modding Basics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/texture-modding/convert-bump-mapped-mods.html">Normal maps from Morrowind to OpenMW</a></li>
+</ul>
+</li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../modding/custom-models/index.html">Custom Models<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="../modding/custom-models/pipeline-blender-collada-static-models.html">Static Model via COLLADA</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/custom-models/pipeline-blender-collada-animated-creature.html">Animated Creature via COLLADA</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/custom-models/pipeline-blender-osgnative.html">Blender to OpenMW with OSG native</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../modding/custom-models/pipeline-blender-nif.html">Blender to OpenMW with NIF</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/font.html">Fonts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/sound-effects.html">Sound Effects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/music.html">Music</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/sky-system.html">Sky System and Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/doors-and-teleports.html">Doors and Connecting Cells</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/custom-shader-effects.html">Custom Shader Effects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/extended.html">Extended modding feature overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/animation-blending.html">Animation blending</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/paths.html">Paths</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../modding/localisation.html">Localisation</a></li>
+</ul>
+</li>
+<li class="toctree-l1" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../postprocessing/index.html">Post-Processing<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l2"><a class="reference internal" href="../postprocessing/omwfx.html">OMWFX Language</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../postprocessing/lua.html">Lua Integration</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Lua</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Overview</a></li>
+<li class="toctree-l1" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="api.html">API Reference<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="index_packages.html">Packages<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="openmw_ambient.html">ambient</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_animation.html">animation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_async.html">async</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_camera.html">camera</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_content.html">content</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_core.html">core</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_debug.html">debug</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_input.html">input</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_markup.html">markup</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_menu.html">menu</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_nearby.html">nearby</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_postprocessing.html">postprocessing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_self.html">self</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_storage.html">storage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_types.html">types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_ui.html">ui</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_util.html">util</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_vfs.html">vfs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_world.html">world</a></li>
+</ul>
+</li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="index_auxpackages.html">Auxiliary Packages<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="openmw_aux_calendar.html">calendar</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_aux_time.html">time</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_aux_ui.html">ui</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openmw_aux_util.html">util</a></li>
+</ul>
+</li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="index_aipackages.html">AI packages<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="ai/combat.html">Combat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="ai/escort.html">Escort</a></li>
+<li class="toctree-l3"><a class="reference internal" href="ai/follow.html">Follow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="ai/pursue.html">Pursue</a></li>
+<li class="toctree-l3"><a class="reference internal" href="ai/travel.html">Travel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="ai/wander.html">Wander</a></li>
+</ul>
+</li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="index_interfaces.html">Interfaces<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="interface_activation.html">Activation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_ai.html">AI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_animation.html">AnimationController</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_camera.html">Camera</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_combat.html">Combat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_controls.html">Controls</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_crimes.html">Crimes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_gamepadcontrols.html">GamepadControls</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_item_usage.html">ItemUsage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_mwui.html">MWUI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_settings.html">Settings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_skill_progression.html">SkillProgression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="interface_ui.html">UI</a></li>
+</ul>
+</li>
+<li class="toctree-l2" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="user_interface.html">UI<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l3"><a class="reference internal" href="widgets/widget.html">Widget</a></li>
+<li class="toctree-l3"><a class="reference internal" href="widgets/container.html">Container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="widgets/flex.html">Flex</a></li>
+<li class="toctree-l3"><a class="reference internal" href="widgets/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="widgets/text.html">Text</a></li>
+<li class="toctree-l3"><a class="reference internal" href="widgets/textedit.html">TextEdit</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="setting_renderers.html">Setting Renderers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="engine_handlers.html">Engine Handlers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="events.html">Events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="iterables.html">Iterables</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="teal.html">Teal</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Help</span></p>
+<ul>
+<li class="toctree-l1" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../../manuals/installation/index.html">Installation Guide<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/installation/install-openmw.html">Install OpenMW</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/installation/install-game-files.html">Install Game Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/installation/common-problems.html">Common Problems</a></li>
+</ul>
+</li>
+<li class="toctree-l1" x-data="{ expanded: false }"><a :class="{ 'expanded' : expanded }" @click="expanded = $el.classList.contains('expanded') ? expanded : !expanded" class="reference internal expandable" href="../../manuals/openmw-cs/index.html">OpenMW-CS User Manual<button @click.prevent.stop="expanded = !expanded" type="button"><span class="sr-only"></span><svg fill="currentColor" height="18px" stroke="none" viewbox="0 0 24 24" width="18px" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg></button></a><ul x-cloak="" x-show="expanded">
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/foreword.html">Foreword</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tour.html">A Tour through OpenMW CS: making a magic ring</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/files-and-directories.html">Files and Directories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/starting-dialog.html">OpenMW CS Starting Dialog</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tables.html">Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tables-file.html">File Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tables-world.html">World Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tables-mechanics.html">Mechanics Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tables-characters.html">Characters Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/tables-assets.html">Assets Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/record-types.html">Object Record Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/record-filters.html">Record Filters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/cell-view.html">Cell View</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../manuals/openmw-cs/records-drag-and-drop.html">Drag and Drop</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../manuals/documentationHowTo.html">Help with docs?</a></li>
+</ul>
+</nav>
+</div>
+</div>
+<button @click="showSidebar = false" class="absolute md:hidden right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100" type="button">
+<svg class="h-4 w-4" fill="currentColor" height="24" stroke="none" viewbox="0 96 960 960" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M480 632 284 828q-11 11-28 11t-28-11q-11-11-11-28t11-28l196-196-196-196q-11-11-11-28t11-28q11-11 28-11t28 11l196 196 196-196q11-11 28-11t28 11q11 11 11 28t-11 28L536 576l196 196q11 11 11 28t-11 28q-11 11-28 11t-28-11L480 632Z"></path>
+</svg>
+</button>
+</aside>
+<main class="relative py-6 lg:gap-10 lg:py-8 xl:grid xl:grid-cols-[1fr_300px]">
+<div class="w-full min-w-0 mx-auto">
+<div id="content" role="main">
+<section id="overview">
+<h1>Overview<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#overview"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h1>
+<div class="line-block">
+<div class="line"><a class="sd-sphinx-override sd-badge sd-outline-info sd-text-info reference external" href="openmw_core.html##(core).API_REVISION"><span>API v116</span></a></div>
+</div>
+<section id="language-and-sandboxing">
+<h2>Language and sandboxing<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#language-and-sandboxing" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#language-and-sandboxing'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>OpenMW supports scripts written in Lua 5.1 with some extensions (see below) from Lua 5.2 and Lua 5.3.
+There are no plans to switch to any newer version of the language, because newer versions are not supported by LuaJIT.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>There are also experimental declarations available for Teal, a typed dialect of Lua. see <a class="reference internal" href="teal.html#teal"><span class="std std-ref">Teal</span></a> for more details.</p>
+</div>
+<p>Here are some starting points for learning Lua:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://www.lua.org/pil/contents.html">Programing in Lua</a> (first edition, aimed at Lua 5.0)</p></li>
+<li><p><a class="reference external" href="https://www.lua.org/manual/5.1/">Lua 5.1 Reference Manual</a></p></li>
+</ul>
+<p>Each script works in a separate sandbox and doesn’t have any access to the underlying operating system.
+Only a limited list of allowed standard libraries can be used:
+<a class="reference external" href="https://www.lua.org/manual/5.1/manual.html#5.2">coroutine</a>,
+<a class="reference external" href="https://www.lua.org/manual/5.1/manual.html#5.6">math</a> (except <cite>math.randomseed</cite> – it is called by the engine on startup and not available from scripts),
+<a class="reference external" href="https://www.lua.org/manual/5.1/manual.html#5.4">string</a>,
+<a class="reference external" href="https://www.lua.org/manual/5.1/manual.html#5.5">table</a>,
+<a class="reference external" href="https://www.lua.org/manual/5.1/manual.html#5.8">os</a> (only <cite>os.date</cite>, <cite>os.difftime</cite>, <cite>os.time</cite>).
+These libraries are loaded automatically and are always available.</p>
+<p>Allowed <a class="reference external" href="https://www.lua.org/manual/5.1/manual.html#5.1">basic functions</a>:
+<code class="docutils literal notranslate"><span class="pre">assert</span></code>, <code class="docutils literal notranslate"><span class="pre">error</span></code>, <code class="docutils literal notranslate"><span class="pre">ipairs</span></code>, <code class="docutils literal notranslate"><span class="pre">next</span></code>, <code class="docutils literal notranslate"><span class="pre">pairs</span></code>, <code class="docutils literal notranslate"><span class="pre">pcall</span></code>, <code class="docutils literal notranslate"><span class="pre">print</span></code>, <code class="docutils literal notranslate"><span class="pre">select</span></code>, <code class="docutils literal notranslate"><span class="pre">tonumber</span></code>, <code class="docutils literal notranslate"><span class="pre">tostring</span></code>, <code class="docutils literal notranslate"><span class="pre">type</span></code>, <code class="docutils literal notranslate"><span class="pre">unpack</span></code>, <code class="docutils literal notranslate"><span class="pre">xpcall</span></code>, <code class="docutils literal notranslate"><span class="pre">rawequal</span></code>, <code class="docutils literal notranslate"><span class="pre">rawget</span></code>, <code class="docutils literal notranslate"><span class="pre">rawset</span></code>, <code class="docutils literal notranslate"><span class="pre">getmetatable</span></code>, <code class="docutils literal notranslate"><span class="pre">setmetatable</span></code>.</p>
+<p>Supported Lua 5.2 features:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">goto</span></code> and <code class="docutils literal notranslate"><span class="pre">::labels::</span></code>;</p></li>
+<li><p>hex escapes <code class="docutils literal notranslate"><span class="pre">\x3F</span></code> and <code class="docutils literal notranslate"><span class="pre">\*</span></code> escape in strings;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">math.log(x</span> <span class="pre">[,base])</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">string.rep(s,</span> <span class="pre">n</span> <span class="pre">[,sep])</span></code>;</p></li>
+<li><p>in <code class="docutils literal notranslate"><span class="pre">string.format()</span></code>: <code class="docutils literal notranslate"><span class="pre">%q</span></code> is reversible, <code class="docutils literal notranslate"><span class="pre">%s</span></code> uses <code class="docutils literal notranslate"><span class="pre">__tostring</span></code>, <code class="docutils literal notranslate"><span class="pre">%a</span></code> and <code class="docutils literal notranslate"><span class="pre">%A</span></code> are added;</p></li>
+<li><p>String matching pattern <code class="docutils literal notranslate"><span class="pre">%g</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">__pairs</span></code> and <code class="docutils literal notranslate"><span class="pre">__ipairs</span></code> metamethods;</p></li>
+<li><p>Function <code class="docutils literal notranslate"><span class="pre">table.unpack</span></code> (alias to Lua 5.1 <code class="docutils literal notranslate"><span class="pre">unpack</span></code>).</p></li>
+</ul>
+<p>Supported Lua 5.3 features:</p>
+<ul class="simple">
+<li><p>All functions in the <a class="reference external" href="https://www.lua.org/manual/5.3/manual.html#6.5">UTF-8 Library</a></p></li>
+</ul>
+<p>Loading libraries with <code class="docutils literal notranslate"><span class="pre">require('library_name')</span></code> is allowed, but limited. It works this way:</p>
+<ol class="arabic simple">
+<li><p>If <cite>library_name</cite> is one of the standard libraries, then return the library.</p></li>
+<li><p>If <cite>library_name</cite> is one of the built-in <a class="reference internal" href="#api-packages">API packages</a>, then return the package.</p></li>
+<li><p>Otherwise search for a Lua source file with such name in <a class="reference internal" href="../modding/differences.html#multiple-data-folders"><span class="std std-ref">data folders</span></a>. For example <code class="docutils literal notranslate"><span class="pre">require('my_lua_library.something')</span></code> will try to open one of the files <code class="docutils literal notranslate"><span class="pre">my_lua_library/something.lua</span></code> or <code class="docutils literal notranslate"><span class="pre">my_lua_library/something/init.lua</span></code>.</p></li>
+</ol>
+<p>Loading DLLs and precompiled Lua files is intentionally prohibited for compatibility and security reasons.</p>
+</section>
+<section id="basic-concepts">
+<h2>Basic concepts<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#basic-concepts" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#basic-concepts'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<dl class="simple">
+<dt>Game object</dt><dd><p>Any object that exists in the game world and has a specific location. Player, actors, items, and statics are game objects.</p>
+</dd>
+<dt>Record</dt><dd><p>Persistent information about an object. Includes starting stats and links to assets, but doesn’t have a location. Game objects are instances of records. Some records (e.g. a unique NPC) have a single instance, some (e.g. a specific potion) may correspond to multiple objects.</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Don’t be confused with MWSE terminology. In MWSE game objects are “references” and records are “objects”.</p>
+</div>
+<dl class="simple">
+<dt>Cell</dt><dd><p>An area of the game world. A position in the world is a link to a cell and X, Y, Z coordinates in the cell. At a specific moment in time each cell can be active or inactive. Inactive cells don’t perform physics updates.</p>
+</dd>
+<dt>Global scripts</dt><dd><p>Lua scripts that are not attached to any game object and are always active. Global scripts can not be started or stopped during a game session. Lists of global scripts are defined by <cite>omwscripts</cite> files, which should be <a class="reference internal" href="../modding/extended.html#lua-scripting"><span class="std std-ref">registered</span></a> in <cite>openmw.cfg</cite>.</p>
+</dd>
+<dt>Menu scripts</dt><dd><p>Lua scripts that are ran regardless of a game being loaded. They can be used to add features to the main menu and manage save files.</p>
+</dd>
+<dt>Local scripts</dt><dd><p>Lua scripts that are attached to some game object. A local script is active only if the object it is attached to is in an active cell. There are no limitations to the number of local scripts on one object. Local scripts can be attached to (or detached from) any object at any moment by a global script. In some cases inactive local scripts still can run code (for example during saving and loading), but while inactive they can not see nearby objects.</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Currently scripts on objects in a container or an inventory are considered inactive. Probably later this behaviour will be changed.</p>
+</div>
+<dl class="simple">
+<dt>Player scripts</dt><dd><p>A specific kind of local scripts; <em>player script</em> is a local script that is attached to a player. It can do everything that a normal local script can do, plus some player-specific functionality (e.g. control UI and camera).</p>
+</dd>
+</dl>
+<p>This scripting API was developed to be conceptually compatible with <a class="reference external" href="https://github.com/TES3MP/openmw-tes3mp">multiplayer</a>. In multiplayer the server is lightweight and delegates most of the work to clients. Each client processes some part of the game world. Global scripts are server-side and local scripts are client-side. Because of this, there are several rules for the Lua scripting API:</p>
+<ol class="arabic simple">
+<li><p>A local script can see only some area of the game world (cells that are active on a specific client). Any data from inactive cells can’t be used, as they are not synchronized and could be already changed on another client.</p></li>
+<li><p>A local script can only modify the object it is attached to. Other objects can theoretically be processed by another client. To prevent synchronization problems the access to them is read-only.</p></li>
+<li><p>Global scripts can access and modify the whole game world including unloaded areas, but the global scripts API is different from the local scripts API and in some aspects limited, because it is not always possible to have all game assets in memory at the same time.</p></li>
+<li><p>Though the scripting system doesn’t actually work with multiplayer yet, the API assumes that there can be several players. That’s why any command related to UI, camera, and everything else that is player-specific can be used only by player scripts.</p></li>
+</ol>
+</section>
+<section id="how-to-run-a-script">
+<h2>How to run a script<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#how-to-run-a-script" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#how-to-run-a-script'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>Let’s write a simple example of a <cite>Player script</cite>:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="c1">-- Save to my_lua_mod/scripts/example/player.lua</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="kd">local</span><span class="w"> </span><span class="nv">ui</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.ui'</span><span class="p">)</span>
+</span><span id="line-4">
+</span><span id="line-5"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-6"><span class="w">    </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-7"><span class="w">        </span><span class="nv">onKeyPress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kr">function</span><span class="p">(</span><span class="nv">key</span><span class="p">)</span>
+</span><span id="line-8"><span class="w">            </span><span class="kr">if</span><span class="w"> </span><span class="nv">key</span><span class="p">.</span><span class="py">symbol</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">'x'</span><span class="w"> </span><span class="kr">then</span>
+</span><span id="line-9"><span class="w">                </span><span class="nv">ui</span><span class="p">.</span><span class="nf">showMessage</span><span class="p">(</span><span class="s1">'You have pressed "X"'</span><span class="p">)</span>
+</span><span id="line-10"><span class="w">            </span><span class="kr">end</span>
+</span><span id="line-11"><span class="w">        </span><span class="kr">end</span>
+</span><span id="line-12"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-13"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>The script will be used only if it is specified in one of content files.
+OpenMW Lua is an inclusive OpenMW feature, so it can not be controlled by ESP/ESM.
+The options are:</p>
+<p>1. Create text file “my_lua_mod.omwscripts” with the following line:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="n">PLAYER</span><span class="p">:</span> <span class="n">scripts</span><span class="o">/</span><span class="n">example</span><span class="o">/</span><span class="n">player</span><span class="o">.</span><span class="n">lua</span>
+</span></code></pre></div>
+</div>
+<ol class="arabic simple" start="2">
+<li><p>(not implemented yet) Add the script in OpenMW CS on “Lua scripts” view and save as “my_lua_mod.omwaddon”.</p></li>
+</ol>
+<p>Enable it in <code class="docutils literal notranslate"><span class="pre">openmw.cfg</span></code> the same way as any other mod:</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">openmw.cfg</span><a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#id1"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></div>
+<div class="highlight-openmwcfg notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="na">data</span><span class="o">=</span><span class="s">path/to/my_lua_mod</span>
+</span><span id="line-2"><span class="c1"># or content=my_lua_mod.omwaddon</span>
+</span><span id="line-3"><span class="na">content</span><span class="o">=</span><span class="s">my_lua_mod.omwscripts</span>
+</span></code></pre></div>
+</div>
+</div>
+<p>Now every time the player presses “X” on a keyboard, a message is shown.</p>
+</section>
+<section id="lua-scripts-naming-policy">
+<h2>Lua scripts naming policy<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#lua-scripts-naming-policy" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#lua-scripts-naming-policy'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>Technically scripts can be placed anywhere in the virtual file system, but we recommend to follow the naming policy and choose one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/&lt;ModName&gt;/&lt;ScriptName&gt;.lua</span></code>: general case.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/&lt;AuthorName&gt;/&lt;ModName&gt;/&lt;ScriptName&gt;.lua</span></code>: if “ModName” is short and can potentially collide with other mods.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/&lt;ModName&gt;.lua</span></code>: if it is a simple mod that consists of a single script, the script can be placed in <code class="docutils literal notranslate"><span class="pre">scripts/</span></code> without subdirs.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">scripts/omw/</span></code> is reserved for built-in scripts, don’t use it in mods. Overriding built-in scripts is not recommended, prefer to adjust their behaviour via <a class="reference internal" href="#interfaces-of-built-in-scripts"><span class="std std-ref">Interfaces of built-in scripts</span></a> instead.</p>
+<p>See also naming policy of <a class="reference internal" href="../modding/localisation.html#localisation-files"><span class="std std-ref">Localisation Files</span></a>.</p>
+</section>
+<section id="format-of-omwscripts">
+<h2>Format of <code class="docutils literal notranslate"><span class="pre">.omwscripts</span></code><a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#format-of-omwscripts" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#format-of-omwscripts'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="c1"># Lines starting with '#' are comments</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="n">GLOBAL</span><span class="p">:</span> <span class="n">scripts</span><span class="o">/</span><span class="n">my_mod</span><span class="o">/</span><span class="n">some_global_script</span><span class="o">.</span><span class="n">lua</span>
+</span><span id="line-4">
+</span><span id="line-5"><span class="c1"># Script that will be automatically attached to the player</span>
+</span><span id="line-6"><span class="n">PLAYER</span><span class="p">:</span> <span class="n">scripts</span><span class="o">/</span><span class="n">my_mod</span><span class="o">/</span><span class="n">player</span><span class="o">.</span><span class="n">lua</span>
+</span><span id="line-7">
+</span><span id="line-8"><span class="c1"># Local script that will be automatically attached to every NPC and every creature in the game</span>
+</span><span id="line-9"><span class="n">NPC</span><span class="p">,</span> <span class="n">CREATURE</span><span class="p">:</span> <span class="n">scripts</span><span class="o">/</span><span class="n">my_mod</span><span class="o">/</span><span class="n">some_other_script</span><span class="o">.</span><span class="n">lua</span>
+</span><span id="line-10">
+</span><span id="line-11"><span class="c1"># Local script that can be attached to any object by a global script</span>
+</span><span id="line-12"><span class="n">CUSTOM</span><span class="p">:</span> <span class="n">scripts</span><span class="o">/</span><span class="n">my_mod</span><span class="o">/</span><span class="n">something</span><span class="o">.</span><span class="n">lua</span>
+</span><span id="line-13">
+</span><span id="line-14"><span class="c1"># Local script that will be automatically attached to any Container AND can be</span>
+</span><span id="line-15"><span class="c1"># attached to any other object by a global script.</span>
+</span><span id="line-16"><span class="n">CONTAINER</span><span class="p">,</span> <span class="n">CUSTOM</span><span class="p">:</span> <span class="n">scripts</span><span class="o">/</span><span class="n">my_mod</span><span class="o">/</span><span class="n">container</span><span class="o">.</span><span class="n">lua</span>
+</span></code></pre></div>
+</div>
+<p>Each script is described by one line:
+<code class="docutils literal notranslate"><span class="pre">&lt;flags&gt;:</span> <span class="pre">&lt;path</span> <span class="pre">to</span> <span class="pre">.lua</span> <span class="pre">file</span> <span class="pre">in</span> <span class="pre">virtual</span> <span class="pre">file</span> <span class="pre">system&gt;</span></code>.
+The order of lines determines the script load order (i.e. script priorities).</p>
+<p>Possible flags are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GLOBAL</span></code> - a global script; always active, can not be stopped;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MENU</span></code> - a menu script; always active, even before a game is loaded</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CUSTOM</span></code> - dynamic local script that can be started or stopped by a global script;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PLAYER</span></code> - an auto started player script;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LOAD</span></code> - a load script, active while content files are being loaded;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ACTIVATOR</span></code> - a local script that will be automatically attached to any activator;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ARMOR</span></code> - a local script that will be automatically attached to any armor;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">BOOK</span></code> - a local script that will be automatically attached to any book;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CLOTHING</span></code> - a local script that will be automatically attached to any clothing;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CONTAINER</span></code> - a local script that will be automatically attached to any container;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CREATURE</span></code> - a local script that will be automatically attached to any creature;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">DOOR</span></code> - a local script that will be automatically attached to any door;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">INGREDIENT</span></code> - a local script that will be automatically attached to any ingredient;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LIGHT</span></code> - a local script that will be automatically attached to any light;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MISC_ITEM</span></code> - a local script that will be automatically attached to any miscellaneous item;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">NPC</span></code> - a local script that will be automatically attached to any NPC;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POTION</span></code> - a local script that will be automatically attached to any potion;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">WEAPON</span></code> - a local script that will be automatically attached to any weapon;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">APPARATUS</span></code> - a local script that will be automatically attached to any apparatus;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">LOCKPICK</span></code> - a local script that will be automatically attached to any lockpick;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PROBE</span></code> - a local script that will be automatically attached to any probe tool;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">REPAIR</span></code> - a local script that will be automatically attached to any repair tool.</p></li>
+</ul>
+<p>Several flags (except <code class="docutils literal notranslate"><span class="pre">GLOBAL</span></code>) can be used with a single script. Use space or comma as a separator.</p>
+</section>
+<section id="hot-reloading">
+<h2>Hot reloading<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#hot-reloading" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#hot-reloading'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>It is possible to modify a script without restarting OpenMW. To apply changes, open the in-game console and run the command: <code class="docutils literal notranslate"><span class="pre">reloadlua</span></code>.
+This will restart all Lua scripts using the <a class="reference internal" href="#onsave-and-onload">onSave and onLoad</a> handlers the same way as if the game was saved or loaded.
+It reloads all <code class="docutils literal notranslate"><span class="pre">.omwscripts</span></code> files and <code class="docutils literal notranslate"><span class="pre">.lua</span></code> files that are not packed to any archives. <code class="docutils literal notranslate"><span class="pre">.omwaddon</span></code> files and scripts packed to BSA can not be changed without restarting the game.
+Load scripts will not run again until the game is restarted.</p>
+</section>
+<section id="lua-console">
+<h2>Lua console<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#lua-console" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#lua-console'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>It is also possible to run Lua commands directly from the in-game console.</p>
+<p>To enter the Lua mode run one of the commands:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">lua</span> <span class="pre">player</span></code> or <code class="docutils literal notranslate"><span class="pre">luap</span></code> - enter player context</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lua</span> <span class="pre">global</span></code> or <code class="docutils literal notranslate"><span class="pre">luag</span></code> - enter global context</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lua</span> <span class="pre">selected</span></code> or <code class="docutils literal notranslate"><span class="pre">luas</span></code> - enter local context on the selected object</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lua</span> <span class="pre">menu</span></code> or <code class="docutils literal notranslate"><span class="pre">luam</span></code> - enter menu context</p></li>
+</ul>
+</section>
+<section id="script-structure">
+<h2>Script structure<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#script-structure" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#script-structure'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>Each script is a separate file in the game assets.
+<cite>Starting a script</cite> means that the engine runs the file, parses the table it returns, and registers its interface, event handlers, and engine handlers. The handlers are permanent and exist until the script is stopped (if it is a local script, because global scripts can not be stopped).</p>
+<p>Here is an example of a basic script structure:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">util</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.util'</span><span class="p">)</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onUpdate</span><span class="p">(</span><span class="nv">dt</span><span class="p">)</span>
+</span><span id="line-4"><span class="w">    </span><span class="p">...</span>
+</span><span id="line-5"><span class="kr">end</span>
+</span><span id="line-6">
+</span><span id="line-7"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onSave</span><span class="p">()</span>
+</span><span id="line-8"><span class="w">    </span><span class="p">...</span>
+</span><span id="line-9"><span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="nv">data</span>
+</span><span id="line-10"><span class="kr">end</span>
+</span><span id="line-11">
+</span><span id="line-12"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onLoad</span><span class="p">(</span><span class="nv">data</span><span class="p">)</span>
+</span><span id="line-13"><span class="w">    </span><span class="p">...</span>
+</span><span id="line-14"><span class="kr">end</span>
+</span><span id="line-15">
+</span><span id="line-16"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">myEventHandler</span><span class="p">(</span><span class="nv">eventData</span><span class="p">)</span>
+</span><span id="line-17"><span class="w">    </span><span class="p">...</span>
+</span><span id="line-18"><span class="kr">end</span>
+</span><span id="line-19">
+</span><span id="line-20"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">somePublicFunction</span><span class="p">(</span><span class="nv">params</span><span class="p">,</span><span class="w"> </span><span class="p">...)</span>
+</span><span id="line-21"><span class="w">    </span><span class="p">...</span>
+</span><span id="line-22"><span class="kr">end</span>
+</span><span id="line-23">
+</span><span id="line-24"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-25"><span class="w">    </span><span class="nv">interfaceName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'MyScriptInterface'</span><span class="p">,</span>
+</span><span id="line-26"><span class="w">    </span><span class="nv">interface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-27"><span class="w">        </span><span class="nv">somePublicFunction</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">somePublicFunction</span><span class="p">,</span>
+</span><span id="line-28"><span class="w">    </span><span class="p">},</span>
+</span><span id="line-29">
+</span><span id="line-30"><span class="w">    </span><span class="nv">eventHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">MyEvent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">myEventHandler</span><span class="w"> </span><span class="p">},</span>
+</span><span id="line-31">
+</span><span id="line-32"><span class="w">    </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-33"><span class="w">        </span><span class="nv">onUpdate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onUpdate</span><span class="p">,</span>
+</span><span id="line-34"><span class="w">        </span><span class="nv">onSave</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onSave</span><span class="p">,</span>
+</span><span id="line-35"><span class="w">        </span><span class="nv">onLoad</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onLoad</span><span class="p">,</span>
+</span><span id="line-36"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-37"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Every instance of every script works in a separate enviroment, so it is not necessary
+to make everything local. It’s local just because it makes the code a bit faster.</p>
+</div>
+<p>All sections in the returned table are optional.
+If you just want to do something every frame, it is enough to write the following:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-2"><span class="w">    </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-3"><span class="w">        </span><span class="nv">onUpdate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kr">function</span><span class="p">()</span>
+</span><span id="line-4"><span class="w">            </span><span class="nb">print</span><span class="p">(</span><span class="s1">'Hello, World!'</span><span class="p">)</span>
+</span><span id="line-5"><span class="w">        </span><span class="kr">end</span>
+</span><span id="line-6"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-7"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+</section>
+<section id="engine-handlers">
+<h2>Engine handlers<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#engine-handlers" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#engine-handlers'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>An engine handler is a function defined by a script, that can be called by the engine. I.e. it is an engine-to-script interaction.
+Not visible to other scripts. If several scripts register an engine handler with the same name,
+the engine calls all of them according to the load order (i.e. the order of <code class="docutils literal notranslate"><span class="pre">content=</span></code> entries in <code class="docutils literal notranslate"><span class="pre">openmw.cfg</span></code>) and the order of scripts in <code class="docutils literal notranslate"><span class="pre">omwaddon/omwscripts</span></code>.</p>
+<p>Some engine handlers are allowed only for global, or only for local/player scripts. Some are universal.
+See <a class="reference internal" href="engine_handlers.html#engine-handlers-reference"><span class="std std-ref">Engine handlers reference</span></a>.</p>
+</section>
+<section id="onsave-and-onload">
+<h2>onSave and onLoad<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#onsave-and-onload" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#onsave-and-onload'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>When a game is saved or loaded, the engine calls the engine handlers <cite>onSave</cite> or <cite>onLoad</cite> to save or load each script.
+The value that <cite>onSave</cite> returns will be passed to <cite>onLoad</cite> when the game is loaded.
+It is the only way to save the internal state of a script. All other script variables will be lost after closing the game.
+The saved state must be <a class="reference internal" href="#serializable-data"><span class="std std-ref">serializable</span></a>.</p>
+<p>Note that <cite>onLoad</cite> means loading a script rather than loading a game.
+If a script did not exist when a game was saved then <cite>onLoad</cite> will not be called, but <cite>onInit</cite> will.</p>
+<p><cite>onSave</cite> and <cite>onLoad</cite> can be called even for objects in inactive state, so it shouldn’t use <cite>openmw.nearby</cite>.</p>
+<p>An example:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="p">...</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="kd">local</span><span class="w"> </span><span class="nv">scriptVersion</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">  </span><span class="c1">-- increase it every time when `onSave` is changed</span>
+</span><span id="line-4">
+</span><span id="line-5"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onSave</span><span class="p">()</span>
+</span><span id="line-6"><span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-7"><span class="w">        </span><span class="nv">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">scriptVersion</span>
+</span><span id="line-8"><span class="w">        </span><span class="nv">some</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">someVariable</span><span class="p">,</span>
+</span><span id="line-9"><span class="w">        </span><span class="nv">someOther</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">someOtherVariable</span>
+</span><span id="line-10"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-11"><span class="kr">end</span>
+</span><span id="line-12">
+</span><span id="line-13"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onLoad</span><span class="p">(</span><span class="nv">data</span><span class="p">)</span>
+</span><span id="line-14"><span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="nv">data</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">version</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">version</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="kr">then</span>
+</span><span id="line-15"><span class="w">        </span><span class="nb">print</span><span class="p">(</span><span class="s1">'Was saved with an old version of the script, initializing to default'</span><span class="p">)</span>
+</span><span id="line-16"><span class="w">        </span><span class="nv">someVariable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'some value'</span>
+</span><span id="line-17"><span class="w">        </span><span class="nv">someOtherVariable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span>
+</span><span id="line-18"><span class="w">        </span><span class="kr">return</span>
+</span><span id="line-19"><span class="w">    </span><span class="kr">end</span>
+</span><span id="line-20"><span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">version</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nv">scriptVersion</span><span class="w"> </span><span class="kr">then</span>
+</span><span id="line-21"><span class="w">        </span><span class="nb">error</span><span class="p">(</span><span class="s1">'Required update to a new version of the script'</span><span class="p">)</span>
+</span><span id="line-22"><span class="w">    </span><span class="kr">end</span>
+</span><span id="line-23"><span class="w">    </span><span class="nv">someVariable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">some</span>
+</span><span id="line-24"><span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">version</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">scriptVersion</span><span class="w"> </span><span class="kr">then</span>
+</span><span id="line-25"><span class="w">        </span><span class="nv">someOtherVariable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">someOther</span>
+</span><span id="line-26"><span class="w">    </span><span class="kr">else</span>
+</span><span id="line-27"><span class="w">        </span><span class="nb">print</span><span class="p">(</span><span class="nb">string.format</span><span class="p">(</span><span class="s1">'Updating from version %d to %d'</span><span class="p">,</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">version</span><span class="p">,</span><span class="w"> </span><span class="nv">scriptVersion</span><span class="p">))</span>
+</span><span id="line-28"><span class="w">        </span><span class="nv">someOtherVariable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span>
+</span><span id="line-29"><span class="w">    </span><span class="kr">end</span>
+</span><span id="line-30"><span class="kr">end</span>
+</span><span id="line-31">
+</span><span id="line-32"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-33"><span class="w">    </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-34"><span class="w">        </span><span class="nv">onUpdate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">update</span><span class="p">,</span>
+</span><span id="line-35"><span class="w">        </span><span class="nv">onSave</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onSave</span><span class="p">,</span>
+</span><span id="line-36"><span class="w">        </span><span class="nv">onLoad</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onLoad</span><span class="p">,</span>
+</span><span id="line-37"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-38"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<section id="serializable-data">
+<h3>Serializable data<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#serializable-data" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#serializable-data'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h3>
+<p><cite>Serializable</cite> value means that OpenMW is able to convert it to a sequence of bytes and then (probably on a different computer and with different OpenMW version) restore it back to the same form.</p>
+<p>Serializable value is one of:</p>
+<ul class="simple">
+<li><p><cite>nil</cite> value</p></li>
+<li><p>a number</p></li>
+<li><p>a string</p></li>
+<li><p>a game object</p></li>
+<li><p>a value of a type, defined by <a class="reference internal" href="openmw_util.html#package-openmw-util"><span class="std std-ref">openmw.util</span></a></p></li>
+<li><p>a table whith serializable keys and values</p></li>
+</ul>
+<p>Serializable data can not contain:</p>
+<ul class="simple">
+<li><p>Functions</p></li>
+<li><p>Tables with custom metatables</p></li>
+<li><p>Several references to the same table. For example <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">some_table,</span> <span class="pre">y</span> <span class="pre">=</span> <span class="pre">some_table</span> <span class="pre">}</span></code> is not allowed.</p></li>
+<li><p>Circular references (i.e. when some table contains itself).</p></li>
+</ul>
+</section>
+</section>
+<section id="api-packages">
+<h2>API packages<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#api-packages" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#api-packages'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>API packages provide functions that can be called by scripts. I.e. it is a script-to-engine interaction.
+A package can be loaded with <code class="docutils literal notranslate"><span class="pre">require('&lt;package</span> <span class="pre">name&gt;')</span></code>.
+It can not be overloaded even if there is a lua file with the same name.
+The list of available packages is different for global and for local scripts.
+Player scripts are local scripts that are attached to a player.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 23%"/>
+<col style="width: 31%"/>
+<col style="width: 46%"/>
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Package</p></th>
+<th class="head"><p>Context</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_ambient.html"><span class="doc">ambient</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Controls background sounds for given player.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_animation.html"><span class="doc">animation</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Animation controls.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_async.html"><span class="doc">async</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Timers and callbacks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_camera.html"><span class="doc">camera</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Controls camera.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_content.html"><span class="doc">content</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Content manipulation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_core.html"><span class="doc">core</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Functions that are common for both global and local scripts</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_debug.html"><span class="doc">debug</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Collection of debug utils.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_input.html"><span class="doc">input</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>User input.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#script-interfaces"><span class="std std-ref">interfaces</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Public interfaces of other scripts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_markup.html"><span class="doc">markup</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>API to work with markup languages.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_menu.html"><span class="doc">menu</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span></p></td>
+<td><p>Main menu functionality, such as managing game saves</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_nearby.html"><span class="doc">nearby</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Read-only access to the nearest area of the game world.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_postprocessing.html"><span class="doc">postprocessing</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Controls post-process shaders.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_self.html"><span class="doc">self</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Full access to the object the script is attached to.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_storage.html"><span class="doc">storage</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Storage API. In particular can be used to store data between game sessions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_types.html"><span class="doc">types</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Functions for specific types of game objects.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_ui.html"><span class="doc">ui</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Controls <a class="reference internal" href="user_interface.html#ui-reference"><span class="std std-ref">user interface</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_util.html"><span class="doc">util</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Defines utility functions and classes like 3D vectors, that don’t depend on the game world.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_vfs.html"><span class="doc">vfs</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Read-only access to data directories via VFS.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_world.html"><span class="doc">world</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span></p></td>
+<td><p>Read-write access to the game world.</p></td>
+</tr>
+</tbody>
+</table>
+<section id="auxiliary-packages">
+<h3>Auxiliary packages<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#auxiliary-packages" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#auxiliary-packages'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">openmw_aux.*</span></code> are built-in libraries that are themselves implemented in Lua. They can not do anything that is not possible with the basic API, they only make it more convenient.
+Sources can be found in <code class="docutils literal notranslate"><span class="pre">resources/vfs/openmw_aux</span></code>. In theory mods can override them, but it is not recommended.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 23%"/>
+<col style="width: 31%"/>
+<col style="width: 46%"/>
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Module</p></th>
+<th class="head"><p>Context</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_aux_calendar.html"><span class="doc">calendar</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Game time calendar</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_aux_time.html"><span class="doc">time</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Timers and game time utils</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openmw_aux_ui.html"><span class="doc">ui</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>User interface utils</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openmw_aux_util.html"><span class="doc">util</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span> <span class="sd-sphinx-override sd-badge sd-bg-black sd-bg-text-black">load</span></p></td>
+<td><p>Miscellaneous utils</p></td>
+</tr>
+</tbody>
+</table>
+<p>They can be loaded with <code class="docutils literal notranslate"><span class="pre">require</span></code> the same as API packages. For example:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw_aux.time'</span><span class="p">)</span>
+</span><span id="line-2"><span class="nv">time</span><span class="p">.</span><span class="nf">runRepeatedly</span><span class="p">(</span><span class="nv">doSomething</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nv">time</span><span class="p">.</span><span class="py">second</span><span class="p">)</span><span class="w">  </span><span class="c1">-- run `doSomething()` every 15 seconds</span>
+</span></code></pre></div>
+</div>
+</section>
+</section>
+<section id="script-interfaces">
+<h2>Script interfaces<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#script-interfaces" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#script-interfaces'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>Each script can provide a named interface for other scripts.
+It is a script-to-script interaction. This mechanism is not used by the engine itself.</p>
+<p>A script can use an interface of another script either if both are global scripts, or both are local scripts on the same object.
+In other cases events should be used.</p>
+<p>Defining an interface:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-2"><span class="w">    </span><span class="nv">interfaceName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"SomeUtils"</span>
+</span><span id="line-3"><span class="w">    </span><span class="nv">interface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-4"><span class="w">        </span><span class="nv">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="line-5"><span class="w">        </span><span class="nv">doSomething</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kr">function</span><span class="p">(</span><span class="nv">x</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="p">)</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="kr">end</span><span class="p">,</span>
+</span><span id="line-6"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-7"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>Overriding the interface and adding a debug output:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">baseInterface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">nil</span><span class="w">  </span><span class="c1">-- will be assigned by `onInterfaceOverride`</span>
+</span><span id="line-2"><span class="nv">interface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-3"><span class="w">    </span><span class="nv">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="line-4"><span class="w">    </span><span class="nv">doSomething</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kr">function</span><span class="p">(</span><span class="nv">x</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="p">)</span>
+</span><span id="line-5"><span class="w">        </span><span class="nb">print</span><span class="p">(</span><span class="nb">string.format</span><span class="p">(</span><span class="s1">'SomeUtils.doSomething(%d, %d)'</span><span class="p">,</span><span class="w"> </span><span class="nv">x</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="p">))</span>
+</span><span id="line-6"><span class="w">        </span><span class="nv">baseInterface</span><span class="p">.</span><span class="nf">doSomething</span><span class="p">(</span><span class="nv">x</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="p">)</span><span class="w">  </span><span class="c1">-- calls the original `doSomething`</span>
+</span><span id="line-7">
+</span><span id="line-8"><span class="w">        </span><span class="c1">-- WRONG! Would lead to an infinite recursion.</span>
+</span><span id="line-9"><span class="w">        </span><span class="c1">-- local interfaces = require('openmw.interfaces')</span>
+</span><span id="line-10"><span class="w">        </span><span class="c1">-- interfaces.SomeUtils.doSomething(x, y)</span>
+</span><span id="line-11"><span class="w">    </span><span class="kr">end</span><span class="p">,</span>
+</span><span id="line-12"><span class="p">}</span>
+</span><span id="line-13">
+</span><span id="line-14"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-15"><span class="w">    </span><span class="nv">interfaceName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"SomeUtils"</span><span class="p">,</span>
+</span><span id="line-16"><span class="w">    </span><span class="nv">interface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">interface</span><span class="p">,</span>
+</span><span id="line-17"><span class="w">    </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-18"><span class="w">        </span><span class="nv">onInterfaceOverride</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kr">function</span><span class="p">(</span><span class="nv">base</span><span class="p">)</span><span class="w"> </span><span class="nv">baseInterface</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">base</span><span class="w"> </span><span class="kr">end</span><span class="p">,</span>
+</span><span id="line-19"><span class="w">    </span><span class="p">},</span>
+</span><span id="line-20"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>A general recommendation about overriding is that the new interface should be fully compatible with the old one.
+So it is fine to change the behaviour of <cite>SomeUtils.doSomething</cite>, but if you want to add a completely new function, it would be
+better to create a new interface for it. For example <cite>SomeUtilsExtended</cite> with an additional function <cite>doSomethingElse</cite>.</p>
+<p>Using the interface:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">interfaces</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.interfaces'</span><span class="p">)</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onUpdate</span><span class="p">()</span>
+</span><span id="line-4"><span class="w">    </span><span class="nv">interfaces</span><span class="p">.</span><span class="py">SomeUtils</span><span class="p">.</span><span class="nf">doSomething</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span>
+</span><span id="line-5"><span class="kr">end</span>
+</span><span id="line-6">
+</span><span id="line-7"><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">onUpdate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onUpdate</span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>The order in which the scripts are started is important. So if one mod should override an interface provided by another mod, make sure that load order (i.e. the sequence of <cite>content=*.omwscripts</cite> in <cite>openmw.cfg</cite>) is correct.</p>
+<section id="interfaces-of-built-in-scripts">
+<h3>Interfaces of built-in scripts<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#interfaces-of-built-in-scripts" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#interfaces-of-built-in-scripts'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 23%"/>
+<col style="width: 31%"/>
+<col style="width: 46%"/>
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Interface</p></th>
+<th class="head"><p>Context</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_activation.html"><span class="doc">Activation</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span></p></td>
+<td><p>Allows to extend or override built-in activation mechanics.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="interface_ai.html"><span class="doc">AI</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Control basic AI of NPCs and creatures.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_animation.html"><span class="doc">AnimationController</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Control animations of NPCs and creatures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="interface_camera.html"><span class="doc">Camera</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Allows to alter behavior of the built-in camera script without overriding the script completely.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_controls.html"><span class="doc">Controls</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Allows to alter behavior of the built-in script that handles player controls.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="interface_crimes.html"><span class="doc">Crimes</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span></p></td>
+<td><p>Commit crimes.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_combat.html"><span class="doc">Combat</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-info sd-bg-text-info">local</span></p></td>
+<td><p>Control combat of NPCs and creatures</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="interface_gamepadcontrols.html"><span class="doc">GamepadControls</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Allows to alter behavior of the built-in script that handles player gamepad controls.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_item_usage.html"><span class="doc">ItemUsage</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span></p></td>
+<td><p>Allows to extend or override built-in item usage mechanics.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="interface_mwui.html"><span class="doc">MWUI</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Morrowind-style UI templates.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_settings.html"><span class="doc">Settings</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-danger sd-bg-text-danger">global</span> <span class="sd-sphinx-override sd-badge sd-bg-warning sd-bg-text-warning">menu</span> <span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Save, display and track changes of setting values.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="interface_skill_progression.html"><span class="doc">SkillProgression</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>Control, extend, and override skill progression of the player.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="interface_ui.html"><span class="doc">UI</span></a></p></td>
+<td><p><span class="sd-sphinx-override sd-badge sd-bg-secondary sd-bg-text-secondary">player</span></p></td>
+<td><p>High-level UI modes interface. Allows to override parts of the interface.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="event-system">
+<h2>Event system<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#event-system" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#event-system'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>This is another kind of script-to-script interactions. The differences:</p>
+<ul class="simple">
+<li><p>Any script can send an event to any object or a global event to global scripts.</p></li>
+<li><p>Events are delivered with a small delay (in single player the delay is always one frame).</p></li>
+<li><p>Event handlers can not return any data to the sender.</p></li>
+<li><p>Event handlers have a single argument <cite>eventData</cite> (must be <a class="reference internal" href="#serializable-data"><span class="std std-ref">serializable</span></a>)</p></li>
+</ul>
+<p>There are a few methods for sending events:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="openmw_core.html##(sendGlobalEvent)">core.sendGlobalEvent</a> to send events to global scripts</p></li>
+<li><p><a class="reference external" href="openmw_core.html##(GameObject).sendEvent">GameObject:sendEvent</a> to send events to local scripts attached to a game object</p></li>
+<li><p><a class="reference external" href="openmw_types.html##(Player).sendMenuEvent">types.Player.sendMenuEvent</a> to send events to menu scripts of the given player</p></li>
+</ul>
+<p>Events are the main way of interacting between local and global scripts.
+They are not recommended for interactions between two global scripts, because in this case interfaces are more convenient.</p>
+<p>If several scripts register handlers for the same event, the handlers will be called in reverse order (opposite to engine handlers).
+I.e. the handler from the last script in the load order will be called first.
+Return value ‘false’ means “skip all other handlers for this event”.
+Any other return value (including nil) means nothing.</p>
+<p>An example. Imagine we are working on a mod that adds some “dark power” with special effects.
+We attach a local script to an item that can explode.
+At some moment it will send the ‘DamagedByDarkPower’ event to all nearby actors:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">self</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.self'</span><span class="p">)</span>
+</span><span id="line-2"><span class="kd">local</span><span class="w"> </span><span class="nv">nearby</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.nearby'</span><span class="p">)</span>
+</span><span id="line-3">
+</span><span id="line-4"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">onActivated</span><span class="p">()</span>
+</span><span id="line-5"><span class="w">    </span><span class="kr">for</span><span class="w"> </span><span class="nv">i</span><span class="p">,</span><span class="w"> </span><span class="nv">actor</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="nb">ipairs</span><span class="p">(</span><span class="nv">nearby</span><span class="p">.</span><span class="py">actors</span><span class="p">)</span><span class="w"> </span><span class="kr">do</span>
+</span><span id="line-6"><span class="w">        </span><span class="kd">local</span><span class="w"> </span><span class="nv">dist</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nv">self</span><span class="p">.</span><span class="py">position</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nv">actor</span><span class="p">.</span><span class="py">position</span><span class="p">):</span><span class="nf">length</span><span class="p">()</span>
+</span><span id="line-7"><span class="w">        </span><span class="kr">if</span><span class="w"> </span><span class="nv">dist</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">500</span><span class="w"> </span><span class="kr">then</span>
+</span><span id="line-8"><span class="w">            </span><span class="kd">local</span><span class="w"> </span><span class="nv">damage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nv">dist</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">500</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">200</span>
+</span><span id="line-9"><span class="w">            </span><span class="nv">actor</span><span class="p">:</span><span class="nf">sendEvent</span><span class="p">(</span><span class="s1">'DamagedByDarkPower'</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="nv">source</span><span class="o">=</span><span class="nv">self</span><span class="p">.</span><span class="py">object</span><span class="p">,</span><span class="w"> </span><span class="nv">damage</span><span class="o">=</span><span class="nv">damage</span><span class="p">})</span>
+</span><span id="line-10"><span class="w">        </span><span class="kr">end</span>
+</span><span id="line-11"><span class="w">    </span><span class="kr">end</span>
+</span><span id="line-12"><span class="kr">end</span>
+</span><span id="line-13">
+</span><span id="line-14"><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">onActivated</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">onActivated</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>And every actor should have a local script that processes this event:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">damagedByDarkPower</span><span class="p">(</span><span class="nv">data</span><span class="p">)</span>
+</span><span id="line-2"><span class="w">    </span><span class="p">...</span><span class="w">  </span><span class="c1">-- apply `data.damage` to stats / run custom animation / etc</span>
+</span><span id="line-3"><span class="kr">end</span>
+</span><span id="line-4">
+</span><span id="line-5"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-6"><span class="w">    </span><span class="nv">eventHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">DamagedByDarkPower</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">damagedByDarkPower</span><span class="w"> </span><span class="p">},</span>
+</span><span id="line-7"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>Someone may create an additional mod that adds a protection from the dark power.
+The protection mod attaches an additional local script to every actor. The script intercepts and modifies the event:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">protectionLevel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">reduceDarkDamage</span><span class="p">(</span><span class="nv">data</span><span class="p">)</span>
+</span><span id="line-4"><span class="w">    </span><span class="nv">data</span><span class="p">.</span><span class="py">damage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">damage</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nv">protectionLevel</span><span class="w">  </span><span class="c1">-- reduce the damage</span>
+</span><span id="line-5"><span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">damage</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w">  </span><span class="c1">-- it skips the original handler if the damage becomes &lt;= 0</span>
+</span><span id="line-6"><span class="kr">end</span>
+</span><span id="line-7">
+</span><span id="line-8"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-9"><span class="w">    </span><span class="nv">eventHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">DamagedByDarkPower</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">reduceDarkDamage</span><span class="w"> </span><span class="p">},</span>
+</span><span id="line-10"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>In order to be able to intercept the event, the protection script should be placed in the load order below the original script.</p>
+<p>See <a class="reference internal" href="widgets/widget.html#events"><span class="std std-ref">the list of events</span></a> that are used by built-in scripts.</p>
+</section>
+<section id="timers">
+<h2>Timers<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#timers" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#timers'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>Timers are in the <a class="reference internal" href="openmw_async.html#package-openmw-async"><span class="std std-ref">openmw.async</span></a> package.
+They can be set either in simulation time or in game time.</p>
+<ul class="simple">
+<li><p><cite>Simulation time</cite>: the number of seconds in the game world (i.e. seconds when the game is not paused), passed from starting a new game.</p></li>
+<li><p><cite>Game time</cite>: current time of the game world in seconds. Note that game time generally goes faster than the simulation time.</p></li>
+</ul>
+<p>When the game is paused, all timers are paused as well.</p>
+<p>When an object becomes inactive, timers on this object are not paused, but callbacks are called only when the object becomes active again.
+For example if there were 3 timers with delays 30, 50, 90 seconds, and from the 15-th to the 65-th second the object was inactive, then the first two callbacks are both evaluated on the 65-th second and the third one – on the 90-th second.</p>
+<p>There are two types: <em>reliable</em> and <em>unsavable</em> timers.</p>
+<section id="reliable-timer">
+<h3>Reliable timer<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#reliable-timer" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#reliable-timer'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h3>
+<p>Reliable timers are automatically saved and restored when the game is saved or loaded.
+When the game is saved each timer record contains only name of a callback, the time when the callback should be called, and an argument that should be passed to the callback.
+The callback itself is not stored. That’s why callbacks must be registered when the script is initialized with a function <code class="docutils literal notranslate"><span class="pre">async:registerTimerCallback(name,</span> <span class="pre">func)</span></code>.
+<cite>Name</cite> is an arbitrary string.</p>
+<p>An example:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">async</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.async'</span><span class="p">)</span>
+</span><span id="line-2">
+</span><span id="line-3"><span class="kd">local</span><span class="w"> </span><span class="nv">teleportWithDelayCallback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">async</span><span class="p">:</span><span class="nf">registerTimerCallback</span><span class="p">(</span><span class="s1">'teleport'</span><span class="p">,</span>
+</span><span id="line-4"><span class="kr">function</span><span class="p">(</span><span class="nv">data</span><span class="p">)</span>
+</span><span id="line-5"><span class="w">    </span><span class="nv">data</span><span class="p">.</span><span class="py">actor</span><span class="p">:</span><span class="nf">teleport</span><span class="p">(</span><span class="nv">data</span><span class="p">.</span><span class="py">destCellName</span><span class="p">,</span><span class="w"> </span><span class="nv">data</span><span class="p">.</span><span class="py">destPos</span><span class="p">)</span>
+</span><span id="line-6"><span class="kr">end</span><span class="p">)</span>
+</span><span id="line-7">
+</span><span id="line-8"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">teleportWithDelay</span><span class="p">(</span><span class="nv">delay</span><span class="p">,</span><span class="w"> </span><span class="nv">actor</span><span class="p">,</span><span class="w"> </span><span class="nv">cellName</span><span class="p">,</span><span class="w"> </span><span class="nv">pos</span><span class="p">)</span>
+</span><span id="line-9"><span class="w">    </span><span class="nv">async</span><span class="p">:</span><span class="nf">newSimulationTimer</span><span class="p">(</span><span class="nv">delay</span><span class="p">,</span><span class="w"> </span><span class="nv">teleportWithDelayCallback</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-10"><span class="w">        </span><span class="nv">actor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">actor</span><span class="p">,</span>
+</span><span id="line-11"><span class="w">        </span><span class="nv">destCellName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">cellName</span><span class="p">,</span>
+</span><span id="line-12"><span class="w">        </span><span class="nv">destPos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">pos</span><span class="p">,</span>
+</span><span id="line-13"><span class="w">    </span><span class="p">})</span>
+</span><span id="line-14"><span class="kr">end</span>
+</span></code></pre></div>
+</div>
+</section>
+<section id="unsavable-timer">
+<h3>Unsavable timer<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#unsavable-timer" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#unsavable-timer'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h3>
+<p>Unsavable timers can be created from any function without registering a callback in advance, but they can not be saved.
+If the player saves the game when an unsavable timer is running, then the timer will be lost after reloading.
+So be careful with unsavable timers and don’t use them if there is a risk of leaving the game world in an inconsistent state.</p>
+<p>An example:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">async</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.async'</span><span class="p">)</span>
+</span><span id="line-2"><span class="kd">local</span><span class="w"> </span><span class="nv">ui</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.ui'</span><span class="p">)</span>
+</span><span id="line-3">
+</span><span id="line-4"><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-5"><span class="w">    </span><span class="nv">engineHandlers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-6"><span class="w">        </span><span class="nv">onKeyPress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kr">function</span><span class="p">(</span><span class="nv">key</span><span class="p">)</span>
+</span><span id="line-7"><span class="w">            </span><span class="kr">if</span><span class="w"> </span><span class="nv">key</span><span class="p">.</span><span class="py">symbol</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">'x'</span><span class="w"> </span><span class="kr">then</span>
+</span><span id="line-8"><span class="w">                </span><span class="nv">async</span><span class="p">:</span><span class="nf">newUnsavableSimulationTimer</span><span class="p">(</span>
+</span><span id="line-9"><span class="w">                    </span><span class="mi">10</span><span class="p">,</span>
+</span><span id="line-10"><span class="w">                    </span><span class="kr">function</span><span class="p">()</span>
+</span><span id="line-11"><span class="w">                        </span><span class="nv">ui</span><span class="p">.</span><span class="nf">showMessage</span><span class="p">(</span><span class="s1">'You have pressed "X" 10 seconds ago'</span><span class="p">)</span>
+</span><span id="line-12"><span class="w">                    </span><span class="kr">end</span><span class="p">)</span>
+</span><span id="line-13"><span class="w">            </span><span class="kr">end</span>
+</span><span id="line-14"><span class="w">        </span><span class="kr">end</span><span class="p">,</span>
+</span><span id="line-15"><span class="w">    </span><span class="p">}</span>
+</span><span id="line-16"><span class="p">}</span>
+</span></code></pre></div>
+</div>
+<p>Also in <a class="reference internal" href="#auxiliary-packages">Auxiliary packages</a> is the helper function <code class="docutils literal notranslate"><span class="pre">runRepeatedly</span></code>, it is implemented on top of unsavable timers:</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="kd">local</span><span class="w"> </span><span class="nv">core</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.core'</span><span class="p">)</span>
+</span><span id="line-2"><span class="kd">local</span><span class="w"> </span><span class="nv">time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw_aux.time'</span><span class="p">)</span>
+</span><span id="line-3">
+</span><span id="line-4"><span class="c1">-- call `doSomething()` at the end of every game day.</span>
+</span><span id="line-5"><span class="c1">-- the second argument (`time.day`) is the interval.</span>
+</span><span id="line-6"><span class="c1">-- the periodical evaluation can be stopped at any moment by calling `stopFn()`</span>
+</span><span id="line-7"><span class="kd">local</span><span class="w"> </span><span class="nv">timeBeforeMidnight</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">time</span><span class="p">.</span><span class="py">day</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nv">core</span><span class="p">.</span><span class="nf">getGameTime</span><span class="p">()</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="nv">time</span><span class="p">.</span><span class="py">day</span>
+</span><span id="line-8"><span class="kd">local</span><span class="w"> </span><span class="nv">stopFn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">time</span><span class="p">.</span><span class="nf">runRepeatedly</span><span class="p">(</span><span class="nv">doSomething</span><span class="p">,</span><span class="w"> </span><span class="nv">time</span><span class="p">.</span><span class="py">day</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+</span><span id="line-9"><span class="w">    </span><span class="nv">initialDelay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">timeBeforeMidnight</span><span class="p">,</span>
+</span><span id="line-10"><span class="w">    </span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">time</span><span class="p">.</span><span class="py">GameTime</span><span class="p">,</span>
+</span><span id="line-11"><span class="p">})</span>
+</span></code></pre></div>
+</div>
+</section>
+</section>
+<section id="using-ide-for-lua-scripting">
+<h2>Using IDE for Lua scripting<a @click.prevent="window.navigator.clipboard.writeText($el.href); $el.setAttribute('data-tooltip', 'Copied!'); setTimeout(() =&gt; $el.setAttribute('data-tooltip', 'Copy link to this element'), 2000)" aria-label="Copy link to this element" class="headerlink" data-tooltip="Copy link to this element" href="#using-ide-for-lua-scripting" x-intersect.margin.0%.0%.-70%.0%="activeSection = '#using-ide-for-lua-scripting'"><svg height="1em" viewbox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg></a></h2>
+<p>Find the directory <code class="docutils literal notranslate"><span class="pre">resources/lua_api</span></code> in your installation of OpenMW.
+It describes OpenMW LuaAPI in
+<a class="reference external" href="https://wiki.eclipse.org/LDT/User_Area/Documentation_Language">LDT Documentation Language</a>.
+It is the source from which the <a class="reference internal" href="api.html#api-reference"><span class="std std-ref">API reference</span></a> is generated.</p>
+<p>If you write scripts using <a class="reference external" href="https://www.eclipse.org/ldt/">Lua Development Tools</a> (eclipse-based IDE),
+you can import these files to get code autocompletion and integrated OpenMW API reference. Here are the steps:</p>
+<ul class="simple">
+<li><p>Install and run <a class="reference external" href="https://www.eclipse.org/ldt/#installation">LDT</a>.</p></li>
+<li><p>Press <cite>File</cite> / <cite>New</cite> / <cite>Lua Project</cite> in menu.</p></li>
+</ul>
+<img alt="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-create-project.png" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-create-project.png"/>
+<ul class="simple">
+<li><p>Specify project name (for example the title of your omwaddon)</p></li>
+<li><p>Set <cite>Targeted Execution Environment</cite> to <cite>No Execution Environment</cite>, and <cite>Target Grammar</cite> to <cite>lua-5.1</cite>.</p></li>
+</ul>
+<img alt="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-project-settings.png" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-project-settings.png"/>
+<ul class="simple">
+<li><p>Press <cite>Next</cite>, choose the <cite>Libraries</cite> tab, and click <cite>Add External Source Folder</cite>.</p></li>
+<li><p>Specify there paths to <code class="docutils literal notranslate"><span class="pre">resources/lua_api</span></code> and <code class="docutils literal notranslate"><span class="pre">resources/vfs</span></code> in your OpenMW installation.</p></li>
+</ul>
+<img alt="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-import-api.png" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-import-api.png"/>
+<ul class="simple">
+<li><p>Press <cite>Finish</cite>. Create a new Lua file.</p></li>
+<li><p>Now you have code completion! Press <code class="docutils literal notranslate"><span class="pre">Ctrl+Space</span></code> in any place to see the variants.</p></li>
+</ul>
+<img alt="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-code-completion1.png" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-code-completion1.png"/>
+<p>In some cases LDT can deduce types automatically, but it is not always possible.
+You can add special hints to give LDT more information:</p>
+<ul class="simple">
+<li><p>Before function definition: <code class="docutils literal notranslate"><span class="pre">---</span> <span class="pre">@param</span> <span class="pre">TYPE</span> <span class="pre">argName</span></code></p></li>
+<li><p>Before variable definition: <code class="docutils literal notranslate"><span class="pre">---</span> <span class="pre">@field</span> <span class="pre">TYPE</span> <span class="pre">variableName</span></code></p></li>
+</ul>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="c1">--- @param openmw.core#GameObject obj</span>
+</span><span id="line-2"><span class="kd">local</span><span class="w"> </span><span class="kr">function</span><span class="w"> </span><span class="nf">doSomething</span><span class="p">(</span><span class="nv">obj</span><span class="p">)</span>
+</span><span id="line-3"><span class="w">    </span><span class="c1">-- autocompletion now works with `obj`</span>
+</span><span id="line-4"><span class="kr">end</span>
+</span><span id="line-5">
+</span><span id="line-6"><span class="c1">--- @field openmw.util#Vector3 c</span>
+</span><span id="line-7"><span class="kd">local</span><span class="w"> </span><span class="nv">c</span>
+</span><span id="line-8">
+</span><span id="line-9"><span class="c1">-- autocompletion now works with `c`</span>
+</span></code></pre></div>
+</div>
+<img alt="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-code-completion2.png" src="https://gitlab.com/OpenMW/openmw-docs/raw/master/docs/source/reference/lua-scripting/_static/lua-ide-code-completion2.png"/>
+<p>In order to have autocompletion for script interfaces the information where to find these interfaces should be provided.
+For example for the camera interface (defined in <code class="docutils literal notranslate"><span class="pre">resources/vfs/scripts/omw/camera.lua</span></code>):</p>
+<div class="highlight-Lua notranslate"><div class="highlight"><pre><span></span><code><span id="line-1"><span class="c1">--- @type Interfaces</span>
+</span><span id="line-2"><span class="c1">-- @field scripts.omw.camera#Interface Camera</span>
+</span><span id="line-3"><span class="c1">-- ... other interfaces here</span>
+</span><span id="line-4"><span class="c1">--- @field #Interfaces I</span>
+</span><span id="line-5"><span class="kd">local</span><span class="w"> </span><span class="nv">I</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'openmw.interfaces'</span><span class="p">)</span>
+</span><span id="line-6">
+</span><span id="line-7"><span class="nv">I</span><span class="p">.</span><span class="py">Camera</span><span class="p">.</span><span class="nf">disableZoom</span><span class="p">()</span>
+</span></code></pre></div>
+</div>
+<p>See <a class="reference external" href="https://wiki.eclipse.org/LDT/User_Area/Documentation_Language">LDT Documentation Language</a> for more details.</p>
+</section>
+</section>
+</div><div class="flex justify-between items-center pt-6 mt-12 border-t border-border gap-4">
+<div class="mr-auto">
+<a class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border border-input hover:bg-accent hover:text-accent-foreground py-2 px-4" href="../postprocessing/lua.html">
+<svg class="mr-2 h-4 w-4" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<polyline points="15 18 9 12 15 6"></polyline>
+</svg>
+        Lua Integration
+      </a>
+</div>
+<div class="ml-auto">
+<a class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border border-input hover:bg-accent hover:text-accent-foreground py-2 px-4" href="api.html">
+        API Reference
+        <svg class="ml-2 h-4 w-4" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<polyline points="9 18 15 12 9 6"></polyline>
+</svg>
+</a>
+</div>
+</div></div><aside class="hidden text-sm xl:block" id="right-sidebar">
+<div class="sticky top-16 -mt-10 max-h-[calc(100vh-5rem)] h-full overflow-y-auto pt-6 space-y-2"><p class="font-medium">On this page</p>
+<ul>
+<li><a :data-current="activeSection === '#language-and-sandboxing'" class="reference internal" href="#language-and-sandboxing">Language and sandboxing</a></li>
+<li><a :data-current="activeSection === '#basic-concepts'" class="reference internal" href="#basic-concepts">Basic concepts</a></li>
+<li><a :data-current="activeSection === '#how-to-run-a-script'" class="reference internal" href="#how-to-run-a-script">How to run a script</a></li>
+<li><a :data-current="activeSection === '#lua-scripts-naming-policy'" class="reference internal" href="#lua-scripts-naming-policy">Lua scripts naming policy</a></li>
+<li><a :data-current="activeSection === '#format-of-omwscripts'" class="reference internal" href="#format-of-omwscripts">Format of <code class="docutils literal notranslate"><span class="pre">.omwscripts</span></code></a></li>
+<li><a :data-current="activeSection === '#hot-reloading'" class="reference internal" href="#hot-reloading">Hot reloading</a></li>
+<li><a :data-current="activeSection === '#lua-console'" class="reference internal" href="#lua-console">Lua console</a></li>
+<li><a :data-current="activeSection === '#script-structure'" class="reference internal" href="#script-structure">Script structure</a></li>
+<li><a :data-current="activeSection === '#engine-handlers'" class="reference internal" href="#engine-handlers">Engine handlers</a></li>
+<li><a :data-current="activeSection === '#onsave-and-onload'" class="reference internal" href="#onsave-and-onload">onSave and onLoad</a><ul>
+<li><a :data-current="activeSection === '#serializable-data'" class="reference internal" href="#serializable-data">Serializable data</a></li>
+</ul>
+</li>
+<li><a :data-current="activeSection === '#api-packages'" class="reference internal" href="#api-packages">API packages</a><ul>
+<li><a :data-current="activeSection === '#auxiliary-packages'" class="reference internal" href="#auxiliary-packages">Auxiliary packages</a></li>
+</ul>
+</li>
+<li><a :data-current="activeSection === '#script-interfaces'" class="reference internal" href="#script-interfaces">Script interfaces</a><ul>
+<li><a :data-current="activeSection === '#interfaces-of-built-in-scripts'" class="reference internal" href="#interfaces-of-built-in-scripts">Interfaces of built-in scripts</a></li>
+</ul>
+</li>
+<li><a :data-current="activeSection === '#event-system'" class="reference internal" href="#event-system">Event system</a></li>
+<li><a :data-current="activeSection === '#timers'" class="reference internal" href="#timers">Timers</a><ul>
+<li><a :data-current="activeSection === '#reliable-timer'" class="reference internal" href="#reliable-timer">Reliable timer</a></li>
+<li><a :data-current="activeSection === '#unsavable-timer'" class="reference internal" href="#unsavable-timer">Unsavable timer</a></li>
+</ul>
+</li>
+<li><a :data-current="activeSection === '#using-ide-for-lua-scripting'" class="reference internal" href="#using-ide-for-lua-scripting">Using IDE for Lua scripting</a></li>
+</ul>
+</div>
+</aside>
+</main>
+</div>
+</div><footer class="py-6 border-t border-border md:py-0">
+<div class="container flex flex-col items-center justify-between gap-4 md:h-24 md:flex-row">
+<div class="flex flex-col items-center gap-4 px-8 md:flex-row md:gap-2 md:px-0">
+<p class="text-sm leading-loose text-center text-muted-foreground md:text-left">© 2024, OpenMW Team Built with <a class="font-medium underline underline-offset-4" href="https://www.sphinx-doc.org" rel="noreferrer">Sphinx 7.1.2</a></p>
+</div>
+</div>
+</footer>
+</div>
+<script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js?v=c08e2c06"></script>
+<script src="../../_static/doctools.js?v=888ff710"></script>
+<script src="../../_static/sphinx_highlight.js?v=4825356b"></script>
+<script defer="defer" src="../../_static/theme.js?v=e5215fcb"></script>
+<script src="../../_static/design-tabs.js?v=36754332"></script>
+<script src="../../_static/prism.js?v=700fd04c"></script>
+</body>
+</html>

@@ -287,6 +287,38 @@ local function onUpdate(dt)
     grantRetroactiveMilestones()
 end
 
+local function shouldShowUI()
+    for _, skillID in ipairs(getSkillIds()) do
+        if availablePoints(skillID) > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function UiModeChanged(data)
+    if data.newMode ~= nil then
+        return
+    end
+
+    local hasNCGDMW = interfaces.NCGDMW ~= nil
+    if data.oldMode == "LevelUp" then
+        if shouldShowUI() then
+            pself:sendEvent(MOD_NAME .. "showPerkUI", {})
+        else
+            pself:sendEvent(MOD_NAME .. "closePerkUI", {})
+        end
+    elseif hasNCGDMW and data.oldMode == "Rest" then
+        if shouldShowUI() then
+            pself:sendEvent(MOD_NAME .. "showPerkUI", {})
+        else
+            pself:sendEvent(MOD_NAME .. "closePerkUI", {})
+        end
+    else
+        pself:sendEvent(MOD_NAME .. "closePerkUI", {})
+    end
+end
+
 local function onLoad(data)
     earnedMilestonesBySkill = (data and data.earnedMilestonesBySkill) or {}
     spentPointsBySkill = (data and data.spentPointsBySkill) or {}
@@ -313,6 +345,7 @@ return {
         getActivePerks = getActivePerks,
     },
     eventHandlers = {
+        UiModeChanged = UiModeChanged,
         [MOD_NAME .. "addPerk"] = addPerk,
         [MOD_NAME .. "removePerk"] = removePerk,
     },

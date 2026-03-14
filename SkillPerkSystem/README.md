@@ -51,3 +51,4 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 
 - Milestones are retroactive. If a save already has a skill above 25/50/75/100, points are granted on load.
 - Earned milestones are not reduced when a skill temporarily drops.
+- Save reconciliation runs on load: active perks missing from the currently registered perk list are dropped with a warning, spent points are recomputed from remaining perks, and per-skill spent points are clamped to earned points.

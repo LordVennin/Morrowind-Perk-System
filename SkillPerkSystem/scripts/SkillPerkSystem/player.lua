@@ -208,13 +208,36 @@ end
 
 local function onConsoleCommand(mode, command, selectedObject)
     local lower = command:lower()
-    if lower == "lua skillperks" then
-        printSkillMenu(nil)
-    elseif lower == "lua skillperksrespec" then
+
+    local function getSuffixForCmd(prefix)
+        local lowerPrefix = prefix:lower()
+        if lower == lowerPrefix then
+            return ""
+        end
+
+        local prefixWithSpace = lowerPrefix .. " "
+        if lower:sub(1, #prefixWithSpace) == prefixWithSpace then
+            return command:sub(#prefixWithSpace + 1):match("^%s*(.-)%s*$")
+        end
+
+        return nil
+    end
+
+    if lower == "lua skillperksrespec" then
         respecAllPerks()
-    elseif lower:sub(1, 15) == "lua skillperks " then
-        local skillID = command:sub(16)
-        printSkillMenu(skillID)
+    else
+        local suffix = getSuffixForCmd("skillperks")
+        if suffix == nil then
+            suffix = getSuffixForCmd("lua skillperks")
+        end
+
+        if suffix ~= nil then
+            if suffix == "" then
+                printSkillMenu(nil)
+            else
+                printSkillMenu(suffix)
+            end
+        end
     end
 end
 

@@ -42,6 +42,8 @@ interfaces.SkillPerkSystem.registerPerk({
 })
 ```
 
+Registration validation note: `registerPerk` requires `skill` to match a valid `openmw.core.stats.Skill.records` ID and raises an error that includes both the perk ID and invalid skill ID when it does not.
+
 ## Notes
 
 - Milestones are retroactive. If a save already has a skill above 25/50/75/100, points are granted on load.

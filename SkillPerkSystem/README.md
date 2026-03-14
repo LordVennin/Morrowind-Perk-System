@@ -22,6 +22,7 @@ content=SkillPerkSystem.omwscripts
 
 - `lua skillperks` — prints the full skill perk menu to the console.
 - `lua skillperks <skillId>` — prints one skill section.
+- `lua skillperksrespec` — removes all active perks, resets spent points to 0 for every skill, and prints a per-skill refund summary.
 
 ## Registering perks from another mod
 

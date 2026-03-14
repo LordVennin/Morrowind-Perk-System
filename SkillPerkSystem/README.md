@@ -8,6 +8,7 @@ A new OpenMW perk framework where each skill grants its own perk points:
 - 1 more at 100
 
 Perk points are tracked per skill and cannot be spent on other skills.
+Each perk may define a `cost` (default `1`) as a positive integer spent from that perk's skill pool when added and refunded when removed.
 
 ## Install
 
@@ -33,6 +34,7 @@ interfaces.SkillPerkSystem.registerPerk({
   id = "MyMod_longblade_power_attack",
   skill = "longblade",
   requirements = {},
+  cost = 2, -- optional, defaults to 1
   onAdd = function()
     -- apply perk effect
   end,
@@ -42,7 +44,7 @@ interfaces.SkillPerkSystem.registerPerk({
 })
 ```
 
-Registration validation note: `registerPerk` requires `skill` to match a valid `openmw.core.stats.Skill.records` ID and raises an error that includes both the perk ID and invalid skill ID when it does not.
+Registration validation note: `registerPerk` requires `skill` to match a valid `openmw.core.stats.Skill.records` ID and raises an error that includes both the perk ID and invalid skill ID when it does not. The optional `cost` field must be a positive integer.
 
 ## Notes
 

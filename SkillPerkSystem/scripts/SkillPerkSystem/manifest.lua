@@ -34,6 +34,13 @@ local function registerPerk(data)
         error("registerPerk(" .. tostring(data.id) .. ") field 'requirements' must be a table", 2)
     end
 
+    if data.cost == nil then
+        data.cost = 1
+    end
+    if type(data.cost) ~= "number" or data.cost < 1 or data.cost ~= math.floor(data.cost) then
+        error("registerPerk(" .. tostring(data.id) .. ") field 'cost' must be a positive integer", 2)
+    end
+
     if perkTable[data.id] == nil then
         table.insert(perkIDs, data.id)
     end

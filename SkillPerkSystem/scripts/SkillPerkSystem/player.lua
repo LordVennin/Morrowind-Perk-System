@@ -87,13 +87,13 @@ local function addPerk(data)
         print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": requirements not met")
         return
     end
-    if availablePoints(perk.skill) < 1 then
-        print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": no " .. perk.skill .. " perk points")
+    if availablePoints(perk.skill) < perk.cost then
+        print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": not enough " .. perk.skill .. " perk points (cost=" .. perk.cost .. ")")
         return
     end
 
     table.insert(activePerks, data.perkID)
-    spentPointsBySkill[perk.skill] = spentPoints(perk.skill) + 1
+    spentPointsBySkill[perk.skill] = spentPoints(perk.skill) + perk.cost
     perk.onAdd()
 end
 
@@ -110,7 +110,7 @@ local function removePerk(data)
     for i, id in ipairs(activePerks) do
         if id == data.perkID then
             table.remove(activePerks, i)
-            spentPointsBySkill[perk.skill] = math.max(0, spentPoints(perk.skill) - 1)
+            spentPointsBySkill[perk.skill] = math.max(0, spentPoints(perk.skill) - perk.cost)
             perk.onRemove()
             return
         end
@@ -131,7 +131,8 @@ local function printSkillMenu(filterSkill)
             table.sort(perkIds)
             for _, perkID in ipairs(perkIds) do
                 local owned = hasPerk(perkID) and "[owned]" or ""
-                print(string.format("  - %s %s", perkID, owned))
+                local perk = interfaces[MOD_NAME].getPerks()[perkID]
+                print(string.format("  - %s (cost=%d) %s", perkID, perk.cost, owned))
             end
         end
     end

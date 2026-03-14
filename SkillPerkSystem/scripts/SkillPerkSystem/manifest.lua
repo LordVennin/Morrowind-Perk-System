@@ -1,4 +1,5 @@
 local settings = require("scripts.SkillPerkSystem.settings")
+local core = require("openmw.core")
 
 local perkTable = {}
 local perkIDs = {}
@@ -12,6 +13,12 @@ local function registerPerk(data)
     end
     if type(data.skill) ~= "string" then
         error("registerPerk(" .. tostring(data.id) .. ") missing string field 'skill'", 2)
+    end
+    if core.stats.Skill.records[data.skill] == nil then
+        error(
+            "registerPerk(" .. tostring(data.id) .. ") has invalid skill id '" .. tostring(data.skill) .. "'",
+            2
+        )
     end
     if type(data.onAdd) ~= "function" then
         error("registerPerk(" .. tostring(data.id) .. ") missing function field 'onAdd'", 2)

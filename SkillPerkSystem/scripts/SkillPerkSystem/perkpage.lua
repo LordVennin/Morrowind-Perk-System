@@ -40,6 +40,14 @@ local function getSkillIDs()
     return out
 end
 
+local function getSkillLabel(skillID)
+    local record = core.stats.Skill.records[skillID]
+    if record ~= nil and type(record.name) == "string" and record.name ~= "" then
+        return record.name
+    end
+    return tostring(skillID)
+end
+
 local function hasPerk(perkID)
     return interfaces[MOD_NAME .. "Player"].hasPerk(perkID)
 end
@@ -144,7 +152,7 @@ end
 local function buildSkillTab(index)
     local skillID = skillIDs[index]
     local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
-    local label = string.format("%s (%d)", skillID, available)
+    local label = string.format("%s (%d)", getSkillLabel(skillID), available)
     local isSelected = index == selectedSkillIndex
 
     return {

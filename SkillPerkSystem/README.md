@@ -28,6 +28,11 @@ content=SkillPerkSystem.omwscripts
 
 OpenMW versions differ in Lua console context behavior; if `lua ...` prints context usage text, use the direct command forms above.
 
+## UI hotkey
+
+- Press `P` to toggle the perk UI by default.
+- You can change this in `scripts/SkillPerkSystem/settings.lua` via `TOGGLE_UI_KEY` (single letter key names such as `"k"`, `"o"`, etc.).
+
 ## Registering perks from another mod
 
 Register in a PLAYER script:

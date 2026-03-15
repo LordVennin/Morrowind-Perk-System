@@ -213,7 +213,7 @@ local function buildSkillTabs()
             autoSize = false,
             size = util.vector2(780, 58),
         },
-        content = ui.content(rows)
+        content = ui.content(tabs)
     }
 end
 
@@ -300,16 +300,34 @@ local function buildPerkPane()
             },
             perkDetail,
             {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(1, 28) },
+            },
+            {
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
                     autoSize = true,
                 },
                 content = ui.content {
-                    createButton("Purchase", purchasePerk, purchaseEnabled),
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                            autoSize = true,
+                        },
+                        content = ui.content {
+                            createButton("Purchase", purchasePerk, purchaseEnabled),
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = util.vector2(16, 1) },
+                            },
+                            createButton("Remove", removePerk, removeEnabled),
+                        }
+                    },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(16, 1) },
+                        external = { grow = 1 },
                     },
                     createButton("Remove", removePerk, removeEnabled),
                     {

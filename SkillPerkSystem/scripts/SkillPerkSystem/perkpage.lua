@@ -114,6 +114,33 @@ local function createButton(label, onPress, enabled, size)
     }
 end
 
+local function createBoxedButton(label, onPress, size)
+    return {
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            size = size or util.vector2(140, 28),
+        },
+        events = {
+            mouseClick = async:callback(function()
+                onPress()
+            end),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = label,
+                    textAlignH = ui.ALIGNMENT.Center,
+                    textAlignV = ui.ALIGNMENT.Center,
+                    relativeSize = util.vector2(1, 1),
+                }
+            }
+        }
+    }
+end
+
 local function buildSkillTab(index)
     local skillID = skillIDs[index]
     local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
@@ -200,7 +227,7 @@ local function buildPerkPane()
         props = {
             text = "Select a perk",
             autoSize = false,
-            size = util.vector2(294, 330),
+            size = util.vector2(474, 390),
             textWrap = true,
         }
     }
@@ -241,7 +268,7 @@ local function buildPerkPane()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(780, 500),
+            size = util.vector2(1240, 560),
         },
         content = ui.content {
             {
@@ -249,7 +276,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(760, 360),
+                    size = util.vector2(1220, 420),
                 },
                 content = ui.content {
                     {
@@ -258,7 +285,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(430, 360),
+                            size = util.vector2(700, 420),
                         },
                         content = ui.content(perksCol),
                     },
@@ -272,7 +299,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(314, 360),
+                            size = util.vector2(504, 420),
                         },
                         content = ui.content { perkDetail },
                     },
@@ -280,18 +307,14 @@ local function buildPerkPane()
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 12) },
-            },
-            {
-                type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 28) },
+                props = { size = util.vector2(1, 14) },
             },
             {
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(760, 32),
+                    size = util.vector2(1220, 36),
                 },
                 content = ui.content {
                     {
@@ -318,9 +341,9 @@ local function buildPerkPane()
                         type = ui.TYPE.Widget,
                         external = { grow = 1 },
                     },
-                    createButton("Exit", function()
+                    createBoxedButton("Exit", function()
                         pself:sendEvent(MOD_NAME .. "closePerkUI")
-                    end, true),
+                    end, util.vector2(140, 30)),
                 }
             }
         }

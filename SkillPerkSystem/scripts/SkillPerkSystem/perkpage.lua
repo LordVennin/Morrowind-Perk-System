@@ -3,10 +3,24 @@ local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
 local interfaces = require("openmw.interfaces")
+local input = require("openmw.input")
 local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
+
+local function resolveToggleKey()
+    local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
+    local keyCode = input.KEY[keyName]
+    if keyCode == nil then
+        print("[" .. MOD_NAME .. "] Invalid TOGGLE_UI_KEY='" .. tostring(settings.TOGGLE_UI_KEY) .. "'; using P")
+        keyCode = input.KEY.P
+    end
+    return keyCode
+end
+
+local TOGGLE_UI_KEY_CODE = resolveToggleKey()
+local toggleKeyWasPressed = false
 
 local menu = nil
 local selectedSkillIndex = 1
@@ -343,6 +357,14 @@ local function onConsoleCommand(mode, command, selectedObject)
     end
 end
 
+local function onFrame(dt)
+    local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
+    if isPressed and not toggleKeyWasPressed then
+        toggleMenu()
+    end
+    toggleKeyWasPressed = isPressed
+end
+
 return {
     eventHandlers = {
         [MOD_NAME .. "togglePerkUI"] = toggleMenu,
@@ -351,5 +373,6 @@ return {
     },
     engineHandlers = {
         onConsoleCommand = onConsoleCommand,
+        onFrame = onFrame,
     }
 }

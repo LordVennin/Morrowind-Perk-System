@@ -253,10 +253,12 @@ end
 
 buildLayout = function()
     return {
-        type = ui.TYPE.Window,
+        layer = "Windows",
+        name = "SkillPerkSystemMenu",
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             anchor = util.vector2(0.5, 0.5),
-            position = util.vector2(0.5, 0.5),
             relativePosition = util.vector2(0.5, 0.5),
             autoSize = true,
         },
@@ -316,7 +318,7 @@ local function closeMenu()
     end
     menu:destroy()
     menu = nil
-    interfaces.UI.setMode("Interface", { windows = { "Inventory", "Map", "Stats" } })
+    interfaces.UI.removeMode("Interface")
 end
 
 local function toggleMenu()

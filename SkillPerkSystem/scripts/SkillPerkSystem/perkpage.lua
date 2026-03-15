@@ -114,7 +114,7 @@ local function createButton(label, onPress, enabled, size)
     }
 end
 
-local function buildSkillTab(index)
+local function buildSkillTab(index, tabWidth)
     local skillID = skillIDs[index]
     local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
     local label = string.format("%s (%d)", skillID, available)
@@ -124,7 +124,8 @@ local function buildSkillTab(index)
         type = ui.TYPE.Container,
         template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
         props = {
-            autoSize = true,
+            autoSize = false,
+            size = util.vector2(tabWidth, 24),
         },
         events = {
             mouseClick = async:callback(function()
@@ -141,21 +142,23 @@ local function buildSkillTab(index)
                 template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
                 props = {
                     text = label,
-                    autoSize = true,
+                    textAlignH = ui.ALIGNMENT.Center,
+                    textAlignV = ui.ALIGNMENT.Center,
+                    relativeSize = util.vector2(1, 1),
                 }
             }
         }
     }
 end
 
-local function buildSkillTabRow(startIndex, endIndex)
+local function buildSkillTabRow(startIndex, endIndex, tabWidth)
     local row = {}
     for i = startIndex, endIndex do
-        table.insert(row, buildSkillTab(i))
+        table.insert(row, buildSkillTab(i, tabWidth))
         if i < endIndex then
             table.insert(row, {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(8, 1) },
+                props = { size = util.vector2(6, 1) },
             })
         end
     end
@@ -178,23 +181,28 @@ local function buildSkillTabs()
             template = interfaces.MWUI.templates.borders,
             props = {
                 horizontal = false,
-                autoSize = true,
+                autoSize = false,
+                size = util.vector2(780, 58),
             },
             content = ui.content {},
         }
     end
 
-    local perRow = math.ceil(count / 2)
+    local columns = math.ceil(count / 2)
+    local spacing = 6
+    local totalSpacing = math.max(0, columns - 1) * spacing
+    local tabWidth = math.max(48, math.floor((760 - totalSpacing) / columns))
+
     local rows = {
-        buildSkillTabRow(1, math.min(perRow, count)),
+        buildSkillTabRow(1, math.min(columns, count), tabWidth),
     }
 
-    if perRow < count then
+    if columns < count then
         table.insert(rows, {
             type = ui.TYPE.Widget,
             props = { size = util.vector2(1, 6) },
         })
-        table.insert(rows, buildSkillTabRow(perRow + 1, count))
+        table.insert(rows, buildSkillTabRow(columns + 1, count, tabWidth))
     end
 
     return {
@@ -202,7 +210,8 @@ local function buildSkillTabs()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            autoSize = true,
+            autoSize = false,
+            size = util.vector2(780, 58),
         },
         content = ui.content(tabs)
     }

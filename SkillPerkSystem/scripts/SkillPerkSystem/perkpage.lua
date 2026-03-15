@@ -204,7 +204,7 @@ local function buildSkillTabs()
             horizontal = false,
             autoSize = true,
         },
-        content = ui.content(rows)
+        content = ui.content(tabs)
     }
 end
 

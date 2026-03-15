@@ -236,7 +236,7 @@ local function buildPerkPane()
         props = {
             text = "Select a perk",
             autoSize = false,
-            size = util.vector2(760, 120),
+            size = util.vector2(760, 110),
             textWrap = true,
         }
     }
@@ -285,20 +285,21 @@ local function buildPerkPane()
                 props = {
                     horizontal = false,
                     autoSize = false,
-                    size = util.vector2(760, 320),
+                    size = util.vector2(760, 330),
                 },
                 content = ui.content(perksCol)
             },
             perkDetail,
             {
                 type = ui.TYPE.Widget,
-                external = { grow = 1 },
+                props = { size = util.vector2(1, 28) },
             },
             {
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
-                    relativeSize = util.vector2(1, 1),
+                    autoSize = false,
+                    size = util.vector2(760, 32),
                 },
                 content = ui.content {
                     {
@@ -316,6 +317,11 @@ local function buildPerkPane()
                             createButton("Remove", removePerk, removeEnabled),
                         }
                     },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    createButton("Remove", removePerk, removeEnabled),
                     {
                         type = ui.TYPE.Widget,
                         external = { grow = 1 },

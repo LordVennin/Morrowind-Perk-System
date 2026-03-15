@@ -114,43 +114,46 @@ local function createButton(label, onPress, enabled, size)
     }
 end
 
-local function buildSkillTabs()
-    local tabs = {}
+local function buildSkillTab(index)
+    local skillID = skillIDs[index]
+    local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
+    local label = string.format("%s (%d)", skillID, available)
+    local isSelected = index == selectedSkillIndex
 
-    for i, skillID in ipairs(skillIDs) do
-        local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
-        local label = string.format("%s (%d)", skillID, available)
-        local isSelected = i == selectedSkillIndex
-
-        table.insert(tabs, {
-            type = ui.TYPE.Container,
-            template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
-            props = {
-                autoSize = true,
-            },
-            events = {
-                mouseClick = async:callback(function()
-                    selectedSkillIndex = i
-                    selectedPerkIndex = 1
-                    updateFilteredPerks()
-                    menu.layout = buildLayout()
-                    menu:update()
-                end),
-            },
-            content = ui.content {
-                {
-                    type = ui.TYPE.Text,
-                    template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
-                    props = {
-                        text = label,
-                        autoSize = true,
-                    }
+    return {
+        type = ui.TYPE.Container,
+        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
+        props = {
+            autoSize = true,
+        },
+        events = {
+            mouseClick = async:callback(function()
+                selectedSkillIndex = index
+                selectedPerkIndex = 1
+                updateFilteredPerks()
+                menu.layout = buildLayout()
+                menu:update()
+            end),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Text,
+                template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = label,
+                    autoSize = true,
                 }
             }
-        })
+        }
+    }
+end
 
-        if i < #skillIDs then
-            table.insert(tabs, {
+local function buildSkillTabRow(startIndex, endIndex)
+    local row = {}
+    for i = startIndex, endIndex do
+        table.insert(row, buildSkillTab(i))
+        if i < endIndex then
+            table.insert(row, {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
             })
@@ -159,9 +162,46 @@ local function buildSkillTabs()
 
     return {
         type = ui.TYPE.Flex,
-        template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = true,
+            autoSize = true,
+        },
+        content = ui.content(row),
+    }
+end
+
+local function buildSkillTabs()
+    local count = #skillIDs
+    if count == 0 then
+        return {
+            type = ui.TYPE.Flex,
+            template = interfaces.MWUI.templates.borders,
+            props = {
+                horizontal = false,
+                autoSize = true,
+            },
+            content = ui.content {},
+        }
+    end
+
+    local perRow = math.ceil(count / 2)
+    local rows = {
+        buildSkillTabRow(1, math.min(perRow, count)),
+    }
+
+    if perRow < count then
+        table.insert(rows, {
+            type = ui.TYPE.Widget,
+            props = { size = util.vector2(1, 6) },
+        })
+        table.insert(rows, buildSkillTabRow(perRow + 1, count))
+    end
+
+    return {
+        type = ui.TYPE.Flex,
+        template = interfaces.MWUI.templates.borders,
+        props = {
+            horizontal = false,
             autoSize = true,
         },
         content = ui.content(tabs)
@@ -251,18 +291,31 @@ local function buildPerkPane()
             },
             perkDetail,
             {
+                type = ui.TYPE.Widget,
+                external = { grow = 1 },
+            },
+            {
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
                     relativeSize = util.vector2(1, 1),
                 },
                 content = ui.content {
-                    createButton("Purchase", purchasePerk, purchaseEnabled),
                     {
-                        type = ui.TYPE.Widget,
-                        props = { size = util.vector2(16, 1) },
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                            autoSize = true,
+                        },
+                        content = ui.content {
+                            createButton("Purchase", purchasePerk, purchaseEnabled),
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = util.vector2(16, 1) },
+                            },
+                            createButton("Remove", removePerk, removeEnabled),
+                        }
                     },
-                    createButton("Remove", removePerk, removeEnabled),
                     {
                         type = ui.TYPE.Widget,
                         external = { grow = 1 },

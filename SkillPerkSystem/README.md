@@ -32,7 +32,7 @@ OpenMW versions differ in Lua console context behavior; if `lua ...` prints cont
 
 - Press `P` to toggle the perk UI by default.
 - You can change this in `scripts/SkillPerkSystem/settings.lua` via `TOGGLE_UI_KEY` (single letter key names such as `"k"`, `"o"`, etc.).
-- The perk UI uses skill tabs across the top, and includes an `Exit` button in the bottom-right corner.
+- The perk UI uses two rows of skill tabs across the top, and includes an `Exit` button anchored to the bottom-right corner.
 
 ## Registering perks from another mod
 

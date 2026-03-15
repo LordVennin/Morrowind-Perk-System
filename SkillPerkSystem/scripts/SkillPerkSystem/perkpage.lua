@@ -122,7 +122,7 @@ local function buildSkillTab(index, tabWidth)
 
     return {
         type = ui.TYPE.Container,
-        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
+        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparentThick,
         props = {
             autoSize = false,
             size = util.vector2(tabWidth, 24),
@@ -394,7 +394,18 @@ local function showMenu()
     updateFilteredPerks()
 
     interfaces.UI.setMode("Interface", { windows = {} })
-    menu = ui.create(buildLayout())
+
+    local ok, createdOrError = pcall(function()
+        return ui.create(buildLayout())
+    end)
+
+    if not ok then
+        print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
+        interfaces.UI.removeMode("Interface")
+        return
+    end
+
+    menu = createdOrError
 end
 
 local function closeMenu()

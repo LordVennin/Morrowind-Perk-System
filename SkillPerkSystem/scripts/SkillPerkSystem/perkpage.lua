@@ -122,7 +122,7 @@ local function buildSkillTab(index, tabWidth)
 
     return {
         type = ui.TYPE.Container,
-        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparentThick,
+        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
         props = {
             autoSize = false,
             size = util.vector2(tabWidth, 24),
@@ -307,8 +307,7 @@ local function buildPerkPane()
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
-                    autoSize = false,
-                    size = util.vector2(760, 32),
+                    autoSize = true,
                 },
                 content = ui.content {
                     {
@@ -333,7 +332,7 @@ local function buildPerkPane()
                     createButton("Remove", removePerk, removeEnabled),
                     {
                         type = ui.TYPE.Widget,
-                        external = { grow = 1 },
+                        props = { size = util.vector2(16, 1) },
                     },
                     createButton("Exit", function()
                         pself:sendEvent(MOD_NAME .. "closePerkUI")

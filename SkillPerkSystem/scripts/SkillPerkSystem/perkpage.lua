@@ -3,10 +3,24 @@ local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
 local interfaces = require("openmw.interfaces")
+local input = require("openmw.input")
 local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
+
+local function resolveToggleKey()
+    local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
+    local keyCode = input.KEY[keyName]
+    if keyCode == nil then
+        print("[" .. MOD_NAME .. "] Invalid TOGGLE_UI_KEY='" .. tostring(settings.TOGGLE_UI_KEY) .. "'; using P")
+        keyCode = input.KEY.P
+    end
+    return keyCode
+end
+
+local TOGGLE_UI_KEY_CODE = resolveToggleKey()
+local toggleKeyWasPressed = false
 
 local menu = nil
 local selectedSkillIndex = 1
@@ -24,6 +38,14 @@ local function getSkillIDs()
     end
     table.sort(out)
     return out
+end
+
+local function getSkillLabel(skillID)
+    local record = core.stats.Skill.records[skillID]
+    if record ~= nil and type(record.name) == "string" and record.name ~= "" then
+        return record.name
+    end
+    return tostring(skillID)
 end
 
 local function hasPerk(perkID)
@@ -70,7 +92,7 @@ local function canPurchasePerk(perkID)
     return interfaces[MOD_NAME .. "Player"].availablePoints(perk.skill) >= perk.cost
 end
 
-local function createButton(label, onPress, enabled)
+local function createButton(label, onPress, enabled, size)
     local buttonTemplate = enabled and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxDisabled
     local fontTemplate = enabled and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled
 
@@ -78,7 +100,7 @@ local function createButton(label, onPress, enabled)
         type = ui.TYPE.Container,
         template = buttonTemplate,
         props = {
-            size = util.vector2(140, 28),
+            size = size or util.vector2(140, 28),
         },
         events = enabled and {
             mouseClick = async:callback(function()
@@ -100,30 +122,114 @@ local function createButton(label, onPress, enabled)
     }
 end
 
-local function buildSkillPane()
-    local rows = {}
-    for i, skillID in ipairs(skillIDs) do
-        local earned = interfaces[MOD_NAME .. "Player"].earnedPoints(skillID)
-        local spent = interfaces[MOD_NAME .. "Player"].spentPoints(skillID)
-        local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
-        local isSelected = i == selectedSkillIndex
-
-        table.insert(rows, {
-            type = ui.TYPE.Text,
-            template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
-            events = {
-                mouseClick = async:callback(function()
-                    selectedSkillIndex = i
-                    selectedPerkIndex = 1
-                    updateFilteredPerks()
-                    menu.layout = buildLayout()
-                    menu:update()
-                end),
-            },
-            props = {
-                text = string.format("%s  E:%d S:%d A:%d", skillID, earned, spent, available),
+local function createBoxedButton(label, onPress, size)
+    return {
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            size = size or util.vector2(140, 28),
+        },
+        events = {
+            mouseClick = async:callback(function()
+                onPress()
+            end),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = label,
+                    textAlignH = ui.ALIGNMENT.Center,
+                    textAlignV = ui.ALIGNMENT.Center,
+                    relativeSize = util.vector2(1, 1),
+                }
             }
+        }
+    }
+end
+
+local function buildSkillTab(index)
+    local skillID = skillIDs[index]
+    local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
+    local label = string.format("%s (%d)", getSkillLabel(skillID), available)
+    local isSelected = index == selectedSkillIndex
+
+    return {
+        type = ui.TYPE.Container,
+        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
+        props = {
+            autoSize = true,
+        },
+        events = {
+            mouseClick = async:callback(function()
+                selectedSkillIndex = index
+                selectedPerkIndex = 1
+                updateFilteredPerks()
+                menu.layout = buildLayout()
+                menu:update()
+            end),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Text,
+                template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = label,
+                    autoSize = true,
+                }
+            }
+        }
+    }
+end
+
+local function buildSkillTabRow(startIndex, endIndex)
+    local row = {}
+    for i = startIndex, endIndex do
+        table.insert(row, buildSkillTab(i))
+        if i < endIndex then
+            table.insert(row, {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(8, 1) },
+            })
+        end
+    end
+
+    return {
+        type = ui.TYPE.Flex,
+        props = {
+            horizontal = true,
+            autoSize = true,
+        },
+        content = ui.content(row),
+    }
+end
+
+local function buildSkillTabs()
+    local count = #skillIDs
+    if count == 0 then
+        return {
+            type = ui.TYPE.Flex,
+            template = interfaces.MWUI.templates.borders,
+            props = {
+                horizontal = false,
+                autoSize = true,
+            },
+            content = ui.content {},
+        }
+    end
+
+    local split = math.ceil(count / 2)
+    local rows = {
+        buildSkillTabRow(1, math.min(split, count)),
+    }
+
+    if split < count then
+        table.insert(rows, {
+            type = ui.TYPE.Widget,
+            props = { size = util.vector2(1, 6) },
         })
+        table.insert(rows, buildSkillTabRow(split + 1, count))
     end
 
     return {
@@ -131,7 +237,7 @@ local function buildSkillPane()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(300, 500),
+            autoSize = true,
         },
         content = ui.content(rows)
     }
@@ -165,7 +271,7 @@ local function buildPerkPane()
         props = {
             text = "Select a perk",
             autoSize = false,
-            size = util.vector2(330, 120),
+            size = util.vector2(474, 390),
             textWrap = true,
         }
     }
@@ -206,23 +312,53 @@ local function buildPerkPane()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(500, 500),
+            size = util.vector2(1240, 560),
         },
         content = ui.content {
             {
                 type = ui.TYPE.Flex,
                 props = {
-                    horizontal = false,
+                    horizontal = true,
                     autoSize = false,
-                    size = util.vector2(480, 330),
+                    size = util.vector2(1220, 420),
                 },
-                content = ui.content(perksCol)
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Flex,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            horizontal = false,
+                            autoSize = false,
+                            size = util.vector2(700, 420),
+                        },
+                        content = ui.content(perksCol),
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = util.vector2(16, 1) },
+                    },
+                    {
+                        type = ui.TYPE.Flex,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            horizontal = false,
+                            autoSize = false,
+                            size = util.vector2(504, 420),
+                        },
+                        content = ui.content { perkDetail },
+                    },
+                }
             },
-            perkDetail,
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(1, 14) },
+            },
             {
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
+                    autoSize = false,
+                    size = util.vector2(1220, 36),
                 },
                 content = ui.content {
                     createButton("Purchase", purchasePerk, purchaseEnabled),
@@ -231,6 +367,13 @@ local function buildPerkPane()
                         props = { size = util.vector2(16, 1) },
                     },
                     createButton("Remove", removePerk, removeEnabled),
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    createBoxedButton("Exit", function()
+                        pself:sendEvent(MOD_NAME .. "closePerkUI")
+                    end, util.vector2(140, 30)),
                 }
             }
         }
@@ -239,10 +382,12 @@ end
 
 buildLayout = function()
     return {
-        type = ui.TYPE.Window,
+        layer = "Windows",
+        name = "SkillPerkSystemMenu",
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             anchor = util.vector2(0.5, 0.5),
-            position = util.vector2(0.5, 0.5),
             relativePosition = util.vector2(0.5, 0.5),
             autoSize = true,
         },
@@ -263,20 +408,12 @@ buildLayout = function()
                             textAlignH = ui.ALIGNMENT.Center,
                         }
                     },
+                    buildSkillTabs(),
                     {
-                        type = ui.TYPE.Flex,
-                        props = {
-                            horizontal = true,
-                        },
-                        content = ui.content {
-                            buildSkillPane(),
-                            {
-                                type = ui.TYPE.Widget,
-                                props = { size = util.vector2(16, 1) },
-                            },
-                            buildPerkPane(),
-                        }
-                    }
+                        type = ui.TYPE.Widget,
+                        props = { size = util.vector2(1, 10) },
+                    },
+                    buildPerkPane(),
                 }
             }
         }
@@ -293,7 +430,18 @@ local function showMenu()
     updateFilteredPerks()
 
     interfaces.UI.setMode("Interface", { windows = {} })
-    menu = ui.create(buildLayout())
+
+    local ok, createdOrError = pcall(function()
+        return ui.create(buildLayout())
+    end)
+
+    if not ok then
+        print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
+        interfaces.UI.removeMode("Interface")
+        return
+    end
+
+    menu = createdOrError
 end
 
 local function closeMenu()
@@ -302,7 +450,7 @@ local function closeMenu()
     end
     menu:destroy()
     menu = nil
-    interfaces.UI.setMode("Interface", { windows = { "Inventory", "Map", "Stats" } })
+    interfaces.UI.removeMode("Interface")
 end
 
 local function toggleMenu()
@@ -318,7 +466,6 @@ local function normalizeConsoleArgs(mode, command)
         command = mode.command
         mode = mode.mode
     elseif command == nil and type(mode) == "string" then
-        -- Some OpenMW revisions only pass the command string.
         command = mode
         mode = nil
     end
@@ -343,6 +490,14 @@ local function onConsoleCommand(mode, command, selectedObject)
     end
 end
 
+local function onFrame(dt)
+    local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
+    if isPressed and not toggleKeyWasPressed then
+        toggleMenu()
+    end
+    toggleKeyWasPressed = isPressed
+end
+
 return {
     eventHandlers = {
         [MOD_NAME .. "togglePerkUI"] = toggleMenu,
@@ -351,5 +506,6 @@ return {
     },
     engineHandlers = {
         onConsoleCommand = onConsoleCommand,
+        onFrame = onFrame,
     }
 }

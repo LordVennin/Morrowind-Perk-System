@@ -623,12 +623,12 @@ buildLayout = function()
                         content = ui.content {
                             {
                                 type = ui.TYPE.Image,
-                                alignment = ui.ALIGNMENT.Center,
                                 props = {
                                     resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
-                                    size = util.vector2(980, 30),
-                                    relativePosition = util.vector2(0.5, 0.5),
-                                    anchor = util.vector2(0.5, 0.5),
+                                    size = util.vector2(0, 0),
+                                    relativeSize = util.vector2(1, 1),
+                                    relativePosition = util.vector2(0, 0),
+                                    anchor = util.vector2(0, 0),
                                 },
                             },
                             {

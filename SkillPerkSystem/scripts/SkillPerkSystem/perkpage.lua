@@ -32,8 +32,8 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 
 local SKILL_SELECTOR_WIDTH = 352
-local SKILL_INDEX_WIDTH = 72
-local SKILL_SELECTOR_ROW_WIDTH = 540
+local SKILL_INDEX_WIDTH = 80
+local SKILL_SELECTOR_ROW_WIDTH = 560
 
 local buildLayout
 
@@ -509,35 +509,12 @@ local function buildPerkPane()
         }
     end
 
-    local function purchasePerk()
-        local perkID = filteredPerkIDs[selectedPerkIndex]
-        if perkID == nil then
-            return
-        end
-        pself:sendEvent(MOD_NAME .. "addPerk", { perkID = perkID })
-        menu.layout = buildLayout()
-        menu:update()
-    end
-
-    local function removePerk()
-        local perkID = filteredPerkIDs[selectedPerkIndex]
-        if perkID == nil then
-            return
-        end
-        pself:sendEvent(MOD_NAME .. "removePerk", { perkID = perkID })
-        menu.layout = buildLayout()
-        menu:update()
-    end
-
-    local purchaseEnabled = selectedPerkID ~= nil and canPurchasePerk(selectedPerkID)
-    local removeEnabled = selectedPerkID ~= nil and hasPerk(selectedPerkID)
-
     return {
         type = ui.TYPE.Flex,
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(980, 520),
+            size = util.vector2(980, 560),
         },
         content = ui.content {
             {
@@ -545,16 +522,20 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(960, 390),
+                    size = util.vector2(960, 450),
                 },
                 content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
                     {
                         type = ui.TYPE.Flex,
                         template = interfaces.MWUI.templates.borders,
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(550, 390),
+                            size = util.vector2(540, 450),
                         },
                         content = ui.content(perksCol),
                     },
@@ -568,9 +549,13 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(394, 390),
+                            size = util.vector2(390, 450),
                         },
                         content = ui.content { perkDetail },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
                     },
                 }
             },
@@ -586,26 +571,6 @@ local function buildPerkPane()
                     size = util.vector2(960, 32),
                 },
                 content = ui.content {
-                    {
-                        type = ui.TYPE.Flex,
-                        props = {
-                            horizontal = true,
-                            autoSize = true,
-                        },
-                        content = ui.content {
-                            createButton("Purchase", purchasePerk, purchaseEnabled),
-                            {
-                                type = ui.TYPE.Widget,
-                                props = { size = util.vector2(16, 1) },
-                            },
-                            createButton("Remove", removePerk, removeEnabled),
-                        }
-                    },
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                    createButton("Remove", removePerk, removeEnabled),
                     {
                         type = ui.TYPE.Widget,
                         external = { grow = 1 },
@@ -697,7 +662,25 @@ buildLayout = function()
                             },
                         },
                     },
-                    buildSkillTabs(),
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                            autoSize = false,
+                            size = util.vector2(980, 32),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                            buildSkillTabs(),
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                        },
+                    },
                     {
                         type = ui.TYPE.Widget,
                         props = { size = util.vector2(1, 10) },

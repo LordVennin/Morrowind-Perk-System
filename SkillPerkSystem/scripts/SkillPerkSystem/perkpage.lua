@@ -622,6 +622,13 @@ buildLayout = function()
                         },
                         content = ui.content {
                             {
+                                type = ui.TYPE.Image,
+                                props = {
+                                    resource = ui.texture { path = "menu_head_block_middle.dds" },
+                                    relativeSize = util.vector2(1, 1),
+                                },
+                            },
+                            {
                                 type = ui.TYPE.Text,
                                 template = interfaces.MWUI.templates.textHeader,
                                 props = {

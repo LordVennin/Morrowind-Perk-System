@@ -48,6 +48,14 @@ local function getSkillLabel(skillID)
     return tostring(skillID)
 end
 
+local function getShortSkillLabel(skillID)
+    local label = getSkillLabel(skillID)
+    if #label <= 10 then
+        return label
+    end
+    return label:sub(1, 9) .. "…"
+end
+
 local function hasPerk(perkID)
     return interfaces[MOD_NAME .. "Player"].hasPerk(perkID)
 end
@@ -152,7 +160,7 @@ end
 local function buildSkillTab(index)
     local skillID = skillIDs[index]
     local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
-    local label = string.format("%s (%d)", getSkillLabel(skillID), available)
+    local label = string.format("%s (%d)", getShortSkillLabel(skillID), available)
     local isSelected = index == selectedSkillIndex
 
     return {
@@ -219,17 +227,22 @@ local function buildSkillTabs()
         }
     end
 
-    local split = math.ceil(count / 2)
-    local rows = {
-        buildSkillTabRow(1, math.min(split, count)),
-    }
+    local rowCount = 3
+    local perRow = math.ceil(count / rowCount)
+    local rows = {}
 
-    if split < count then
-        table.insert(rows, {
-            type = ui.TYPE.Widget,
-            props = { size = util.vector2(1, 6) },
-        })
-        table.insert(rows, buildSkillTabRow(split + 1, count))
+    for rowIndex = 1, rowCount do
+        local startIndex = (rowIndex - 1) * perRow + 1
+        if startIndex <= count then
+            local endIndex = math.min(rowIndex * perRow, count)
+            table.insert(rows, buildSkillTabRow(startIndex, endIndex))
+            if endIndex < count then
+                table.insert(rows, {
+                    type = ui.TYPE.Widget,
+                    props = { size = util.vector2(1, 6) },
+                })
+            end
+        end
     end
 
     return {

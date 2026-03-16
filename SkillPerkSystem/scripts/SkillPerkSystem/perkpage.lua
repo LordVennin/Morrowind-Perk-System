@@ -159,8 +159,7 @@ end
 
 local function buildSkillTab(index)
     local skillID = skillIDs[index]
-    local available = interfaces[MOD_NAME .. "Player"].availablePoints(skillID)
-    local label = string.format("%s (%d)", getShortSkillLabel(skillID), available)
+    local label = getShortSkillLabel(skillID)
     local isSelected = index == selectedSkillIndex
 
     return {
@@ -227,12 +226,21 @@ local function buildSkillTabs()
         }
     end
 
-    local function appendRow(rows, startIndex, endIndex)
-        if startIndex > count then
-            return
+    -- The example mod avoids wide horizontal overflows by using a vertical list.
+    -- For tabs, we mimic that safety by using small fixed-size rows.
+    local rows = {}
+    local perRow = 6
+    local startIndex = 1
+    while startIndex <= count do
+        local endIndex = math.min(startIndex + perRow - 1, count)
+        table.insert(rows, buildSkillTabRow(startIndex, endIndex))
+        startIndex = endIndex + 1
+        if startIndex <= count then
+            table.insert(rows, {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(1, 6) },
+            })
         end
-        local clampedEnd = math.min(endIndex, count)
-        table.insert(rows, buildSkillTabRow(startIndex, clampedEnd))
     end
 
     local rows = {}

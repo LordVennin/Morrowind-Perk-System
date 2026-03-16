@@ -561,7 +561,7 @@ local function buildPerkPane()
             local nodePos = toCanvasPos(node)
 
             table.insert(treeCanvasContent, {
-                type = ui.TYPE.Widget,
+                type = ui.TYPE.Container,
                 props = {
                     autoSize = false,
                     position = util.vector2(

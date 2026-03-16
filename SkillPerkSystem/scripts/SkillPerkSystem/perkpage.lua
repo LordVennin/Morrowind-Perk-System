@@ -594,6 +594,17 @@ local function buildPerkPane()
 end
 
 buildLayout = function()
+    local topHeaderFillTiles = {}
+    for _ = 1, 49 do
+        table.insert(topHeaderFillTiles, {
+            type = ui.TYPE.Image,
+            props = {
+                resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
+                size = util.vector2(20, 30),
+            },
+        })
+    end
+
     return {
         layer = "Windows",
         name = "SkillPerkSystemMenu",
@@ -622,14 +633,13 @@ buildLayout = function()
                         },
                         content = ui.content {
                             {
-                                type = ui.TYPE.Image,
+                                type = ui.TYPE.Flex,
                                 props = {
-                                    resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
-                                    size = util.vector2(0, 0),
-                                    relativeSize = util.vector2(1, 1),
-                                    relativePosition = util.vector2(0, 0),
-                                    anchor = util.vector2(0, 0),
+                                    horizontal = true,
+                                    autoSize = false,
+                                    size = util.vector2(980, 30),
                                 },
+                                content = ui.content(topHeaderFillTiles),
                             },
                             {
                                 type = ui.TYPE.Text,

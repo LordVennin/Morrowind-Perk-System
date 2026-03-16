@@ -2,6 +2,7 @@ local core = require("openmw.core")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
+local ambient = require("openmw.ambient")
 local interfaces = require("openmw.interfaces")
 local input = require("openmw.input")
 local pself = require("openmw.self")
@@ -234,6 +235,33 @@ local function withTopOffset(element, offset)
             element,
         },
     }
+
+    buttonLayout.events = {
+        mousePress = async:callback(function(mouseEvent)
+            if mouseEvent.button == 1 then
+                ambient.playSound("Menu Click")
+                textLayout.template = interfaces.MWUI.templates.textHeader
+                if menu ~= nil then menu:update() end
+            end
+        end),
+        mouseRelease = async:callback(function(mouseEvent)
+            if mouseEvent.button == 1 then
+                textLayout.template = interfaces.MWUI.templates.textNormal
+                if menu ~= nil then menu:update() end
+                onPress()
+            end
+        end),
+        focusGain = async:callback(function()
+            textLayout.template = interfaces.MWUI.templates.textHeader
+            if menu ~= nil then menu:update() end
+        end),
+        focusLoss = async:callback(function()
+            textLayout.template = interfaces.MWUI.templates.textNormal
+            if menu ~= nil then menu:update() end
+        end),
+    }
+
+    return buttonLayout
 end
 
 local function changeSelectedSkill(delta)
@@ -465,10 +493,24 @@ local function buildPerkPane()
                     size = util.vector2(960, 32),
                 },
                 content = ui.content {
-                    createButton("Purchase", purchasePerk, purchaseEnabled),
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                            autoSize = true,
+                        },
+                        content = ui.content {
+                            createButton("Purchase", purchasePerk, purchaseEnabled),
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = util.vector2(16, 1) },
+                            },
+                            createButton("Remove", removePerk, removeEnabled),
+                        }
+                    },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(16, 1) },
+                        external = { grow = 1 },
                     },
                     createButton("Remove", removePerk, removeEnabled),
                     {

@@ -383,43 +383,69 @@ local function buildPerkPane()
 
     local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
 
-    local function wrapText(text, maxChars)
-        local source = tostring(text or "")
-        local line = ""
+    local function wrapTextLines(text, maxChars)
         local lines = {}
 
-        for word in source:gmatch("%S+") do
-            local candidate = (line == "") and word or (line .. " " .. word)
-            if #candidate > maxChars and line ~= "" then
+        for paragraph in tostring(text or ""):gmatch("[^\n]+") do
+            local line = ""
+            for word in paragraph:gmatch("%S+") do
+                local candidate = (line == "") and word or (line .. " " .. word)
+                if #candidate > maxChars and line ~= "" then
+                    table.insert(lines, line)
+                    line = word
+                else
+                    line = candidate
+                end
+            end
+            if line ~= "" then
                 table.insert(lines, line)
-                line = word
-            else
-                line = candidate
             end
         end
 
-        if line ~= "" then
-            table.insert(lines, line)
-        end
-
         if #lines == 0 then
-            return ""
+            table.insert(lines, "")
         end
-        return table.concat(lines, "\n")
+        return lines
     end
 
-    local perkDetail = {
-        type = ui.TYPE.Text,
-        template = interfaces.MWUI.templates.textNormal,
-        props = {
-            text = string.format("%s\n\n%s", skillName, wrapText(skillDescription, 42)),
-            autoSize = false,
-            size = util.vector2(374, 360),
-            textAlignH = ui.ALIGNMENT.Center,
-        },
-    }
+    local perkDetail
+    if selectedPerkID == nil then
+        local detailRows = {
+            {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textHeader,
+                props = {
+                    text = skillName,
+                    textAlignH = ui.ALIGNMENT.Center,
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(1, 10) },
+            },
+        }
 
-    if selectedPerkID ~= nil then
+        for _, line in ipairs(wrapTextLines(skillDescription, 40)) do
+            table.insert(detailRows, {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = line,
+                    textAlignH = ui.ALIGNMENT.Center,
+                },
+            })
+        end
+
+        perkDetail = {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                autoSize = false,
+                size = util.vector2(374, 360),
+            },
+            content = ui.content(detailRows),
+        }
+    else
         local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
         local owned = hasPerk(selectedPerkID)
         local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")

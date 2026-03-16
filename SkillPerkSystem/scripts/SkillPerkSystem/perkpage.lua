@@ -382,6 +382,7 @@ local function buildPerkPane()
     end
 
     local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
+    local paragraphTemplate = interfaces.MWUI.templates.textParagraph or interfaces.MWUI.templates.textNormal
 
     local perkDetail
     if selectedPerkID == nil then
@@ -410,7 +411,7 @@ local function buildPerkPane()
                 },
                 {
                     type = ui.TYPE.Text,
-                    template = interfaces.MWUI.templates.textParagraph,
+                    template = paragraphTemplate,
                     props = {
                         text = skillDescription,
                         autoSize = false,

@@ -23,6 +23,11 @@ end
 local TOGGLE_UI_KEY_CODE = resolveToggleKey()
 local toggleKeyWasPressed = false
 
+local function keyDown(keyName)
+    local code = rawget(input.KEY, keyName)
+    return code ~= nil and input.isKeyPressed(code)
+end
+
 local menu = nil
 local openedInterfaceForPerkMenu = false
 local selectedSkillIndex = 1
@@ -995,19 +1000,19 @@ local function onFrame(dt)
             local panDelta = 320 * dt
             local moved = false
 
-            if input.isKeyPressed(input.KEY.LEFT) or input.isKeyPressed(input.KEY.A) then
+            if keyDown("LeftArrow") or keyDown("A") then
                 pan.x = pan.x - panDelta
                 moved = true
             end
-            if input.isKeyPressed(input.KEY.RIGHT) or input.isKeyPressed(input.KEY.D) then
+            if keyDown("RightArrow") or keyDown("D") then
                 pan.x = pan.x + panDelta
                 moved = true
             end
-            if input.isKeyPressed(input.KEY.UP) or input.isKeyPressed(input.KEY.W) then
+            if keyDown("UpArrow") or keyDown("W") then
                 pan.y = pan.y - panDelta
                 moved = true
             end
-            if input.isKeyPressed(input.KEY.DOWN) or input.isKeyPressed(input.KEY.S) then
+            if keyDown("DownArrow") or keyDown("S") then
                 pan.y = pan.y + panDelta
                 moved = true
             end

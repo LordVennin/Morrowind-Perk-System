@@ -412,16 +412,47 @@ local function buildPerkPane()
     if selectedPerkID == nil then
         local detailRows = {
             {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textHeader,
+                type = ui.TYPE.Flex,
                 props = {
-                    text = skillName,
-                    textAlignH = ui.ALIGNMENT.Center,
+                    horizontal = true,
+                    autoSize = false,
+                    size = util.vector2(374, 32),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            autoSize = false,
+                            size = util.vector2(230, 28),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Text,
+                                template = interfaces.MWUI.templates.textHeader,
+                                props = {
+                                    text = skillName,
+                                    autoSize = false,
+                                    size = util.vector2(230, 28),
+                                    textAlignH = ui.ALIGNMENT.Center,
+                                    textAlignV = ui.ALIGNMENT.Center,
+                                },
+                            },
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
                 },
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 10) },
+                props = { size = util.vector2(1, 12) },
             },
         }
 

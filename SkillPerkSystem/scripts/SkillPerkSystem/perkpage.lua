@@ -2,7 +2,7 @@ local core = require("openmw.core")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
-local ambient = require("openmw.ambient")
+local ambientLoaded, ambient = pcall(require, "openmw.ambient")
 local interfaces = require("openmw.interfaces")
 local input = require("openmw.input")
 local pself = require("openmw.self")
@@ -10,7 +10,15 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
 
-local ambient = require("openmw.ambient")
+if not ambientLoaded then
+    ambient = nil
+end
+
+local function playClickSound()
+    if ambient ~= nil and type(ambient.playSound) == "function" then
+        ambient.playSound("Menu Click")
+    end
+end
 
 local function resolveToggleKey()
     local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
@@ -135,7 +143,7 @@ local function createButton(label, onPress, enabled, size)
         buttonLayout.events = {
             mousePress = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
-                    ambient.playSound("Menu Click")
+                    playClickSound()
                     buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                     textLayout.template = interfaces.MWUI.templates.textHeader
                     if menu ~= nil then menu:update() end
@@ -189,7 +197,7 @@ local function createBoxedButton(label, onPress, size)
     buttonLayout.events = {
         mousePress = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
-                ambient.playSound("Menu Click")
+                playClickSound()
                 textLayout.template = interfaces.MWUI.templates.textHeader
                 if menu ~= nil then menu:update() end
             end

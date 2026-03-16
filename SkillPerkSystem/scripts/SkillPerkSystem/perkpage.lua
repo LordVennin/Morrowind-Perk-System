@@ -29,8 +29,9 @@ local selectedPerkIndex = 1
 local skillIDs = {}
 local filteredPerkIDs = {}
 
-local SKILL_SELECTOR_WIDTH = 320
+local SKILL_SELECTOR_WIDTH = 360
 local SKILL_INDEX_WIDTH = 96
+local SKILL_SELECTOR_ROW_WIDTH = 540
 
 local buildLayout
 
@@ -203,7 +204,8 @@ local function buildSkillTabs()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = true,
-            autoSize = true,
+            autoSize = false,
+            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 32),
         },
         content = ui.content {
             createButton("<", function()
@@ -228,7 +230,8 @@ local function buildSkillTabs()
                             text = label,
                             textAlignH = ui.ALIGNMENT.Center,
                             textAlignV = ui.ALIGNMENT.Center,
-                            relativeSize = util.vector2(1, 1),
+                            autoSize = false,
+                            size = util.vector2(SKILL_SELECTOR_WIDTH, 28),
                         },
                     },
                 },
@@ -259,7 +262,8 @@ local function buildSkillTabs()
                             text = string.format("%d/%d", selectedSkillIndex, count),
                             textAlignH = ui.ALIGNMENT.Center,
                             textAlignV = ui.ALIGNMENT.Center,
-                            relativeSize = util.vector2(1, 1),
+                            autoSize = false,
+                            size = util.vector2(SKILL_INDEX_WIDTH, 28),
                         },
                     },
                 },

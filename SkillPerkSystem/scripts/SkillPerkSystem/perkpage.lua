@@ -522,7 +522,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(960, 450),
+                    size = util.vector2(960, 510),
                 },
                 content = ui.content {
                     {
@@ -535,7 +535,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(540, 450),
+                            size = util.vector2(540, 510),
                         },
                         content = ui.content(perksCol),
                     },
@@ -549,7 +549,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(390, 450),
+                            size = util.vector2(390, 510),
                         },
                         content = ui.content { perkDetail },
                     },
@@ -561,7 +561,7 @@ local function buildPerkPane()
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 14) },
+                props = { size = util.vector2(1, 6) },
             },
             {
                 type = ui.TYPE.Flex,
@@ -614,51 +614,41 @@ buildLayout = function()
                 },
                 content = ui.content {
                     {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
+                        type = ui.TYPE.Flex,
                         props = {
+                            horizontal = true,
                             autoSize = false,
-                            size = util.vector2(980, 28),
+                            size = util.vector2(980, 30),
                         },
                         content = ui.content {
                             {
-                                type = ui.TYPE.Flex,
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                            {
+                                type = ui.TYPE.Container,
+                                template = interfaces.MWUI.templates.boxTransparentThick,
                                 props = {
-                                    horizontal = true,
                                     autoSize = false,
-                                    size = util.vector2(980, 28),
+                                    size = util.vector2(180, 28),
                                 },
                                 content = ui.content {
                                     {
-                                        type = ui.TYPE.Widget,
-                                        external = { grow = 1 },
-                                    },
-                                    {
-                                        type = ui.TYPE.Container,
-                                        template = interfaces.MWUI.templates.boxTransparentThick,
+                                        type = ui.TYPE.Text,
+                                        template = interfaces.MWUI.templates.textHeader,
                                         props = {
+                                            text = "Skill Perks",
                                             autoSize = false,
-                                            size = util.vector2(170, 24),
+                                            size = util.vector2(180, 28),
+                                            textAlignH = ui.ALIGNMENT.Center,
+                                            textAlignV = ui.ALIGNMENT.Center,
                                         },
-                                        content = ui.content {
-                                            {
-                                                type = ui.TYPE.Text,
-                                                template = interfaces.MWUI.templates.textHeader,
-                                                props = {
-                                                    text = "Skill Perks",
-                                                    autoSize = false,
-                                                    size = util.vector2(170, 24),
-                                                    textAlignH = ui.ALIGNMENT.Center,
-                                                    textAlignV = ui.ALIGNMENT.Center,
-                                                },
-                                            },
-                                        },
-                                    },
-                                    {
-                                        type = ui.TYPE.Widget,
-                                        external = { grow = 1 },
                                     },
                                 },
+                            },
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
                             },
                         },
                     },

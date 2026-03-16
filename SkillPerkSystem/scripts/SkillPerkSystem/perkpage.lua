@@ -177,7 +177,7 @@ local function createBoxedButton(label, onPress, size)
 
     local buttonLayout = {
         type = ui.TYPE.Container,
-        template = interfaces.MWUI.templates.boxTransparentThick,
+        template = interfaces.MWUI.templates.boxButton,
         props = {
             size = size or util.vector2(140, 28),
         },
@@ -188,26 +188,22 @@ local function createBoxedButton(label, onPress, size)
         mousePress = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
                 ambient.playSound("Menu Click")
-                buttonLayout.template = interfaces.MWUI.templates.boxButton
                 textLayout.template = interfaces.MWUI.templates.textHeader
                 if menu ~= nil then menu:update() end
             end
         end),
         mouseRelease = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
-                buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                 textLayout.template = interfaces.MWUI.templates.textNormal
                 if menu ~= nil then menu:update() end
                 onPress()
             end
         end),
         focusGain = async:callback(function()
-            buttonLayout.template = interfaces.MWUI.templates.boxButton
             textLayout.template = interfaces.MWUI.templates.textHeader
             if menu ~= nil then menu:update() end
         end),
         focusLoss = async:callback(function()
-            buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
             textLayout.template = interfaces.MWUI.templates.textNormal
             if menu ~= nil then menu:update() end
         end),
@@ -265,7 +261,7 @@ local function buildSkillTabs()
         content = ui.content {
             createBoxedButton("<", function()
                 changeSelectedSkill(-1)
-            end, util.vector2(36, 28)),
+            end, util.vector2(48, 28)),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
@@ -297,7 +293,7 @@ local function buildSkillTabs()
             },
             createBoxedButton(">", function()
                 changeSelectedSkill(1)
-            end, util.vector2(36, 28)),
+            end, util.vector2(48, 28)),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(12, 1) },
@@ -471,7 +467,7 @@ local function buildPerkPane()
                     },
                     createBoxedButton("Exit", function()
                         pself:sendEvent(MOD_NAME .. "closePerkUI")
-                    end, util.vector2(140, 30)),
+                    end, util.vector2(120, 28)),
                 }
             }
         }

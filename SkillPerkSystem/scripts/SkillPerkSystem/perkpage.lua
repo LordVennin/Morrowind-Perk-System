@@ -48,6 +48,8 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 local selectedTreeNodeID = nil
 local treePanBySkill = {}
+local isDraggingTree = false
+local lastMousePos = nil
 
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
@@ -112,6 +114,11 @@ local function getTreePan(skillID)
         treePanBySkill[skillID] = state
     end
     return state
+end
+
+local function clampTreePan(pan)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
 end
 
 local function findPerkIndexByID(perkID)
@@ -456,7 +463,7 @@ local function buildPerkPane()
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textDisabled,
             props = {
-                text = string.format("Tree view (WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
+                text = string.format("Tree view (Drag + WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
             },
         })
         table.insert(perksCol, {
@@ -753,6 +760,39 @@ local function buildPerkPane()
                             autoSize = false,
                             size = util.vector2(540, 510),
                         },
+                        events = #treeNodes > 0 and {
+                            mousePress = async:callback(function(mouseEvent)
+                                if mouseEvent.button ~= 1 then
+                                    return
+                                end
+                                isDraggingTree = true
+                                lastMousePos = mouseEvent.position
+                            end),
+                            mouseMove = async:callback(function(mouseEvent)
+                                if not isDraggingTree or lastMousePos == nil then
+                                    return
+                                end
+                                local selectedSkillIDForPan = getSelectedSkillID()
+                                local dragPan = getTreePan(selectedSkillIDForPan)
+                                local delta = mouseEvent.position - lastMousePos
+                                dragPan.x = dragPan.x - delta.x
+                                dragPan.y = dragPan.y - delta.y
+                                clampTreePan(dragPan)
+                                lastMousePos = mouseEvent.position
+                                menu.layout = buildLayout()
+                                menu:update()
+                            end),
+                            mouseRelease = async:callback(function(mouseEvent)
+                                if mouseEvent.button == 1 then
+                                    isDraggingTree = false
+                                    lastMousePos = nil
+                                end
+                            end),
+                            focusLoss = async:callback(function()
+                                isDraggingTree = false
+                                lastMousePos = nil
+                            end),
+                        } or nil,
                         content = ui.content(perksCol),
                     },
                     {
@@ -1041,8 +1081,7 @@ local function onFrame(dt)
             end
 
             if moved then
-                pan.x = math.max(-600, math.min(600, pan.x))
-                pan.y = math.max(-600, math.min(600, pan.y))
+                clampTreePan(pan)
                 menu.layout = buildLayout()
                 menu:update()
             end

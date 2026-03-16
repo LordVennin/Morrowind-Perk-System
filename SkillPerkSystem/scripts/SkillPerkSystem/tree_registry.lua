@@ -71,15 +71,32 @@ local function loadSkillTree(skillID)
     end
     loadedSkills[skillID] = true
 
-    local moduleName = "scripts.SkillPerkSystem.trees." .. tostring(skillID)
-    local ok, result = pcall(require, moduleName)
-    if not ok then
-        return
+    local skillString = tostring(skillID)
+    local normalized = skillString:lower()
+    local candidates = {
+        normalized,
+        normalized:gsub("%s+", ""),
+        normalized:gsub("%s+", "_"),
+        normalized:gsub("%s+", "-"),
+    }
+
+    local tried = {}
+    for _, candidate in ipairs(candidates) do
+        if candidate ~= "" and not tried[candidate] then
+            tried[candidate] = true
+            local moduleName = "scripts.SkillPerkSystem.trees." .. candidate
+            local ok, result = pcall(require, moduleName)
+            if ok then
+                if type(result) == "table" then
+                    registerTreeNodes(result)
+                end
+                return
+            end
+        end
     end
 
-    if type(result) == "table" then
-        registerTreeNodes(result)
-    end
+    -- Optional tree files are expected; only log once per skill for easier debugging.
+    print("[SkillPerkSystem] No tree file loaded for skill id '" .. skillString .. "' (checked normalized filename variants)")
 end
 
 local function getTreeNode(nodeID)

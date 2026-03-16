@@ -50,6 +50,7 @@ local function registerDemoPerks(registerPerk)
     end
 
     registered = true
+    print("[" .. MOD_NAME .. "] Registered Long Blade demo tree perks (" .. tostring(#demoPerks) .. ")")
 end
 
 return {

@@ -30,10 +30,12 @@ local selectedPerkIndex = 1
 
 local skillIDs = {}
 local filteredPerkIDs = {}
+local selectedTreeNodeID = nil
+local treePanBySkill = {}
 
 local SKILL_SELECTOR_WIDTH = 352
-local SKILL_INDEX_WIDTH = 72
-local SKILL_SELECTOR_ROW_WIDTH = 540
+local SKILL_INDEX_WIDTH = 80
+local SKILL_SELECTOR_ROW_WIDTH = 560
 
 local buildLayout
 
@@ -70,19 +72,53 @@ local function getSelectedSkillID()
     return skillIDs[selectedSkillIndex]
 end
 
+local function getTreePan(skillID)
+    if skillID == nil then
+        return { x = 0, y = 0 }
+    end
+    local state = treePanBySkill[skillID]
+    if state == nil then
+        state = { x = 0, y = 0 }
+        treePanBySkill[skillID] = state
+    end
+    return state
+end
+
+local function findPerkIndexByID(perkID)
+    for i, id in ipairs(filteredPerkIDs) do
+        if id == perkID then
+            return i
+        end
+    end
+    return 0
+end
+
 local function updateFilteredPerks()
     local selectedSkillID = getSelectedSkillID()
     if selectedSkillID == nil then
         filteredPerkIDs = {}
+        selectedTreeNodeID = nil
         return
     end
+
+    if type(interfaces[MOD_NAME].loadSkillTree) == "function" then
+        interfaces[MOD_NAME].loadSkillTree(selectedSkillID)
+    end
+
     filteredPerkIDs = interfaces[MOD_NAME].getPerkIDsForSkill(selectedSkillID)
     table.sort(filteredPerkIDs)
     if selectedPerkIndex > #filteredPerkIDs then
         selectedPerkIndex = #filteredPerkIDs
     end
-    if selectedPerkIndex < 1 then
-        selectedPerkIndex = 1
+    if selectedPerkIndex < 0 then
+        selectedPerkIndex = 0
+    end
+
+    if selectedTreeNodeID ~= nil and type(interfaces[MOD_NAME].getTreeNode) == "function" then
+        local node = interfaces[MOD_NAME].getTreeNode(selectedTreeNodeID)
+        if node == nil or node.skill ~= selectedSkillID then
+            selectedTreeNodeID = nil
+        end
     end
 end
 
@@ -252,7 +288,8 @@ local function changeSelectedSkill(delta)
         selectedSkillIndex = 1
     end
 
-    selectedPerkIndex = 1
+    selectedPerkIndex = 0
+    selectedTreeNodeID = nil
     updateFilteredPerks()
 
     if menu ~= nil then
@@ -353,74 +390,235 @@ end
 
 local function buildPerkPane()
     local perksCol = {}
-    for i, perkID in ipairs(filteredPerkIDs) do
-        local perk = interfaces[MOD_NAME].getPerks()[perkID]
-        local owned = hasPerk(perkID) and " [owned]" or ""
-        local isSelected = i == selectedPerkIndex
+    local selectedSkillID = getSelectedSkillID()
+    local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
+        and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
+        or {}
+
+    if #treeNodes > 0 then
+        local pan = getTreePan(selectedSkillID)
         table.insert(perksCol, {
             type = ui.TYPE.Text,
-            template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
-            events = {
-                mouseClick = async:callback(function()
-                    selectedPerkIndex = i
-                    menu.layout = buildLayout()
-                    menu:update()
-                end),
-            },
+            template = interfaces.MWUI.templates.textDisabled,
             props = {
-                text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
-            }
+                text = string.format("Tree view (WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
+            },
         })
+        table.insert(perksCol, {
+            type = ui.TYPE.Widget,
+            props = { size = util.vector2(1, 8) },
+        })
+
+        for _, node in ipairs(treeNodes) do
+            local perkIndex = findPerkIndexByID(node.id)
+            local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
+            local yOffset = node.y - pan.y
+            if yOffset >= -90 and yOffset <= 560 then
+                local indent = math.max(0, math.floor((node.x - pan.x + 260) / 70))
+                local prefix = string.rep("  ", math.min(10, indent))
+                local reqText = (#node.requires > 0) and (" <- " .. table.concat(node.requires, ", ")) or ""
+                local marker = (perkIndex > 0 and hasPerk(node.id)) and " [owned]" or ((perkIndex > 0) and "" or " [node]")
+                local title = node.title or node.id
+                table.insert(perksCol, {
+                    type = ui.TYPE.Text,
+                    template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                    events = {
+                        mouseClick = async:callback(function()
+                            selectedTreeNodeID = node.id
+                            selectedPerkIndex = perkIndex
+                            menu.layout = buildLayout()
+                            menu:update()
+                        end),
+                    },
+                    props = {
+                        text = prefix .. title .. marker .. reqText,
+                    },
+                })
+            end
+        end
+    else
+        for i, perkID in ipairs(filteredPerkIDs) do
+            local perk = interfaces[MOD_NAME].getPerks()[perkID]
+            local owned = hasPerk(perkID) and " [owned]" or ""
+            local isSelected = i == selectedPerkIndex
+            table.insert(perksCol, {
+                type = ui.TYPE.Text,
+                template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                events = {
+                    mouseClick = async:callback(function()
+                        selectedTreeNodeID = nil
+                        selectedPerkIndex = i
+                        menu.layout = buildLayout()
+                        menu:update()
+                    end),
+                },
+                props = {
+                    text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
+                }
+            })
+        end
     end
 
-    local perkDetail = {
-        type = ui.TYPE.Text,
-        template = interfaces.MWUI.templates.textNormal,
-        props = {
-            text = "Select a perk",
-            autoSize = false,
-            size = util.vector2(374, 360),
-            textWrap = true,
+    local skillRecord = selectedSkillID ~= nil and core.stats.Skill.records[selectedSkillID] or nil
+    local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Skill"
+    local skillDescription = "No description available."
+    if skillRecord ~= nil and type(skillRecord.description) == "string" and skillRecord.description ~= "" then
+        skillDescription = skillRecord.description
+    end
+
+    local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
+    if selectedPerkID == nil and selectedTreeNodeID ~= nil then
+        selectedPerkID = selectedTreeNodeID
+    end
+
+    local function wrapTextLines(text, maxChars)
+        local lines = {}
+
+        for paragraph in tostring(text or ""):gmatch("[^\n]+") do
+            local line = ""
+            for word in paragraph:gmatch("%S+") do
+                local candidate = (line == "") and word or (line .. " " .. word)
+                if #candidate > maxChars and line ~= "" then
+                    table.insert(lines, line)
+                    line = word
+                else
+                    line = candidate
+                end
+            end
+            if line ~= "" then
+                table.insert(lines, line)
+            end
+        end
+
+        if #lines == 0 then
+            table.insert(lines, "")
+        end
+        return lines
+    end
+
+    local perkDetail
+    if selectedPerkID == nil then
+        local detailRows = {
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = true,
+                    autoSize = false,
+                    size = util.vector2(374, 32),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            autoSize = false,
+                            size = util.vector2(230, 28),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Text,
+                                template = interfaces.MWUI.templates.textHeader,
+                                props = {
+                                    text = skillName,
+                                    autoSize = false,
+                                    size = util.vector2(230, 28),
+                                    textAlignH = ui.ALIGNMENT.Center,
+                                    textAlignV = ui.ALIGNMENT.Center,
+                                },
+                            },
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(1, 12) },
+            },
         }
-    }
 
-    local selectedPerkID = filteredPerkIDs[selectedPerkIndex]
-    if selectedPerkID ~= nil then
+        for _, line in ipairs(wrapTextLines(skillDescription, 40)) do
+            table.insert(detailRows, {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = true,
+                    autoSize = false,
+                    size = util.vector2(374, 20),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    {
+                        type = ui.TYPE.Text,
+                        template = interfaces.MWUI.templates.textNormal,
+                        props = {
+                            text = line,
+                            textAlignH = ui.ALIGNMENT.Center,
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                },
+            })
+        end
+
+        perkDetail = {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                autoSize = false,
+                size = util.vector2(374, 360),
+            },
+            content = ui.content(detailRows),
+        }
+    else
         local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
-        local owned = hasPerk(selectedPerkID)
-        local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
-        perkDetail.props.text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status)
-    end
-
-    local function purchasePerk()
-        local perkID = filteredPerkIDs[selectedPerkIndex]
-        if perkID == nil then
-            return
+        if selectedPerk ~= nil then
+            local owned = hasPerk(selectedPerkID)
+            local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
+            perkDetail = {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                    autoSize = false,
+                    size = util.vector2(374, 360),
+                },
+            }
+        else
+            local node = type(interfaces[MOD_NAME].getTreeNode) == "function" and interfaces[MOD_NAME].getTreeNode(selectedPerkID) or nil
+            local nodeReqs = (node ~= nil and #node.requires > 0) and table.concat(node.requires, ", ") or "None"
+            local nodeTitle = (node ~= nil and node.title) or selectedPerkID
+            local nodeDescription = (node ~= nil and node.description) or "Tree node defined but no registered perk found yet."
+            perkDetail = {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = string.format("%s\nNode ID: %s\nRequires: %s\n\n%s", nodeTitle, selectedPerkID, nodeReqs, nodeDescription),
+                    autoSize = false,
+                    size = util.vector2(374, 360),
+                },
+            }
         end
-        pself:sendEvent(MOD_NAME .. "addPerk", { perkID = perkID })
-        menu.layout = buildLayout()
-        menu:update()
     end
-
-    local function removePerk()
-        local perkID = filteredPerkIDs[selectedPerkIndex]
-        if perkID == nil then
-            return
-        end
-        pself:sendEvent(MOD_NAME .. "removePerk", { perkID = perkID })
-        menu.layout = buildLayout()
-        menu:update()
-    end
-
-    local purchaseEnabled = selectedPerkID ~= nil and canPurchasePerk(selectedPerkID)
-    local removeEnabled = selectedPerkID ~= nil and hasPerk(selectedPerkID)
 
     return {
         type = ui.TYPE.Flex,
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(980, 520),
+            size = util.vector2(980, 560),
         },
         content = ui.content {
             {
@@ -428,16 +626,20 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(960, 390),
+                    size = util.vector2(960, 510),
                 },
                 content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
                     {
                         type = ui.TYPE.Flex,
                         template = interfaces.MWUI.templates.borders,
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(550, 390),
+                            size = util.vector2(540, 510),
                         },
                         content = ui.content(perksCol),
                     },
@@ -451,15 +653,19 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(394, 390),
+                            size = util.vector2(390, 510),
                         },
                         content = ui.content { perkDetail },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
                     },
                 }
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 14) },
+                props = { size = util.vector2(1, 6) },
             },
             {
                 type = ui.TYPE.Flex,
@@ -470,32 +676,21 @@ local function buildPerkPane()
                 },
                 content = ui.content {
                     {
-                        type = ui.TYPE.Flex,
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
                         props = {
-                            horizontal = true,
                             autoSize = true,
                         },
                         content = ui.content {
-                            createButton("Purchase", purchasePerk, purchaseEnabled),
-                            {
-                                type = ui.TYPE.Widget,
-                                props = { size = util.vector2(16, 1) },
-                            },
-                            createButton("Remove", removePerk, removeEnabled),
-                        }
+                            createBoxedButton("Exit", function()
+                                pself:sendEvent(MOD_NAME .. "closePerkUI")
+                            end, util.vector2(64, 28)),
+                        },
                     },
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                    createButton("Remove", removePerk, removeEnabled),
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                    createBoxedButton("Exit", function()
-                        pself:sendEvent(MOD_NAME .. "closePerkUI")
-                    end, util.vector2(120, 28)),
                 }
             }
         }
@@ -503,6 +698,17 @@ local function buildPerkPane()
 end
 
 buildLayout = function()
+    local topHeaderFillTiles = {}
+    for _ = 1, 49 do
+        table.insert(topHeaderFillTiles, {
+            type = ui.TYPE.Image,
+            props = {
+                resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
+                size = util.vector2(20, 30),
+            },
+        })
+    end
+
     return {
         layer = "Windows",
         name = "SkillPerkSystemMenu",
@@ -523,14 +729,82 @@ buildLayout = function()
                 },
                 content = ui.content {
                     {
-                        type = ui.TYPE.Text,
-                        template = interfaces.MWUI.templates.textHeader,
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.boxTransparentThick,
                         props = {
-                            text = "Skill Perks",
-                            textAlignH = ui.ALIGNMENT.Center,
-                        }
+                            autoSize = false,
+                            size = util.vector2(980, 30),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Flex,
+                                props = {
+                                    horizontal = true,
+                                    autoSize = false,
+                                    size = util.vector2(980, 30),
+                                },
+                                content = ui.content(topHeaderFillTiles),
+                            },
+                            {
+                                type = ui.TYPE.Flex,
+                                props = {
+                                    horizontal = true,
+                                    autoSize = false,
+                                    size = util.vector2(980, 30),
+                                },
+                                content = ui.content {
+                                    {
+                                        type = ui.TYPE.Widget,
+                                        external = { grow = 1 },
+                                    },
+                                    {
+                                        type = ui.TYPE.Container,
+                                        template = interfaces.MWUI.templates.boxTransparentThick,
+                                        props = {
+                                            autoSize = false,
+                                            size = util.vector2(180, 24),
+                                        },
+                                        content = ui.content {
+                                            {
+                                                type = ui.TYPE.Text,
+                                                template = interfaces.MWUI.templates.textHeader,
+                                                props = {
+                                                    text = "Skill Perks",
+                                                    autoSize = false,
+                                                    size = util.vector2(180, 24),
+                                                    textAlignH = ui.ALIGNMENT.Center,
+                                                    textAlignV = ui.ALIGNMENT.Center,
+                                                },
+                                            },
+                                        },
+                                    },
+                                    {
+                                        type = ui.TYPE.Widget,
+                                        external = { grow = 1 },
+                                    },
+                                },
+                            },
+                        },
                     },
-                    buildSkillTabs(),
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                            autoSize = false,
+                            size = util.vector2(980, 32),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                            buildSkillTabs(),
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                        },
+                    },
                     {
                         type = ui.TYPE.Widget,
                         props = { size = util.vector2(1, 10) },
@@ -548,7 +822,8 @@ local function showMenu()
     end
     skillIDs = getSkillIDs()
     selectedSkillIndex = math.max(1, math.min(selectedSkillIndex, #skillIDs))
-    selectedPerkIndex = 1
+    selectedPerkIndex = 0
+    selectedTreeNodeID = nil
     updateFilteredPerks()
 
     -- Use an isolated interface mode so the perk page has cursor/UI input without
@@ -622,6 +897,43 @@ local function onConsoleCommand(mode, command, selectedObject)
 end
 
 local function onFrame(dt)
+    if menu ~= nil then
+        local selectedSkillID = getSelectedSkillID()
+        local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
+            and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
+            or {}
+
+        if #treeNodes > 0 then
+            local pan = getTreePan(selectedSkillID)
+            local panDelta = 320 * dt
+            local moved = false
+
+            if input.isKeyPressed(input.KEY.LEFT) or input.isKeyPressed(input.KEY.A) then
+                pan.x = pan.x - panDelta
+                moved = true
+            end
+            if input.isKeyPressed(input.KEY.RIGHT) or input.isKeyPressed(input.KEY.D) then
+                pan.x = pan.x + panDelta
+                moved = true
+            end
+            if input.isKeyPressed(input.KEY.UP) or input.isKeyPressed(input.KEY.W) then
+                pan.y = pan.y - panDelta
+                moved = true
+            end
+            if input.isKeyPressed(input.KEY.DOWN) or input.isKeyPressed(input.KEY.S) then
+                pan.y = pan.y + panDelta
+                moved = true
+            end
+
+            if moved then
+                pan.x = math.max(-600, math.min(600, pan.x))
+                pan.y = math.max(-600, math.min(600, pan.y))
+                menu.layout = buildLayout()
+                menu:update()
+            end
+        end
+    end
+
     local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
     if isPressed and not toggleKeyWasPressed then
         toggleMenu()

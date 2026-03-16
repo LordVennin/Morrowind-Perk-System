@@ -62,3 +62,13 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 - Milestones are retroactive. If a save already has a skill above 25/50/75/100, points are granted on load.
 - Earned milestones are not reduced when a skill temporarily drops.
 - Save reconciliation runs on load: active perks missing from the currently registered perk list are dropped with a warning, spent points are recomputed from remaining perks, and per-skill spent points are clamped to earned points.
+
+## Experimental tree layout data (modder-facing)
+
+The framework now includes an experimental, data-driven tree-node registry for future map-style perk UIs.
+
+- Put per-skill node files in `scripts/SkillPerkSystem/trees/<skillId>.lua`
+- See `scripts/SkillPerkSystem/trees/README.md` for schema
+- Example included: `scripts/SkillPerkSystem/trees/block.lua`
+
+Node files support `id`, `skill`, `x`, `y`, and `requires` so chains/branches can be authored in script files without editing core UI code.

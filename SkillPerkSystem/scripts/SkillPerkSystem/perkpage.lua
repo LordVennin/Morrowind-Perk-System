@@ -31,7 +31,7 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 
 local SKILL_SELECTOR_WIDTH = 360
-local SKILL_INDEX_WIDTH = 96
+local SKILL_INDEX_WIDTH = 72
 local SKILL_SELECTOR_ROW_WIDTH = 540
 
 local buildLayout
@@ -288,7 +288,7 @@ local function buildSkillTabs()
         content = ui.content {
             createBoxedButton("<", function()
                 changeSelectedSkill(-1)
-            end, util.vector2(48, 28), 3),
+            end, util.vector2(44, 28), 3),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
@@ -320,7 +320,7 @@ local function buildSkillTabs()
             },
             createBoxedButton(">", function()
                 changeSelectedSkill(1)
-            end, util.vector2(48, 28), 3),
+            end, util.vector2(44, 28), 3),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(12, 1) },

@@ -381,23 +381,62 @@ local function buildPerkPane()
         skillDescription = skillRecord.description
     end
 
-    local perkDetail = {
-        type = ui.TYPE.Text,
-        template = interfaces.MWUI.templates.textNormal,
-        props = {
-            text = string.format("%s\n\n%s", skillName, skillDescription),
-            autoSize = false,
-            size = util.vector2(374, 360),
-            textWrap = true,
-        }
-    }
-
     local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
-    if selectedPerkID ~= nil then
+
+    local perkDetail
+    if selectedPerkID == nil then
+        perkDetail = {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                autoSize = false,
+                size = util.vector2(374, 360),
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Text,
+                    template = interfaces.MWUI.templates.textHeader,
+                    props = {
+                        text = skillName,
+                        autoSize = false,
+                        size = util.vector2(374, 54),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Center,
+                        textWrap = true,
+                    },
+                },
+                {
+                    type = ui.TYPE.Widget,
+                    props = { size = util.vector2(1, 10) },
+                },
+                {
+                    type = ui.TYPE.Text,
+                    template = interfaces.MWUI.templates.textNormal,
+                    props = {
+                        text = skillDescription,
+                        autoSize = false,
+                        size = util.vector2(374, 296),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Top,
+                        textWrap = true,
+                    },
+                },
+            },
+        }
+    else
         local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
         local owned = hasPerk(selectedPerkID)
         local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
-        perkDetail.props.text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status)
+        perkDetail = {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                autoSize = false,
+                size = util.vector2(374, 360),
+                textWrap = true,
+            },
+        }
     end
 
     local function purchasePerk()

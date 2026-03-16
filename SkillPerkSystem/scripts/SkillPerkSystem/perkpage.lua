@@ -256,12 +256,25 @@ local function buildSkillTabs()
         props = {
             horizontal = true,
             autoSize = false,
-            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 32),
+            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 34),
         },
         content = ui.content {
-            createBoxedButton("<", function()
-                changeSelectedSkill(-1)
-            end, util.vector2(48, 28)),
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = util.vector2(1, 2) },
+                    },
+                    createBoxedButton("<", function()
+                        changeSelectedSkill(-1)
+                    end, util.vector2(48, 28)),
+                },
+            },
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
@@ -291,9 +304,22 @@ local function buildSkillTabs()
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
             },
-            createBoxedButton(">", function()
-                changeSelectedSkill(1)
-            end, util.vector2(48, 28)),
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = util.vector2(1, 2) },
+                    },
+                    createBoxedButton(">", function()
+                        changeSelectedSkill(1)
+                    end, util.vector2(48, 28)),
+                },
+            },
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(12, 1) },

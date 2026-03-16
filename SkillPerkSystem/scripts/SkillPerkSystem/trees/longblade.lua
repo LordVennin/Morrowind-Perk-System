@@ -1,0 +1,58 @@
+-- Example longblade tree with branching paths and multi-parent capstones.
+
+return {
+    {
+        id = "longblade_basics",
+        skill = "longblade",
+        title = "Longblade Basics",
+        description = "Foundational form and stance training.",
+        x = 0,
+        y = 0,
+        requires = {},
+    },
+    {
+        id = "longblade_duelist_footwork",
+        skill = "longblade",
+        title = "Duelist Footwork",
+        description = "Precision movement for one-on-one engagements.",
+        x = -120,
+        y = 120,
+        requires = { "longblade_basics" },
+    },
+    {
+        id = "longblade_power_stance",
+        skill = "longblade",
+        title = "Power Stance",
+        description = "Commit to heavy, armor-breaking cuts.",
+        x = 120,
+        y = 120,
+        requires = { "longblade_basics" },
+    },
+    {
+        id = "longblade_riposte",
+        skill = "longblade",
+        title = "Riposte",
+        description = "Counter immediately after avoiding an enemy swing.",
+        x = -200,
+        y = 240,
+        requires = { "longblade_duelist_footwork" },
+    },
+    {
+        id = "longblade_crushing_arc",
+        skill = "longblade",
+        title = "Crushing Arc",
+        description = "Sweeping strike tuned for stagger pressure.",
+        x = 200,
+        y = 240,
+        requires = { "longblade_power_stance" },
+    },
+    {
+        id = "longblade_perfect_opening",
+        skill = "longblade",
+        title = "Perfect Opening",
+        description = "Capstone that requires mastery of both offense paths.",
+        x = 0,
+        y = 360,
+        requires = { "longblade_riposte", "longblade_crushing_arc" },
+    },
+}

@@ -2,6 +2,7 @@ local core = require("openmw.core")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
+local ambient = require("openmw.ambient")
 local interfaces = require("openmw.interfaces")
 local input = require("openmw.input")
 local pself = require("openmw.self")
@@ -228,6 +229,8 @@ local function withTopOffset(element, offset)
             element,
         },
     }
+
+    return buttonLayout
 end
 
 local function changeSelectedSkill(delta)
@@ -459,10 +462,24 @@ local function buildPerkPane()
                     size = util.vector2(960, 32),
                 },
                 content = ui.content {
-                    createButton("Purchase", purchasePerk, purchaseEnabled),
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = true,
+                            autoSize = true,
+                        },
+                        content = ui.content {
+                            createButton("Purchase", purchasePerk, purchaseEnabled),
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = util.vector2(16, 1) },
+                            },
+                            createButton("Remove", removePerk, removeEnabled),
+                        }
+                    },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(16, 1) },
+                        external = { grow = 1 },
                     },
                     createButton("Remove", removePerk, removeEnabled),
                     {

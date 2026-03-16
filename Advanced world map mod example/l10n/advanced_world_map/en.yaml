@@ -1,0 +1,189 @@
+empty: ""
+modName: "Advanced World Map"
+modDescription: "Interactive world map with search, fast travel, and more."
+
+You: "You"
+Map: "Map"
+Search: "Search"
+searchShowUnrevealed: "show unrevealed"
+SearchShowUnrevealedTooltip: "Enable to show in search locations that have not yet been revealed on the map."
+from: "from"
+Region: "Region"
+FollowPlayer: "Follow Player"
+LayerVisibility: "Layer Visibility"
+Regions: "Regions"
+Cities: "Cities"
+PlayerMarker: "Player Marker"
+Labels: "Labels"
+Markers: "Markers"
+FastTravel: "Fast travel"
+NoLocationsForFastTravel: "No available locations for fast travel."
+NoLocationsOrBlockedForFastTravel: "No available locations for fast travel or all paths to them are currently unavailable."
+fastTravelMessageBoxMessage: "Do you want to fast travel to \"%s\"?"
+fastTraveMagickaCost: "This will cost %d magicka."
+fastTravelWhileInCombat: "You cannot fast travel while in combat."
+fastTravelNotAllowedToInterior: "You cannot fast travel to interiors."
+fastTravelTooltip: "Fast travel.\n\nClick 3 times or use right mouse menu at any point on the map to fast travel there. Fast travel is only possible if a valid position exists near the destination."
+fastTravelCooldownMessage: |-
+  You need to wait %d {count, plural,
+    one {hour}
+    other {hours}
+  } before you can use fast travel again.
+fastTravelRealTimeMinCooldownMessage: |-
+  You need to wait %d real-time {count, plural,
+    one {minute}
+    other {minutes}
+  } before you can use fast travel again.
+fastTravelRealTimeSecCooldownMessage: |-
+  You need to wait %d real-time {count, plural,
+    one {second}
+    other {seconds}
+  } before you can use fast travel again.
+NotEnoughMagicka: "Not enough magicka."
+Local: "Local"
+World: "World"
+searchAllLocationsCheckbox: "all locations"
+SearchAllLocationsTooltip: "Enable to search across all locations. When disabled, search will only include locations accessible from the current map area."
+CellId: "Cell ID"
+Name: "Name"
+Description: "Description"
+Remove: "Remove"
+AddNote: "Add Note"
+EditNote: "Edit Note"
+Undefined: "Undefined"
+firstInitMenuMessage: "This is the first time you are running Advanced World Map. Please configure the essential settings below if needed. Much more in the settings."
+firstInitMenuDataSourceNote: "If the world map texture will not display correctly, try to change the data source for it in the settings. More info on the mod page on Nexus Mods."
+mapDataNotInitialized: "Map data is not available. Report this issue on the mod page on Nexus Mods."
+charGenNotFinished: "You cannot open the map until character generation is complete."
+LastVisited: "Last visited: %s"
+PinUnpin: "Pin/Unpin"
+PersonalNotesCB: "Personal"
+GlobalNotesCB: "Global"
+ListAllCharactersNotes: "All characters' notes"
+MapSizePositionResetMessage: "Advanced World Map size and position have been reset to default values."
+
+date.suffix.st: "st"
+date.suffix.nd: "nd"
+date.suffix.rd: "rd"
+date.suffix.th: "th"
+date.format: "{day}{suffix} {month}, 3E {year}"
+
+MainSettings: "Main"
+SettingMainMenuKey: "Hotkey"
+SettingMainMenuKeyDescription: |
+  Key combination to open the map menu. Can contain multiple keys (e.g. Ctrl+M+N+...).
+  To set, click the field showing the current key combination, then press the desired keys.
+  To reset, right-click the field, or press the gamepad 'B' button while assigning.
+SettingDiscoveryRadius: "Discovery Radius"
+SettingDiscoveryRadiusDescription: "The radius (in game units) around the player within which locations will be automatically discovered on the map."
+SettingUpdateFrequency: "Update Frequency"
+SettingUpdateFrequencyDescription: "How often (in times per second) the map updates when in non menu mode."
+# SettingFastClose: "Fast close"
+# SettingFastCloseDescription: "When enabled, the map will close immediately when the hotkey is pressed while the map is open. If disabled, pressing the hotkey while the map is open and interactive will only exit the interactive mode first, before closing the map on the next press."
+SettingOverrideDefaultMap: "Override default map"
+SettingOverrideDefaultMapDescription: "When enabled, the Advanced World Map will replace the default Morrowind map menu. Requires a save reload to take effect. Important: this option doesn't work correctly with the controller menu! If the standard map does not appear after disabling this option, click on the minimap in the game interface."
+SettingSaveVisibilityStateInInterfaceMenu: "Save open/close state in Character menu"
+SettingSaveVisibilityStateInInterfaceMenuDescription: "When override default map is enabled, saves whether the map was last opened from the Character menu or not, and restores that state the next time the Character menu is opened."
+SettingFirstInitMenu: "Show first-time setup menu"
+SettingFirstInitMenuDescription: "When enabled, the first-time setup menu will be shown the next time the mod menu is opened."
+SettingResetSizePos: "Reset size and position"
+SettingResetSizePosDescription: "Change to 'Yes' to reset the map window size and position to default values. The setting will automatically revert to 'No' after the reset is done."
+
+DataSettings: "Data"
+SettingDataInitializer: "World map texture initializer"
+SettingDataInitializerDescription: |
+  Source of the world map texture. If a texture for the chosen source is not found, "Auto" will be used.
+  "Auto" - selected automatically.
+  "Your custom" - a user-generated custom texture.
+  "Quest Guider's Quest Data" - from the quest data of the Quest Guider Lite mod.
+  "Tamriel Rebuilt+" - built-in texture for TR + Project Cyrodiil + Skyrim: Home of the Nords.
+  "Base game" - built-in texture for the original Morrowind + Bloodmoon.
+  "None" - no texture (map cells will be filled with a solid color).
+
+TilesetSettings: "Local map tiles"
+TilesetSettingsDescription: "Configure local tilesets of world map."
+SettingTilesetOnlyDiscovered: "Show only discovered tiles"
+SettingTilesetOnlyDiscoveredDescription: "When enabled, only tiles for cells that have been discovered by the player will be shown on the local part of the world map."
+SettingTilesetZoomToShow: "Zoom to show tiles"
+SettingTilesetZoomToShowDescription: "The zoom level at which local tiles will start to be shown on the world map."
+
+LegendSettings: "Legend"
+LegendSettingsDescription: "Configure the legend displayed on the map."
+SettingLegendOnlyDiscovered: "Show only discovered markers"
+SettingLegendZoomToGroup: "Zoom to group markers"
+SettingLegendZoomToGroupDescription: "The zoom level below which nearby markers are grouped together."
+SettingLegendOnlyDiscoveredDescription: "When enabled, only entrance markers and city markers that have been discovered by the player will be shown on the map."
+SettingLegendVisitedCellsOnWorldMap: "Show visited cells on world map"
+SettingLegendVisitedCellsOnWorldMapDescription: "When enabled, cells that have been visited by the player will be shown like local map tiles on the world map. Important: may highly impact performance."
+SettingLegendMarkerSize: "Marker size"
+SettingLegendMarkerSizeDescription: "The size of the markers displayed on the map."
+SettingLegendRegionAlpha: "Region name alpha"
+SettingLegendRegionAlphaDescription: "The transparency level of region names on the map. In percentage (0-100)."
+SettingLegendCityAlpha: "City marker alpha"
+SettingLegendCityAlphaDescription: "The transparency level of city markers on the map. In percentage (0-100)."
+SettingLegendEntranceAlpha: "Entrance marker alpha"
+SettingLegendEntranceAlphaDescription: "The transparency level of entrance markers on the map. In percentage (0-100)."
+
+NotesSettings: "Notes"
+SettingNotesMapFontSize: "Marker/font size"
+SettingNotesMapFontSizeDescription: "The size of the note markers on the map."
+
+FastTravelSettings: "Fast Travel"
+SettingFastTravelEnabled: "Enable fast travel"
+SettingFastTravelEnabledDescription: "When enabled, allows fast travel to the entrance nearest to the selected point on the map."
+SettingFastTravelOnlyDiscovered: "Fast travel to discovered locations only"
+SettingFastTravelOnlyDiscoveredDescription: "When enabled, fast travel will only be possible to locations that have been discovered by the player."
+SettingFastTravelOnlyReachable: "Fast travel to reachable locations only"
+SettingFastTravelOnlyReachableDescription: "When enabled, fast travel will only be possible to locations that have a reachable path from the player's current position."
+SettingFastTravelWithFollowers: "With followers"
+SettingFastTravelWithFollowersDescription: "When enabled, followers will travel with you when you fast travel."
+SettingFastTravelAllowToInterior: "Allow fast travel to interiors"
+SettingFastTravelAllowToInteriorDescription: "When enabled, allows fast travel to interior locations."
+SettingFastTravelCooldown: "Fast travel cooldown"
+SettingFastTravelCooldownDescription: "The cooldown time between consecutive fast travels, measured in in-game hours or as this value multiplied by 2 real-time minutes. Set to 0 to disable."
+SettingFastTravelBaseMagickaCost: "Base magicka cost"
+SettingFastTravelBaseMagickaCostDescription: "The base magicka cost for fast traveling."
+SettingFastTravelAdditionalCost: "Magicka cost per unit distance"
+SettingFastTravelAdditionalCostDescription: "The additional magicka cost per unit distance traveled when fast traveling."
+
+InputSettings: "Input"
+SettingInputGamepadControls: "Improved gamepad controls"
+SettingInputGamepadControlsDescription: "When enabled, allows using gamepad to pan and zoom the map. Right analog stick to pan, right and left triggers to zoom in and out."
+SettingInputGamepadControlsBumperMode: "Gamepad bumper mode"
+SettingInputGamepadControlsBumperModeDescription: "Remaps gamepad controls to use right and left bumper buttons for zooming instead of triggers."
+SettingInputContextMenuKey: "Context menu key"
+SettingInputContextMenuKeyDescription: "The key used to open the context menu on the map."
+SettingInputToggleMapTypeKey: "Toggle local/world map key"
+SettingInputToggleMapTypeKeyDescription: "The key used to toggle between local and world map views."
+SettingInputTogglePinKey: "Toggle pin map key"
+SettingInputTogglePinKeyDescription: "The key used to toggle pinning the map window."
+
+UISettings: "UI"
+SettingUIFontSize: "Font size"
+SettingUIFontSizeDescription: "The font size of all UI text elements is scaled according to this value."
+SettingUIResizerSize: "Resizer size"
+SettingUIResizerSizeDescription: "The size of the resizer handle at the bottom-right corner of the map window."
+SettingUIScrollBarSize: "Scroll bar width"
+SettingUIScrollBarSizeDescription: "The width of the scroll bar at the right edge of a scroll box."
+SettingUIMouseScrollAmount: "Mouse scroll amount"
+SettingUIMouseScrollAmountDescription: "The amount scrolled when using the mouse wheel within a scroll box."
+SettingUIDefaultColor: "Default color"
+SettingUIDefaultColorDescription: "The default Morrowind UI color."
+SettingUIMarkerDefaultColor: "Marker default color"
+SettingUIMarkerDefaultColorDescription: "The color used for markers indicating locations that have been discovered but not yet visited on the map."
+SettingUIDefaultDarkColor: "Marker dark color"
+SettingUIDefaultDarkColorDescription: "The color used for markers indicating locations that have not yet been discovered on the map."
+SettingUIDefaultLightColor: "Marker light color"
+SettingUIDefaultLightColorDescription: "The color used for markers indicating locations that have been visited on the map."
+SettingUIWhiteColor: "White color"
+SettingUIWhiteColorDescription: "The white color for some selected UI elements."
+SettingUIBackgroundColor: "Background color"
+SettingUIBackgroundColorDescription: "The background color of the map window. Requires a game restart to take effect."
+SettingUIFoundMarkerColor: "Search marker color"
+SettingUIFoundMarkerColorDescription: "The color used to highlight found by search markers on the map."
+SettingUIFoundMarkerLightColor: "Search marker alternative color"
+SettingUIFoundMarkerLightColorDescription: "The alternative color used on search markers on the map."
+SettingUITextShadowColor: "Text shadow color"
+SettingUITextShadowColorDescription: "The color of the shadow behind some UI text elements."
+SettingUIDefaultTextureColor: "Default texture color"
+SettingUIDefaultTextureColorDescription: "Color for filling maps with missing textures."

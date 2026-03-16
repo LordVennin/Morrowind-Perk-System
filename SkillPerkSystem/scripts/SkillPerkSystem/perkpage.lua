@@ -50,10 +50,10 @@ end
 
 local function getShortSkillLabel(skillID)
     local label = getSkillLabel(skillID)
-    if #label <= 10 then
+    if #label <= 6 then
         return label
     end
-    return label:sub(1, 9) .. "…"
+    return label:sub(1, 5) .. "…"
 end
 
 local function hasPerk(perkID)
@@ -227,23 +227,18 @@ local function buildSkillTabs()
         }
     end
 
-    local rowCount = 3
-    local perRow = math.ceil(count / rowCount)
-    local rows = {}
-
-    for rowIndex = 1, rowCount do
-        local startIndex = (rowIndex - 1) * perRow + 1
-        if startIndex <= count then
-            local endIndex = math.min(rowIndex * perRow, count)
-            table.insert(rows, buildSkillTabRow(startIndex, endIndex))
-            if endIndex < count then
-                table.insert(rows, {
-                    type = ui.TYPE.Widget,
-                    props = { size = util.vector2(1, 6) },
-                })
-            end
+    local function appendRow(rows, startIndex, endIndex)
+        if startIndex > count then
+            return
         end
+        local clampedEnd = math.min(endIndex, count)
+        table.insert(rows, buildSkillTabRow(startIndex, clampedEnd))
     end
+
+    local rows = {}
+    appendRow(rows, 1, 9)
+    appendRow(rows, 10, 18)
+    appendRow(rows, 19, 27)
 
     return {
         type = ui.TYPE.Flex,

@@ -594,7 +594,7 @@ local function buildPerkPane()
             },
             content = ui.content {
                 {
-                    type = ui.TYPE.Widget,
+                    type = ui.TYPE.Container,
                     props = {
                         autoSize = false,
                         relativeSize = util.vector2(1, 1),

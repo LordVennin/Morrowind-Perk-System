@@ -53,7 +53,7 @@ local function getShortSkillLabel(skillID)
     if #label <= 6 then
         return label
     end
-    return label:sub(1, 5) .. "…"
+    return label:sub(1, 5) .. "..."
 end
 
 local function hasPerk(perkID)
@@ -157,59 +157,25 @@ local function createBoxedButton(label, onPress, size)
     }
 end
 
-local function buildSkillTab(index)
-    local skillID = skillIDs[index]
-    local label = getShortSkillLabel(skillID)
-    local isSelected = index == selectedSkillIndex
-
-    return {
-        type = ui.TYPE.Container,
-        template = isSelected and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxTransparent,
-        props = {
-            autoSize = true,
-        },
-        events = {
-            mouseClick = async:callback(function()
-                selectedSkillIndex = index
-                selectedPerkIndex = 1
-                updateFilteredPerks()
-                menu.layout = buildLayout()
-                menu:update()
-            end),
-        },
-        content = ui.content {
-            {
-                type = ui.TYPE.Text,
-                template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
-                props = {
-                    text = label,
-                    autoSize = true,
-                }
-            }
-        }
-    }
-end
-
-local function buildSkillTabRow(startIndex, endIndex)
-    local row = {}
-    for i = startIndex, endIndex do
-        table.insert(row, buildSkillTab(i))
-        if i < endIndex then
-            table.insert(row, {
-                type = ui.TYPE.Widget,
-                props = { size = util.vector2(8, 1) },
-            })
-        end
+local function changeSelectedSkill(delta)
+    if #skillIDs == 0 then
+        return
     end
 
-    return {
-        type = ui.TYPE.Flex,
-        props = {
-            horizontal = true,
-            autoSize = true,
-        },
-        content = ui.content(row),
-    }
+    selectedSkillIndex = selectedSkillIndex + delta
+    if selectedSkillIndex < 1 then
+        selectedSkillIndex = #skillIDs
+    elseif selectedSkillIndex > #skillIDs then
+        selectedSkillIndex = 1
+    end
+
+    selectedPerkIndex = 1
+    updateFilteredPerks()
+
+    if menu ~= nil then
+        menu.layout = buildLayout()
+        menu:update()
+    end
 end
 
 local function buildSkillTabs()
@@ -226,36 +192,61 @@ local function buildSkillTabs()
         }
     end
 
-    -- The example mod avoids wide horizontal overflows by using a vertical list.
-    -- For tabs, we mimic that safety by using small fixed-size rows.
-    local rows = {}
-    local perRow = 6
-    local startIndex = 1
-    while startIndex <= count do
-        local endIndex = math.min(startIndex + perRow - 1, count)
-        table.insert(rows, buildSkillTabRow(startIndex, endIndex))
-        startIndex = endIndex + 1
-        if startIndex <= count then
-            table.insert(rows, {
-                type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 6) },
-            })
-        end
-    end
-
-    local rows = {}
-    appendRow(rows, 1, 9)
-    appendRow(rows, 10, 18)
-    appendRow(rows, 19, 27)
+    local skillID = getSelectedSkillID()
+    local label = string.format("%s (%d)", getShortSkillLabel(skillID), interfaces[MOD_NAME .. "Player"].availablePoints(skillID))
 
     return {
         type = ui.TYPE.Flex,
         template = interfaces.MWUI.templates.borders,
         props = {
-            horizontal = false,
+            horizontal = true,
             autoSize = true,
         },
-        content = ui.content(tabs)
+        content = ui.content {
+            createButton("<", function()
+                changeSelectedSkill(-1)
+            end, true, util.vector2(28, 24)),
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(8, 1) },
+            },
+            {
+                type = ui.TYPE.Container,
+                template = interfaces.MWUI.templates.boxTransparent,
+                props = {
+                    autoSize = true,
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Text,
+                        template = interfaces.MWUI.templates.textNormal,
+                        props = {
+                            text = label,
+                            autoSize = true,
+                        },
+                    },
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(8, 1) },
+            },
+            createButton(">", function()
+                changeSelectedSkill(1)
+            end, true, util.vector2(28, 24)),
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(12, 1) },
+            },
+            {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = string.format("%d/%d", selectedSkillIndex, count),
+                    autoSize = true,
+                },
+            },
+        },
     }
 end
 

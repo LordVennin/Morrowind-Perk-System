@@ -2,6 +2,7 @@ local core = require("openmw.core")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
+local ambient = require("openmw.ambient")
 local interfaces = require("openmw.interfaces")
 local input = require("openmw.input")
 local pself = require("openmw.self")
@@ -108,57 +109,111 @@ local function createButton(label, onPress, enabled, size)
     local buttonTemplate = enabled and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxDisabled
     local fontTemplate = enabled and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled
 
-    return {
+    local textLayout = {
+        type = ui.TYPE.Text,
+        template = fontTemplate,
+        props = {
+            text = label,
+            textAlignH = ui.ALIGNMENT.Center,
+            textAlignV = ui.ALIGNMENT.Center,
+            relativeSize = util.vector2(1, 1),
+        }
+    }
+
+    local buttonLayout = {
         type = ui.TYPE.Container,
         template = buttonTemplate,
         props = {
             size = size or util.vector2(140, 28),
         },
-        events = enabled and {
-            mouseClick = async:callback(function()
-                onPress()
-            end),
-        } or nil,
-        content = ui.content {
-            {
-                type = ui.TYPE.Text,
-                template = fontTemplate,
-                props = {
-                    text = label,
-                    textAlignH = ui.ALIGNMENT.Center,
-                    textAlignV = ui.ALIGNMENT.Center,
-                    relativeSize = util.vector2(1, 1),
-                }
-            }
-        }
+        content = ui.content { textLayout }
     }
+
+    if enabled then
+        buttonLayout.events = {
+            mousePress = async:callback(function(mouseEvent)
+                if mouseEvent.button == 1 then
+                    ambient.playSound("Menu Click")
+                    buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
+                    textLayout.template = interfaces.MWUI.templates.textHeader
+                    if menu ~= nil then menu:update() end
+                end
+            end),
+            mouseRelease = async:callback(function(mouseEvent)
+                if mouseEvent.button == 1 then
+                    buttonLayout.template = interfaces.MWUI.templates.boxButton
+                    textLayout.template = interfaces.MWUI.templates.textNormal
+                    if menu ~= nil then menu:update() end
+                    onPress()
+                end
+            end),
+            focusGain = async:callback(function()
+                buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
+                textLayout.template = interfaces.MWUI.templates.textHeader
+                if menu ~= nil then menu:update() end
+            end),
+            focusLoss = async:callback(function()
+                buttonLayout.template = interfaces.MWUI.templates.boxButton
+                textLayout.template = interfaces.MWUI.templates.textNormal
+                if menu ~= nil then menu:update() end
+            end),
+        }
+    end
+
+    return buttonLayout
 end
 
 local function createBoxedButton(label, onPress, size)
-    return {
+    local textLayout = {
+        type = ui.TYPE.Text,
+        template = interfaces.MWUI.templates.textNormal,
+        props = {
+            text = label,
+            textAlignH = ui.ALIGNMENT.Center,
+            textAlignV = ui.ALIGNMENT.Center,
+            relativeSize = util.vector2(1, 1),
+        }
+    }
+
+    local buttonLayout = {
         type = ui.TYPE.Container,
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             size = size or util.vector2(140, 28),
         },
-        events = {
-            mouseClick = async:callback(function()
-                onPress()
-            end),
-        },
-        content = ui.content {
-            {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textNormal,
-                props = {
-                    text = label,
-                    textAlignH = ui.ALIGNMENT.Center,
-                    textAlignV = ui.ALIGNMENT.Center,
-                    relativeSize = util.vector2(1, 1),
-                }
-            }
-        }
+        content = ui.content { textLayout }
     }
+
+    buttonLayout.events = {
+        mousePress = async:callback(function(mouseEvent)
+            if mouseEvent.button == 1 then
+                ambient.playSound("Menu Click")
+                buttonLayout.template = interfaces.MWUI.templates.boxButton
+                textLayout.template = interfaces.MWUI.templates.textHeader
+                if menu ~= nil then menu:update() end
+            end
+        end),
+        mouseRelease = async:callback(function(mouseEvent)
+            if mouseEvent.button == 1 then
+                buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
+                textLayout.template = interfaces.MWUI.templates.textNormal
+                if menu ~= nil then menu:update() end
+                onPress()
+            end
+        end),
+        focusGain = async:callback(function()
+            buttonLayout.template = interfaces.MWUI.templates.boxButton
+            textLayout.template = interfaces.MWUI.templates.textHeader
+            if menu ~= nil then menu:update() end
+        end),
+        focusLoss = async:callback(function()
+            buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
+            textLayout.template = interfaces.MWUI.templates.textNormal
+            if menu ~= nil then menu:update() end
+        end),
+    }
+
+    return buttonLayout
 end
 
 local function changeSelectedSkill(delta)
@@ -208,9 +263,9 @@ local function buildSkillTabs()
             size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 32),
         },
         content = ui.content {
-            createButton("<", function()
+            createBoxedButton("<", function()
                 changeSelectedSkill(-1)
-            end, true, util.vector2(28, 24)),
+            end, util.vector2(36, 28)),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
@@ -240,9 +295,9 @@ local function buildSkillTabs()
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
             },
-            createButton(">", function()
+            createBoxedButton(">", function()
                 changeSelectedSkill(1)
-            end, true, util.vector2(28, 24)),
+            end, util.vector2(36, 28)),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(12, 1) },

@@ -81,8 +81,8 @@ local function updateFilteredPerks()
     if selectedPerkIndex > #filteredPerkIDs then
         selectedPerkIndex = #filteredPerkIDs
     end
-    if selectedPerkIndex < 1 then
-        selectedPerkIndex = 1
+    if selectedPerkIndex < 0 then
+        selectedPerkIndex = 0
     end
 end
 
@@ -252,7 +252,7 @@ local function changeSelectedSkill(delta)
         selectedSkillIndex = 1
     end
 
-    selectedPerkIndex = 1
+    selectedPerkIndex = 0
     updateFilteredPerks()
 
     if menu ~= nil then
@@ -373,23 +373,68 @@ local function buildPerkPane()
         })
     end
 
-    local perkDetail = {
-        type = ui.TYPE.Text,
-        template = interfaces.MWUI.templates.textNormal,
-        props = {
-            text = "Select a perk",
-            autoSize = false,
-            size = util.vector2(374, 360),
-            textWrap = true,
-        }
-    }
+    local selectedSkillID = getSelectedSkillID()
+    local skillRecord = selectedSkillID ~= nil and core.stats.Skill.records[selectedSkillID] or nil
+    local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Skill"
+    local skillDescription = "No description available."
+    if skillRecord ~= nil and type(skillRecord.description) == "string" and skillRecord.description ~= "" then
+        skillDescription = skillRecord.description
+    end
 
-    local selectedPerkID = filteredPerkIDs[selectedPerkIndex]
-    if selectedPerkID ~= nil then
+    local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
+    local paragraphTemplate = interfaces.MWUI.templates.textParagraph or interfaces.MWUI.templates.textNormal
+
+    local perkDetail
+    if selectedPerkID == nil then
+        perkDetail = {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                autoSize = false,
+                size = util.vector2(374, 360),
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Text,
+                    template = interfaces.MWUI.templates.textHeader,
+                    props = {
+                        text = skillName,
+                        autoSize = false,
+                        size = util.vector2(374, 54),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Center,
+                    },
+                },
+                {
+                    type = ui.TYPE.Widget,
+                    props = { size = util.vector2(1, 10) },
+                },
+                {
+                    type = ui.TYPE.Text,
+                    template = paragraphTemplate,
+                    props = {
+                        text = skillDescription,
+                        autoSize = false,
+                        size = util.vector2(374, 296),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Start,
+                    },
+                },
+            },
+        }
+    else
         local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
         local owned = hasPerk(selectedPerkID)
         local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
-        perkDetail.props.text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status)
+        perkDetail = {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                autoSize = false,
+                size = util.vector2(374, 360),
+            },
+        }
     end
 
     local function purchasePerk()
@@ -493,9 +538,18 @@ local function buildPerkPane()
                         type = ui.TYPE.Widget,
                         external = { grow = 1 },
                     },
-                    createBoxedButton("Exit", function()
-                        pself:sendEvent(MOD_NAME .. "closePerkUI")
-                    end, util.vector2(120, 28)),
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            autoSize = true,
+                        },
+                        content = ui.content {
+                            createBoxedButton("Exit", function()
+                                pself:sendEvent(MOD_NAME .. "closePerkUI")
+                            end, util.vector2(64, 28)),
+                        },
+                    },
                 }
             }
         }
@@ -548,7 +602,7 @@ local function showMenu()
     end
     skillIDs = getSkillIDs()
     selectedSkillIndex = math.max(1, math.min(selectedSkillIndex, #skillIDs))
-    selectedPerkIndex = 1
+    selectedPerkIndex = 0
     updateFilteredPerks()
 
     -- Use an isolated interface mode so the perk page has cursor/UI input without

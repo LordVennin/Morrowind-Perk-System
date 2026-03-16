@@ -77,6 +77,25 @@ local function hasPerk(perkID)
     return false
 end
 
+local function getMissingParentPerks(perkID)
+    if type(interfaces[MOD_NAME].getTreeNode) ~= "function" then
+        return {}
+    end
+
+    local node = interfaces[MOD_NAME].getTreeNode(perkID)
+    if node == nil then
+        return {}
+    end
+
+    local missing = {}
+    for _, requiredID in ipairs(node.requires or {}) do
+        if not hasPerk(requiredID) then
+            table.insert(missing, requiredID)
+        end
+    end
+    return missing
+end
+
 local function getActivePerks()
     local out = {}
     for _, perkID in ipairs(activePerks) do
@@ -152,6 +171,13 @@ local function addPerk(data)
         print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": requirements not met")
         return
     end
+
+    local missingParents = getMissingParentPerks(data.perkID)
+    if #missingParents > 0 then
+        print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": missing parents (" .. table.concat(missingParents, ", ") .. ")")
+        return
+    end
+
     if availablePoints(perk.skill) < perk.cost then
         print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": not enough " .. perk.skill .. " perk points (cost=" .. perk.cost .. ")")
         return

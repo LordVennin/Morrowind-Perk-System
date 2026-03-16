@@ -63,89 +63,18 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 - Earned milestones are not reduced when a skill temporarily drops.
 - Save reconciliation runs on load: active perks missing from the currently registered perk list are dropped with a warning, spent points are recomputed from remaining perks, and per-skill spent points are clamped to earned points.
 
-## Tree Modding
+## Experimental tree layout data (modder-facing)
 
-The tree API is data-driven so outside mods can add or extend nodes without patching core files.
+The framework now includes an experimental, data-driven tree-node registry for future map-style perk UIs.
 
-### 1) Register perks
+- Put per-skill node files in `scripts/SkillPerkSystem/trees/<skillId>.lua`
+- See `scripts/SkillPerkSystem/trees/README.md` for schema
+- Example included: `scripts/SkillPerkSystem/trees/block.lua`
 
-Register perks from your mod (typically in a PLAYER script):
+Node files support `id`, `skill`, `x`, `y`, and `requires` so chains/branches can be authored in script files without editing core UI code.
 
-```lua
-local interfaces = require("openmw.interfaces")
+### Demo tree content toggle
 
-interfaces.SkillPerkSystem.registerPerk({
-  id = "MyMod_longblade_power_attack",
-  skill = "longblade",
-  requirements = {},
-  cost = 2, -- optional, defaults to 1
-  onAdd = function()
-    -- apply perk effect
-  end,
-  onRemove = function()
-    -- remove perk effect
-  end,
-})
-```
+`settings.lua` now includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which registers no-effect Long Blade demo perks used for testing the tree UI.
 
-### 2) Define tree nodes
-
-You can define nodes in a per-skill file (`scripts/SkillPerkSystem/trees/<skillId>.lua`) or register them directly from your own mod script.
-
-Example node schema:
-
-```lua
-{
-  id = "MyMod_longblade_power_attack",
-  skill = "longblade",
-  title = "Power Attack",
-  description = "Deliver a committed heavy swing.",
-  x = 120,
-  y = 240,
-  requires = { "longblade_basics" },
-}
-```
-
-### 3) Extend an existing skill tree from another mod (no core patching)
-
-In your mod's PLAYER script, attach new nodes to existing IDs from the base tree (or another mod) using `requires`:
-
-```lua
-local interfaces = require("openmw.interfaces")
-
-interfaces.SkillPerkSystem.registerTreeNodes({
-  {
-    id = "MyMod_block_counterpulse",
-    skill = "block",
-    title = "Counterpulse",
-    description = "A timed bash that rewards defensive rhythm.",
-    x = -240,
-    y = 260,
-    requires = { "block_reactive_guard" },
-  },
-  {
-    id = "MyMod_block_fortress",
-    skill = "block",
-    title = "Fortress",
-    description = "Requires both stock capstone and mod extension.",
-    x = -120,
-    y = 380,
-    requires = { "block_iron_wall", "MyMod_block_counterpulse" },
-  },
-})
-```
-
-This lets your mod add branches/capstones onto shipped trees while keeping the core `SkillPerkSystem` files untouched.
-
-### Reserved fields (future use)
-
-The following node keys are reserved by the framework for future built-in behavior. Avoid using them for custom mod metadata to prevent conflicts:
-
-- `icon`
-- `tier`
-- `hidden`
-- `uiColor`
-
-If you need custom metadata now, use your own namespaced keys (for example `MyMod_tag`, `MyMod_note`, etc.).
-
-For complete schema/validation and coordinate conventions, see `scripts/SkillPerkSystem/trees/README.md`.
+Set it to `false` to disable demo perk registration.

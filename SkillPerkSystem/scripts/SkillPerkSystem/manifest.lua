@@ -1,6 +1,7 @@
 local settings = require("scripts.SkillPerkSystem.settings")
 local core = require("openmw.core")
 local treeRegistry = require("scripts.SkillPerkSystem.tree_registry")
+local demoPerks = require("scripts.SkillPerkSystem.test_perks")
 
 local perkTable = {}
 local perkIDs = {}
@@ -47,6 +48,8 @@ local function registerPerk(data)
     end
     perkTable[data.id] = data
 end
+
+demoPerks.registerDemoPerks(registerPerk)
 
 local function getPerks()
     return perkTable

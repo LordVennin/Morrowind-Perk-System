@@ -48,9 +48,6 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 local selectedTreeNodeID = nil
 local treePanBySkill = {}
-local treePanBoundsBySkill = {}
-local activeTreeCanvasLayout = nil
-local activeTreeCanvasSkillID = nil
 local isDraggingTree = false
 local lastMousePos = nil
 
@@ -124,93 +121,9 @@ local function getTreePan(skillID)
     return state
 end
 
-local function updateTreeCanvasPosition(skillID)
-    if menu == nil or activeTreeCanvasLayout == nil or activeTreeCanvasSkillID ~= skillID then
-        return
-    end
-
-    local pan = getTreePan(skillID)
-    local origin = activeTreeCanvasLayout.external.treeOrigin
-    activeTreeCanvasLayout.props.position = util.vector2(origin.x - pan.x, origin.y - pan.y)
-    menu:update()
-end
-
-local function clampTreePan(skillID, pan)
-    local bounds = skillID ~= nil and treePanBoundsBySkill[skillID] or nil
-    if bounds == nil then
-        return
-    end
-
-    pan.x = math.max(bounds.minX, math.min(bounds.maxX, pan.x))
-    pan.y = math.max(bounds.minY, math.min(bounds.maxY, pan.y))
-end
-
-local function calculateTreePanBounds(treeNodes, viewportWidth, viewportHeight, offsetX, offsetY, margin)
-    if treeNodes == nil or #treeNodes == 0 then
-        return nil, nil, nil
-    end
-
-    local minNodeX, maxNodeX = math.huge, -math.huge
-    local minNodeY, maxNodeY = math.huge, -math.huge
-    for _, node in ipairs(treeNodes) do
-        minNodeX = math.min(minNodeX, node.x)
-        maxNodeX = math.max(maxNodeX, node.x)
-        minNodeY = math.min(minNodeY, node.y)
-        maxNodeY = math.max(maxNodeY, node.y)
-    end
-
-    local contentMinX = minNodeX + offsetX - margin
-    local contentMaxX = maxNodeX + offsetX + margin
-    local contentMinY = minNodeY + offsetY - margin
-    local contentMaxY = maxNodeY + offsetY + margin
-
-    local panMinX = contentMinX
-    local panMaxX = contentMaxX - viewportWidth
-    if panMinX > panMaxX then
-        local centerX = (contentMinX + contentMaxX - viewportWidth) * 0.5
-        panMinX = centerX
-        panMaxX = centerX
-    end
-
-    local panMinY = contentMinY
-    local panMaxY = contentMaxY - viewportHeight
-    if panMinY > panMaxY then
-        local centerY = (contentMinY + contentMaxY - viewportHeight) * 0.5
-        panMinY = centerY
-        panMaxY = centerY
-    end
-
-    return {
-        minX = panMinX,
-        maxX = panMaxX,
-        minY = panMinY,
-        maxY = panMaxY,
-    }, util.vector2(contentMinX, contentMinY), util.vector2(contentMaxX - contentMinX, contentMaxY - contentMinY)
-end
-
-local function updateTreePanBounds(skillID, treeNodes)
-    if skillID == nil then
-        return nil, nil, nil
-    end
-
-    local nodes = treeNodes
-    if nodes == nil then
-        nodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
-            and interfaces[MOD_NAME].getTreeNodesForSkill(skillID)
-            or {}
-    end
-
-    local bounds, canvasOrigin, canvasSize = calculateTreePanBounds(
-        nodes,
-        TREE_VIEWPORT_WIDTH,
-        TREE_VIEWPORT_HEIGHT,
-        TREE_CONTENT_OFFSET_X,
-        TREE_CONTENT_OFFSET_Y,
-        TREE_CANVAS_MARGIN
-    )
-
-    treePanBoundsBySkill[skillID] = bounds
-    return bounds, canvasOrigin, canvasSize
+local function clampTreePan(pan)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
 end
 
 local function findPerkIndexByID(perkID)
@@ -549,19 +462,75 @@ local function buildPerkPane()
 
     if #treeNodes > 0 then
         local pan = getTreePan(selectedSkillID)
-        local _, canvasOrigin, canvasSize = updateTreePanBounds(selectedSkillID, treeNodes)
-        clampTreePan(selectedSkillID, pan)
+        local viewportSize = util.vector2(520, 468)
+        local nodeHeight = 28
+        local lineThickness = 2
+        local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), viewportSize.y - 56)
+        local nodeByID = {}
 
-        local treeCanvasContent = {
-            {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textDisabled,
-                props = {
-                    position = util.vector2(8, 8),
-                    text = string.format("Tree view (Drag + WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
-                },
+        for _, node in ipairs(treeNodes) do
+            nodeByID[node.id] = node
+        end
+
+        table.insert(perksCol, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textDisabled,
+            props = {
+                text = string.format("Tree view (Drag + WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
             },
         }
+
+        local treeCanvasContent = {}
+
+        local function toCanvasPos(node)
+            return util.vector2(
+                treeOrigin.x + node.x - pan.x,
+                treeOrigin.y - node.y - pan.y
+            )
+        end
+
+        local function addLine(x, y, w, h)
+            if w <= 0 or h <= 0 then
+                return
+            end
+            table.insert(treeCanvasContent, {
+                type = ui.TYPE.Container,
+                template = interfaces.MWUI.templates.boxTransparent,
+                props = {
+                    autoSize = false,
+                    position = util.vector2(math.floor(x), math.floor(y)),
+                    size = util.vector2(math.max(lineThickness, math.floor(w)), math.max(lineThickness, math.floor(h))),
+                },
+                userData = {
+                    drawLayer = 0,
+                },
+            })
+        end
+
+        for _, node in ipairs(treeNodes) do
+            local childPos = toCanvasPos(node)
+            local childTopY = childPos.y - math.floor(nodeHeight / 2)
+            for _, reqID in ipairs(node.requires or {}) do
+                local parentNode = nodeByID[reqID]
+                if parentNode ~= nil then
+                    local parentPos = toCanvasPos(parentNode)
+                    local parentBottomY = parentPos.y + math.floor(nodeHeight / 2)
+                    local middleY = math.floor((parentBottomY + childTopY) / 2)
+
+                    local startY = math.min(parentBottomY, middleY)
+                    local vertical1Height = math.abs(middleY - parentBottomY)
+                    addLine(parentPos.x, startY, lineThickness, vertical1Height)
+
+                    local leftX = math.min(parentPos.x, childPos.x)
+                    local horizontalWidth = math.abs(childPos.x - parentPos.x)
+                    addLine(leftX, middleY, horizontalWidth, lineThickness)
+
+                    local startY2 = math.min(middleY, childTopY)
+                    local vertical2Height = math.abs(childTopY - middleY)
+                    addLine(childPos.x, startY2, lineThickness, vertical2Height)
+                end
+            end
+        end
 
         for _, node in ipairs(treeNodes) do
             local perkIndex = findPerkIndexByID(node.id)
@@ -574,57 +543,52 @@ local function buildPerkPane()
                 nodeLabel = nodeLabel .. " [node]"
             end
 
-            local nodeButton = createBoxedButton(nodeLabel, function()
-                selectedTreeNodeID = node.id
-                selectedPerkIndex = perkIndex
-                menu.layout = buildLayout()
-                menu:update()
-            end, util.vector2(isSelected and 190 or 180, 24))
-            nodeButton.props.position = util.vector2(
-                node.x + TREE_CONTENT_OFFSET_X - canvasOrigin.x,
-                node.y + TREE_CONTENT_OFFSET_Y - canvasOrigin.y
-            )
+            local buttonSize = util.vector2(isSelected and 196 or 184, 26)
+            local nodePos = toCanvasPos(node)
 
-            table.insert(treeCanvasContent, nodeButton)
-
-            if #node.requires > 0 then
-                table.insert(treeCanvasContent, {
-                    type = ui.TYPE.Text,
-                    template = interfaces.MWUI.templates.textDisabled,
-                    props = {
-                        position = util.vector2(
-                            node.x + TREE_CONTENT_OFFSET_X - canvasOrigin.x + 8,
-                            node.y + TREE_CONTENT_OFFSET_Y - canvasOrigin.y + 26
-                        ),
-                        text = "requires: " .. table.concat(node.requires, ", "),
-                    },
-                })
-            end
+            table.insert(treeCanvasContent, {
+                type = ui.TYPE.Widget,
+                props = {
+                    autoSize = false,
+                    position = util.vector2(
+                        math.floor(nodePos.x - buttonSize.x / 2),
+                        math.floor(nodePos.y - buttonSize.y / 2)
+                    ),
+                    size = buttonSize,
+                },
+                userData = {
+                    drawLayer = 1,
+                },
+                content = ui.content {
+                    createBoxedButton(nodeLabel, function()
+                        selectedTreeNodeID = node.id
+                        selectedPerkIndex = perkIndex
+                        menu.layout = buildLayout()
+                        menu:update()
+                    end, buttonSize, 1),
+                },
+            })
         end
 
-        activeTreeCanvasLayout = {
-            type = ui.TYPE.Widget,
-            props = {
-                autoSize = false,
-                size = canvasSize,
-                position = util.vector2(canvasOrigin.x - pan.x, canvasOrigin.y - pan.y),
-            },
-            external = {
-                treeOrigin = canvasOrigin,
-            },
-            content = ui.content(treeCanvasContent),
-        }
-        activeTreeCanvasSkillID = selectedSkillID
-
-        treeViewportContent = {
+        table.insert(perksCol, {
             type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.boxTransparent,
             props = {
                 autoSize = false,
-                size = util.vector2(TREE_VIEWPORT_WIDTH, TREE_VIEWPORT_HEIGHT),
+                size = viewportSize,
                 clip = true,
             },
-            content = ui.content { activeTreeCanvasLayout },
-        }
+            content = ui.content {
+                {
+                    type = ui.TYPE.Widget,
+                    props = {
+                        autoSize = false,
+                        relativeSize = util.vector2(1, 1),
+                    },
+                    content = ui.content(treeCanvasContent),
+                },
+            },
+        })
     else
         activeTreeCanvasLayout = nil
         activeTreeCanvasSkillID = nil
@@ -849,10 +813,10 @@ local function buildPerkPane()
                                 local delta = mouseEvent.position - lastMousePos
                                 dragPan.x = dragPan.x - delta.x
                                 dragPan.y = dragPan.y - delta.y
-                                updateTreePanBounds(selectedSkillIDForPan)
-                                clampTreePan(selectedSkillIDForPan, dragPan)
+                                clampTreePan(dragPan)
                                 lastMousePos = mouseEvent.position
-                                updateTreeCanvasPosition(selectedSkillIDForPan)
+                                menu.layout = buildLayout()
+                                menu:update()
                             end),
                             mouseRelease = async:callback(function(mouseEvent)
                                 if mouseEvent.button == 1 then
@@ -865,7 +829,7 @@ local function buildPerkPane()
                                 lastMousePos = nil
                             end),
                         } or nil,
-                        content = ui.content(treeViewportContent ~= nil and { treeViewportContent } or perksCol),
+                        content = ui.content(perksCol),
                     },
                     {
                         type = ui.TYPE.Widget,
@@ -1162,9 +1126,9 @@ local function onFrame(dt)
             end
 
             if moved then
-                clampTreePan(selectedSkillID, pan)
-                print(string.format("[%s][DEBUG] applied pan=(%.2f, %.2f)", MOD_NAME, pan.x, pan.y))
-                updateTreeCanvasPosition(selectedSkillID)
+                clampTreePan(pan)
+                menu.layout = buildLayout()
+                menu:update()
             end
         end
     end

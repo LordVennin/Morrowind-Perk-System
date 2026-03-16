@@ -493,9 +493,18 @@ local function buildPerkPane()
                         type = ui.TYPE.Widget,
                         external = { grow = 1 },
                     },
-                    createBoxedButton("Exit", function()
-                        pself:sendEvent(MOD_NAME .. "closePerkUI")
-                    end, util.vector2(120, 28)),
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            autoSize = true,
+                        },
+                        content = ui.content {
+                            createBoxedButton("Exit", function()
+                                pself:sendEvent(MOD_NAME .. "closePerkUI")
+                            end, util.vector2(120, 28)),
+                        },
+                    },
                 }
             }
         }

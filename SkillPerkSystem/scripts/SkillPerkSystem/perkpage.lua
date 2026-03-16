@@ -39,66 +39,31 @@ local SKILL_SELECTOR_ROW_WIDTH = 560
 
 local buildLayout
 
-local function clampTreePan(pan)
-    pan.x = math.max(-600, math.min(600, pan.x))
-    pan.y = math.max(-600, math.min(600, pan.y))
-end
-
-local function extractMousePosition(mouseEvent)
-    if mouseEvent == nil then
-        return nil
-    end
-    local pos = mouseEvent.position or mouseEvent.cursorPosition or mouseEvent.screenPosition
-    if pos == nil then
-        return nil
-    end
-    if pos.x == nil or pos.y == nil then
-        return nil
-    end
-    return { x = pos.x, y = pos.y }
-end
-
-local function canPanTree(skillID)
-    if menu == nil or skillID == nil then
-        return false
-    end
-    if type(interfaces[MOD_NAME].getTreeNodesForSkill) ~= "function" then
-        return false
-    end
-    local treeNodes = interfaces[MOD_NAME].getTreeNodesForSkill(skillID) or {}
-    return #treeNodes > 0
-end
-
-local function applyTreePanDelta(skillID, deltaX, deltaY)
-    if not canPanTree(skillID) then
-        return false
+local function getSkillRecordByID(skillID)
+    local direct = core.stats.Skill.records[skillID]
+    if direct ~= nil then
+        return direct
     end
 
-    local pan = getTreePan(skillID)
-    local oldX, oldY = pan.x, pan.y
-    pan.x = pan.x + deltaX
-    pan.y = pan.y + deltaY
-    clampTreePan(pan)
-
-    if pan.x ~= oldX or pan.y ~= oldY then
-        menu.layout = buildLayout()
-        menu:update()
-        return true
+    for _, record in ipairs(core.stats.Skill.records) do
+        if record.id == skillID then
+            return record
+        end
     end
-    return false
+    return nil
 end
 
 local function getSkillIDs()
     local out = {}
-    for skillID, _ in pairs(core.stats.Skill.records) do
-        table.insert(out, skillID)
+    for _, record in ipairs(core.stats.Skill.records) do
+        table.insert(out, record.id)
     end
     table.sort(out)
     return out
 end
 
 local function getSkillLabel(skillID)
-    local record = core.stats.Skill.records[skillID]
+    local record = getSkillRecordByID(skillID)
     if record ~= nil and type(record.name) == "string" and record.name ~= "" then
         return record.name
     end
@@ -578,7 +543,7 @@ local function buildPerkPane()
         end
     end
 
-    local skillRecord = selectedSkillID ~= nil and core.stats.Skill.records[selectedSkillID] or nil
+    local skillRecord = selectedSkillID ~= nil and getSkillRecordByID(selectedSkillID) or nil
     local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Skill"
     local skillDescription = "No description available."
     if skillRecord ~= nil and type(skillRecord.description) == "string" and skillRecord.description ~= "" then

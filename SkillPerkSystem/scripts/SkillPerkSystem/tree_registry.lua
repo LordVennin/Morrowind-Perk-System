@@ -4,6 +4,19 @@ local loadedSkills = {}
 local treeNodesBySkill = {}
 local treeNodeByID = {}
 
+local function hasSkillRecord(skillID)
+    if core.stats.Skill.records[skillID] ~= nil then
+        return true
+    end
+    for _, record in ipairs(core.stats.Skill.records) do
+        if record.id == skillID then
+            return true
+        end
+    end
+    return false
+end
+
+
 local function validateNode(data)
     if type(data) ~= "table" then
         error("registerTreeNode() expects a table", 3)
@@ -11,7 +24,7 @@ local function validateNode(data)
     if type(data.id) ~= "string" or data.id == "" then
         error("registerTreeNode() missing string field 'id'", 3)
     end
-    if type(data.skill) ~= "string" or core.stats.Skill.records[data.skill] == nil then
+    if type(data.skill) ~= "string" or not hasSkillRecord(data.skill) then
         error("registerTreeNode(" .. tostring(data.id) .. ") has invalid field 'skill'", 3)
     end
     if type(data.x) ~= "number" or type(data.y) ~= "number" then

@@ -2,38 +2,15 @@ local core = require("openmw.core")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
-local ambientLoaded, ambient = pcall(require, "openmw.ambient")
+local ambient = require("openmw.ambient")
 local interfaces = require("openmw.interfaces")
-local inputLoaded, input = pcall(require, "openmw.input")
+local input = require("openmw.input")
 local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
 
-if not ambientLoaded then
-    ambient = nil
-    print("[" .. MOD_NAME .. "] Ambient sound API unavailable; click sounds disabled")
-end
-
-if not inputLoaded then
-    input = nil
-    print("[" .. MOD_NAME .. "] Input key API unavailable; hotkey disabled, console command still usable")
-end
-
-local function playClickSound()
-    if ambient ~= nil and type(ambient.playSound) == "function" then
-        ambient.playSound("Menu Click")
-    end
-end
-
 local function resolveToggleKey()
-    if type(input) ~= "table" or type(input.KEY) ~= "table" then
-        if inputLoaded then
-            print("[" .. MOD_NAME .. "] Input key API unavailable; hotkey disabled, console command still usable")
-        end
-        return nil
-    end
-
     local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
     local keyCode = input.KEY[keyName]
     if keyCode == nil then
@@ -156,7 +133,7 @@ local function createButton(label, onPress, enabled, size)
         buttonLayout.events = {
             mousePress = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
-                    playClickSound()
+                    ambient.playSound("Menu Click")
                     buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                     textLayout.template = interfaces.MWUI.templates.textHeader
                     if menu ~= nil then menu:update() end
@@ -200,7 +177,7 @@ local function createBoxedButton(label, onPress, size)
 
     local buttonLayout = {
         type = ui.TYPE.Container,
-        template = interfaces.MWUI.templates.boxTransparent,
+        template = interfaces.MWUI.templates.boxButton,
         props = {
             size = size or util.vector2(140, 28),
         },
@@ -210,7 +187,7 @@ local function createBoxedButton(label, onPress, size)
     buttonLayout.events = {
         mousePress = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
-                playClickSound()
+                ambient.playSound("Menu Click")
                 textLayout.template = interfaces.MWUI.templates.textHeader
                 if menu ~= nil then menu:update() end
             end
@@ -230,25 +207,6 @@ local function createBoxedButton(label, onPress, size)
             textLayout.template = interfaces.MWUI.templates.textNormal
             if menu ~= nil then menu:update() end
         end),
-    }
-
-    return buttonLayout
-end
-
-local function withTopOffset(element, offset)
-    return {
-        type = ui.TYPE.Flex,
-        props = {
-            horizontal = false,
-            autoSize = true,
-        },
-        content = ui.content {
-            {
-                type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, offset or 2) },
-            },
-            element,
-        },
     }
 
     return buttonLayout
@@ -298,12 +256,12 @@ local function buildSkillTabs()
         props = {
             horizontal = true,
             autoSize = false,
-            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 36),
+            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 32),
         },
         content = ui.content {
-            withTopOffset(createBoxedButton("<", function()
+            createBoxedButton("<", function()
                 changeSelectedSkill(-1)
-            end, util.vector2(48, 28)), 3),
+            end, util.vector2(48, 28)),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
@@ -333,9 +291,9 @@ local function buildSkillTabs()
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
             },
-            withTopOffset(createBoxedButton(">", function()
+            createBoxedButton(">", function()
                 changeSelectedSkill(1)
-            end, util.vector2(48, 28)), 3),
+            end, util.vector2(48, 28)),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(12, 1) },
@@ -627,10 +585,6 @@ local function onConsoleCommand(mode, command, selectedObject)
 end
 
 local function onFrame(dt)
-    if TOGGLE_UI_KEY_CODE == nil or type(input) ~= "table" or type(input.isKeyPressed) ~= "function" then
-        return
-    end
-
     local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
     if isPressed and not toggleKeyWasPressed then
         toggleMenu()

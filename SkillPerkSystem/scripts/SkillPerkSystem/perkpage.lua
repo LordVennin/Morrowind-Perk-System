@@ -458,11 +458,29 @@ local function buildPerkPane()
 
         for _, line in ipairs(wrapTextLines(skillDescription, 40)) do
             table.insert(detailRows, {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textNormal,
+                type = ui.TYPE.Flex,
                 props = {
-                    text = line,
-                    textAlignH = ui.ALIGNMENT.Center,
+                    horizontal = true,
+                    autoSize = false,
+                    size = util.vector2(374, 20),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    {
+                        type = ui.TYPE.Text,
+                        template = interfaces.MWUI.templates.textNormal,
+                        props = {
+                            text = line,
+                            textAlignH = ui.ALIGNMENT.Center,
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
                 },
             })
         end
@@ -631,12 +649,53 @@ buildLayout = function()
                 },
                 content = ui.content {
                     {
-                        type = ui.TYPE.Text,
-                        template = interfaces.MWUI.templates.textHeader,
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
                         props = {
-                            text = "Skill Perks",
-                            textAlignH = ui.ALIGNMENT.Center,
-                        }
+                            autoSize = false,
+                            size = util.vector2(980, 28),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Flex,
+                                props = {
+                                    horizontal = true,
+                                    autoSize = false,
+                                    size = util.vector2(980, 28),
+                                },
+                                content = ui.content {
+                                    {
+                                        type = ui.TYPE.Widget,
+                                        external = { grow = 1 },
+                                    },
+                                    {
+                                        type = ui.TYPE.Container,
+                                        template = interfaces.MWUI.templates.boxTransparentThick,
+                                        props = {
+                                            autoSize = false,
+                                            size = util.vector2(170, 24),
+                                        },
+                                        content = ui.content {
+                                            {
+                                                type = ui.TYPE.Text,
+                                                template = interfaces.MWUI.templates.textHeader,
+                                                props = {
+                                                    text = "Skill Perks",
+                                                    autoSize = false,
+                                                    size = util.vector2(170, 24),
+                                                    textAlignH = ui.ALIGNMENT.Center,
+                                                    textAlignV = ui.ALIGNMENT.Center,
+                                                },
+                                            },
+                                        },
+                                    },
+                                    {
+                                        type = ui.TYPE.Widget,
+                                        external = { grow = 1 },
+                                    },
+                                },
+                            },
+                        },
                     },
                     buildSkillTabs(),
                     {

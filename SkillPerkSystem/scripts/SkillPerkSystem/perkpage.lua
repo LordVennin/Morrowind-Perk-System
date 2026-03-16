@@ -423,7 +423,15 @@ local function buildPerkPane()
         local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
         local owned = hasPerk(selectedPerkID)
         local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
-        perkDetail.props.text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status)
+        perkDetail = {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                autoSize = false,
+                size = util.vector2(374, 360),
+            },
+        }
     end
 
     local function purchasePerk()

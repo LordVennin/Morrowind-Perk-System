@@ -24,6 +24,7 @@ local TOGGLE_UI_KEY_CODE = resolveToggleKey()
 local toggleKeyWasPressed = false
 
 local menu = nil
+local openedInterfaceForPerkMenu = false
 local selectedSkillIndex = 1
 local selectedPerkIndex = 1
 
@@ -553,6 +554,7 @@ local function showMenu()
     -- Use an isolated interface mode so the perk page has cursor/UI input without
     -- auto-opening vanilla interface windows (inventory/map/magic panes).
     interfaces.UI.setMode("Interface", { windows = {} })
+    local interfaceModeOpened = true
 
     local ok, createdOrError = pcall(function()
         return ui.create(buildLayout())
@@ -560,11 +562,14 @@ local function showMenu()
 
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
-        interfaces.UI.removeMode("Interface")
+        if interfaceModeOpened then
+            interfaces.UI.removeMode("Interface")
+        end
         return
     end
 
     menu = createdOrError
+    openedInterfaceForPerkMenu = true
 end
 
 local function closeMenu()
@@ -573,9 +578,10 @@ local function closeMenu()
         menu = nil
     end
 
-    -- Always remove the Interface mode so we don't leave UI state partially active
-    -- if show/create failed or close is called redundantly.
-    interfaces.UI.removeMode("Interface")
+    if openedInterfaceForPerkMenu then
+        interfaces.UI.removeMode("Interface")
+        openedInterfaceForPerkMenu = false
+    end
 end
 
 local function toggleMenu()

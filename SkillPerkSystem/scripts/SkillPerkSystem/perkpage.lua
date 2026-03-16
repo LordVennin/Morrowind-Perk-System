@@ -182,12 +182,34 @@ local function requirementSatisfied(perk)
     return true
 end
 
+local function getMissingParentPerks(perkID)
+    if type(interfaces[MOD_NAME].getTreeNode) ~= "function" then
+        return {}
+    end
+
+    local node = interfaces[MOD_NAME].getTreeNode(perkID)
+    if node == nil then
+        return {}
+    end
+
+    local missing = {}
+    for _, requiredID in ipairs(node.requires or {}) do
+        if not hasPerk(requiredID) then
+            table.insert(missing, requiredID)
+        end
+    end
+    return missing
+end
+
 local function canPurchasePerk(perkID)
     local perk = interfaces[MOD_NAME].getPerks()[perkID]
     if perk == nil or hasPerk(perkID) then
         return false
     end
     if not requirementSatisfied(perk) then
+        return false
+    end
+    if #getMissingParentPerks(perkID) > 0 then
         return false
     end
     return interfaces[MOD_NAME .. "Player"].availablePoints(perk.skill) >= perk.cost
@@ -780,11 +802,27 @@ local function buildPerkPane()
         if selectedPerk ~= nil then
             local owned = hasPerk(selectedPerkID)
             local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
+            local missingParents = getMissingParentPerks(selectedPerkID)
+            local failureDetails = {}
+            if not requirementSatisfied(selectedPerk) then
+                table.insert(failureDetails, "Requirements not met")
+            end
+            if #missingParents > 0 then
+                table.insert(failureDetails, "Missing parents: " .. table.concat(missingParents, ", "))
+            end
+            if interfaces[MOD_NAME .. "Player"].availablePoints(selectedPerk.skill) < selectedPerk.cost then
+                table.insert(failureDetails, "Not enough " .. selectedPerk.skill .. " perk points")
+            end
+
+            local failureText = ""
+            if #failureDetails > 0 then
+                failureText = "\n" .. table.concat(failureDetails, "\n")
+            end
             perkDetail = {
                 type = ui.TYPE.Text,
                 template = interfaces.MWUI.templates.textNormal,
                 props = {
-                    text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                    text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s%s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status, failureText),
                     autoSize = false,
                     size = util.vector2(374, 360),
                 },

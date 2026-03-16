@@ -21,6 +21,11 @@ local function playClickSound()
 end
 
 local function resolveToggleKey()
+    if type(input) ~= "table" or type(input.KEY) ~= "table" then
+        print("[" .. MOD_NAME .. "] Keyboard input API unavailable; hotkey toggle disabled")
+        return nil
+    end
+
     local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
     local keyCode = input.KEY[keyName]
     if keyCode == nil then
@@ -614,6 +619,10 @@ local function onConsoleCommand(mode, command, selectedObject)
 end
 
 local function onFrame(dt)
+    if TOGGLE_UI_KEY_CODE == nil or type(input) ~= "table" or type(input.isKeyPressed) ~= "function" then
+        return
+    end
+
     local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
     if isPressed and not toggleKeyWasPressed then
         toggleMenu()

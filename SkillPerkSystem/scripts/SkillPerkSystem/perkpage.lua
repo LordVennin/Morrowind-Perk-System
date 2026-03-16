@@ -27,10 +27,16 @@ local function keyDown(keyName)
     local ok, code = pcall(function()
         return input.KEY[keyName]
     end)
-    if not ok or code == nil then
-        return false
+    return ok and code ~= nil and input.isKeyPressed(code)
+end
+
+local function anyKeyDown(names)
+    for _, name in ipairs(names) do
+        if keyDown(name) then
+            return true
+        end
     end
-    return input.isKeyPressed(code)
+    return false
 end
 
 local menu = nil
@@ -444,6 +450,7 @@ local function buildPerkPane()
     if #treeNodes > 0 then
         local pan = getTreePan(selectedSkillID)
         local lastVisibleY = nil
+        local topPadInserted = false
 
         table.insert(perksCol, {
             type = ui.TYPE.Text,
@@ -463,6 +470,17 @@ local function buildPerkPane()
             local yOffset = node.y - pan.y
 
             if yOffset >= -120 and yOffset <= 620 then
+                if not topPadInserted then
+                    local topPad = math.max(0, math.min(240, math.floor((yOffset + 40) / 4)))
+                    if topPad > 0 then
+                        table.insert(perksCol, {
+                            type = ui.TYPE.Widget,
+                            props = { size = util.vector2(1, topPad) },
+                        })
+                    end
+                    topPadInserted = true
+                end
+
                 if lastVisibleY ~= nil then
                     local dy = math.max(0, yOffset - lastVisibleY)
                     if dy > 0 then
@@ -1005,19 +1023,19 @@ local function onFrame(dt)
             local panDelta = 320 * dt
             local moved = false
 
-            if keyDown("LeftArrow") or keyDown("A") then
+            if anyKeyDown({"LeftArrow", "Left", "A"}) then
                 pan.x = pan.x - panDelta
                 moved = true
             end
-            if keyDown("RightArrow") or keyDown("D") then
+            if anyKeyDown({"RightArrow", "Right", "D"}) then
                 pan.x = pan.x + panDelta
                 moved = true
             end
-            if keyDown("UpArrow") or keyDown("W") then
+            if anyKeyDown({"UpArrow", "Up", "W"}) then
                 pan.y = pan.y - panDelta
                 moved = true
             end
-            if keyDown("DownArrow") or keyDown("S") then
+            if anyKeyDown({"DownArrow", "Down", "S"}) then
                 pan.y = pan.y + panDelta
                 moved = true
             end

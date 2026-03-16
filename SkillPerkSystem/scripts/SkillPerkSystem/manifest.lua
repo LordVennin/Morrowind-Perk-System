@@ -1,7 +1,22 @@
 local settings = require("scripts.SkillPerkSystem.settings")
 local core = require("openmw.core")
+local treeRegistry = require("scripts.SkillPerkSystem.tree_registry")
+local demoPerks = require("scripts.SkillPerkSystem.test_perks")
 
 local perkTable = {}
+
+local function hasSkillRecord(skillID)
+    if core.stats.Skill.records[skillID] ~= nil then
+        return true
+    end
+    for _, record in ipairs(core.stats.Skill.records) do
+        if record.id == skillID then
+            return true
+        end
+    end
+    return false
+end
+
 local perkIDs = {}
 
 local function registerPerk(data)
@@ -14,7 +29,7 @@ local function registerPerk(data)
     if type(data.skill) ~= "string" then
         error("registerPerk(" .. tostring(data.id) .. ") missing string field 'skill'", 2)
     end
-    if core.stats.Skill.records[data.skill] == nil then
+    if not hasSkillRecord(data.skill) then
         error(
             "registerPerk(" .. tostring(data.id) .. ") has invalid skill id '" .. tostring(data.skill) .. "'",
             2
@@ -47,6 +62,8 @@ local function registerPerk(data)
     perkTable[data.id] = data
 end
 
+demoPerks.registerDemoPerks(registerPerk)
+
 local function getPerks()
     return perkTable
 end
@@ -72,5 +89,10 @@ return {
         getPerks = getPerks,
         getPerkIDs = getPerkIDs,
         getPerkIDsForSkill = getPerkIDsForSkill,
+        registerTreeNode = treeRegistry.registerTreeNode,
+        registerTreeNodes = treeRegistry.registerTreeNodes,
+        getTreeNode = treeRegistry.getTreeNode,
+        getTreeNodesForSkill = treeRegistry.getTreeNodesForSkill,
+        loadSkillTree = treeRegistry.loadSkillTree,
     }
 }

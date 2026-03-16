@@ -5,4 +5,5 @@ return {
     MILESTONE_STEP = 25,
     DEBUG_LOGS = false,
     TOGGLE_UI_KEY = "p",
+    ENABLE_DEMO_TREE_PERKS = true,
 }

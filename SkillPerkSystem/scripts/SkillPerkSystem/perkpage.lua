@@ -10,13 +10,7 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
 
-local hasAmbient, ambient = pcall(require, "openmw.ambient")
-
-local function playClickSound()
-    if hasAmbient and ambient ~= nil and type(ambient.playSound) == "function" then
-        ambient.playSound("Menu Click")
-    end
-end
+local ambient = require("openmw.ambient")
 
 local function resolveToggleKey()
     local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
@@ -29,7 +23,7 @@ local function resolveToggleKey()
 end
 
 local TOGGLE_UI_KEY_CODE = resolveToggleKey()
-local toggleKeyWasPressed = false
+local TOGGLE_UI_KEY_NAME = tostring(settings.TOGGLE_UI_KEY or "p"):lower()
 
 local menu = nil
 local selectedSkillIndex = 1
@@ -141,7 +135,7 @@ local function createButton(label, onPress, enabled, size)
         buttonLayout.events = {
             mousePress = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
-                    playClickSound()
+                    ambient.playSound("Menu Click")
                     buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                     textLayout.template = interfaces.MWUI.templates.textHeader
                     if menu ~= nil then menu:update() end
@@ -195,7 +189,7 @@ local function createBoxedButton(label, onPress, size)
     buttonLayout.events = {
         mousePress = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
-                playClickSound()
+                ambient.playSound("Menu Click")
                 textLayout.template = interfaces.MWUI.templates.textHeader
                 if menu ~= nil then menu:update() end
             end
@@ -234,31 +228,6 @@ local function withTopOffset(element, offset)
             },
             element,
         },
-    }
-
-    buttonLayout.events = {
-        mousePress = async:callback(function(mouseEvent)
-            if mouseEvent.button == 1 then
-                ambient.playSound("Menu Click")
-                textLayout.template = interfaces.MWUI.templates.textHeader
-                if menu ~= nil then menu:update() end
-            end
-        end),
-        mouseRelease = async:callback(function(mouseEvent)
-            if mouseEvent.button == 1 then
-                textLayout.template = interfaces.MWUI.templates.textNormal
-                if menu ~= nil then menu:update() end
-                onPress()
-            end
-        end),
-        focusGain = async:callback(function()
-            textLayout.template = interfaces.MWUI.templates.textHeader
-            if menu ~= nil then menu:update() end
-        end),
-        focusLoss = async:callback(function()
-            textLayout.template = interfaces.MWUI.templates.textNormal
-            if menu ~= nil then menu:update() end
-        end),
     }
 
     return buttonLayout
@@ -636,12 +605,16 @@ local function onConsoleCommand(mode, command, selectedObject)
     end
 end
 
-local function onFrame(dt)
-    local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
-    if isPressed and not toggleKeyWasPressed then
+local function onKeyPress(event)
+    local key = event and (event.key or event.symbol or event.code or event.keyCode)
+    if key == TOGGLE_UI_KEY_CODE then
+        toggleMenu()
+        return
+    end
+
+    if type(key) == "string" and key:lower() == TOGGLE_UI_KEY_NAME then
         toggleMenu()
     end
-    toggleKeyWasPressed = isPressed
 end
 
 return {
@@ -652,6 +625,6 @@ return {
     },
     engineHandlers = {
         onConsoleCommand = onConsoleCommand,
-        onFrame = onFrame,
+        onKeyPress = onKeyPress,
     }
 }

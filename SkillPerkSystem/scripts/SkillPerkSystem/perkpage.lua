@@ -30,7 +30,7 @@ local selectedPerkIndex = 1
 local skillIDs = {}
 local filteredPerkIDs = {}
 
-local SKILL_SELECTOR_WIDTH = 360
+local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 72
 local SKILL_SELECTOR_ROW_WIDTH = 540
 

@@ -550,7 +550,9 @@ local function showMenu()
     selectedPerkIndex = 1
     updateFilteredPerks()
 
-    interfaces.UI.setMode("Interface", { windows = {} })
+    -- Do not clear the window set here; forcing an empty list can leave core tabs
+    -- (inventory / magic / map) unavailable after this UI is closed.
+    interfaces.UI.setMode("Interface")
 
     local ok, createdOrError = pcall(function()
         return ui.create(buildLayout())
@@ -566,11 +568,13 @@ local function showMenu()
 end
 
 local function closeMenu()
-    if menu == nil then
-        return
+    if menu ~= nil then
+        menu:destroy()
+        menu = nil
     end
-    menu:destroy()
-    menu = nil
+
+    -- Always remove the Interface mode so we don't leave UI state partially active
+    -- if show/create failed or close is called redundantly.
     interfaces.UI.removeMode("Interface")
 end
 

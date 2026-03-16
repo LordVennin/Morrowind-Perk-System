@@ -550,9 +550,9 @@ local function showMenu()
     selectedPerkIndex = 1
     updateFilteredPerks()
 
-    -- Do not clear the window set here; forcing an empty list can leave core tabs
-    -- (inventory / magic / map) unavailable after this UI is closed.
-    interfaces.UI.setMode("Interface")
+    -- Use an isolated interface mode so the perk page has cursor/UI input without
+    -- auto-opening vanilla interface windows (inventory/map/magic panes).
+    interfaces.UI.setMode("Interface", { windows = {} })
 
     local ok, createdOrError = pcall(function()
         return ui.create(buildLayout())

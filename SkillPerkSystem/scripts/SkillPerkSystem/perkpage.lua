@@ -29,6 +29,9 @@ local selectedPerkIndex = 1
 local skillIDs = {}
 local filteredPerkIDs = {}
 
+local SKILL_SELECTOR_WIDTH = 260
+local SKILL_INDEX_WIDTH = 64
+
 local buildLayout
 
 local function getSkillIDs()
@@ -193,7 +196,7 @@ local function buildSkillTabs()
     end
 
     local skillID = getSelectedSkillID()
-    local label = string.format("%s (%d)", getShortSkillLabel(skillID), interfaces[MOD_NAME .. "Player"].availablePoints(skillID))
+    local label = string.format("%s (%d)", getSkillLabel(skillID), interfaces[MOD_NAME .. "Player"].availablePoints(skillID))
 
     return {
         type = ui.TYPE.Flex,
@@ -214,7 +217,8 @@ local function buildSkillTabs()
                 type = ui.TYPE.Container,
                 template = interfaces.MWUI.templates.boxTransparent,
                 props = {
-                    autoSize = true,
+                    autoSize = false,
+                    size = util.vector2(SKILL_SELECTOR_WIDTH, 24),
                 },
                 content = ui.content {
                     {
@@ -222,7 +226,9 @@ local function buildSkillTabs()
                         template = interfaces.MWUI.templates.textNormal,
                         props = {
                             text = label,
-                            autoSize = true,
+                            textAlignH = ui.ALIGNMENT.Center,
+                            textAlignV = ui.ALIGNMENT.Center,
+                            relativeSize = util.vector2(1, 1),
                         },
                     },
                 },
@@ -239,11 +245,23 @@ local function buildSkillTabs()
                 props = { size = util.vector2(12, 1) },
             },
             {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textNormal,
+                type = ui.TYPE.Container,
+                template = interfaces.MWUI.templates.boxTransparent,
                 props = {
-                    text = string.format("%d/%d", selectedSkillIndex, count),
-                    autoSize = true,
+                    autoSize = false,
+                    size = util.vector2(SKILL_INDEX_WIDTH, 24),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Text,
+                        template = interfaces.MWUI.templates.textNormal,
+                        props = {
+                            text = string.format("%d/%d", selectedSkillIndex, count),
+                            textAlignH = ui.ALIGNMENT.Center,
+                            textAlignV = ui.ALIGNMENT.Center,
+                            relativeSize = util.vector2(1, 1),
+                        },
+                    },
                 },
             },
         },

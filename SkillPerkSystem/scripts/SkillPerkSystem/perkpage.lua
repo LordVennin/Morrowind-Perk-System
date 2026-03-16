@@ -396,7 +396,39 @@ local function buildPerkPane()
         or {}
 
     if #treeNodes > 0 then
+        local viewportSize = util.vector2(532, 468)
+        local nodeSize = util.vector2(152, 42)
+        local connectorStep = 10
         local pan = getTreePan(selectedSkillID)
+        local canvasElements = {}
+        local nodeByID = {}
+
+        local function isRectVisible(x, y, width, height)
+            return x + width >= 0
+                and y + height >= 0
+                and x <= viewportSize.x
+                and y <= viewportSize.y
+        end
+
+        local function addConnectorSegment(x, y, width, height)
+            if not isRectVisible(x, y, width, height) then
+                return
+            end
+
+            table.insert(canvasElements, {
+                type = ui.TYPE.Image,
+                props = {
+                    position = util.vector2(x, y),
+                    size = util.vector2(width, height),
+                    resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
+                },
+            })
+        end
+
+        for _, node in ipairs(treeNodes) do
+            nodeByID[node.id] = node
+        end
+
         table.insert(perksCol, {
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textDisabled,
@@ -410,18 +442,48 @@ local function buildPerkPane()
         })
 
         for _, node in ipairs(treeNodes) do
+            local childX = math.floor(node.x - pan.x)
+            local childY = math.floor(node.y - pan.y)
+            local childCenterX = childX + math.floor(nodeSize.x / 2)
+            local childCenterY = childY + math.floor(nodeSize.y / 2)
+
+            for _, requiredID in ipairs(node.requires or {}) do
+                local requiredNode = nodeByID[requiredID]
+                if requiredNode ~= nil then
+                    local parentX = math.floor(requiredNode.x - pan.x)
+                    local parentY = math.floor(requiredNode.y - pan.y)
+                    local parentCenterX = parentX + math.floor(nodeSize.x / 2)
+                    local parentCenterY = parentY + math.floor(nodeSize.y / 2)
+
+                    local left = math.min(parentCenterX, childCenterX)
+                    local right = math.max(parentCenterX, childCenterX)
+                    local top = math.min(parentCenterY, childCenterY)
+                    local bottom = math.max(parentCenterY, childCenterY)
+
+                    for x = left, right, connectorStep do
+                        addConnectorSegment(x, parentCenterY - 1, math.min(4, right - x + 1), 2)
+                    end
+
+                    for y = top, bottom, connectorStep do
+                        addConnectorSegment(childCenterX - 1, y, 2, math.min(4, bottom - y + 1))
+                    end
+                end
+            end
+        end
+
+        for _, node in ipairs(treeNodes) do
             local perkIndex = findPerkIndexByID(node.id)
             local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
-            local yOffset = node.y - pan.y
-            if yOffset >= -90 and yOffset <= 560 then
-                local indent = math.max(0, math.floor((node.x - pan.x + 260) / 70))
-                local prefix = string.rep("  ", math.min(10, indent))
-                local reqText = (#node.requires > 0) and (" <- " .. table.concat(node.requires, ", ")) or ""
-                local marker = (perkIndex > 0 and hasPerk(node.id)) and " [owned]" or ((perkIndex > 0) and "" or " [node]")
-                local title = node.title or node.id
-                table.insert(perksCol, {
-                    type = ui.TYPE.Text,
-                    template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+            local owned = perkIndex > 0 and hasPerk(node.id)
+            local marker = owned and " [owned]" or ((perkIndex > 0) and "" or " [node]")
+            local title = (node.title or node.id) .. marker
+            local x = math.floor(node.x - pan.x)
+            local y = math.floor(node.y - pan.y)
+
+            if isRectVisible(x, y, nodeSize.x, nodeSize.y) then
+                table.insert(canvasElements, {
+                    type = ui.TYPE.Container,
+                    template = isSelected and interfaces.MWUI.templates.boxTransparentThick or interfaces.MWUI.templates.boxButton,
                     events = {
                         mouseClick = async:callback(function()
                             selectedTreeNodeID = node.id
@@ -431,11 +493,46 @@ local function buildPerkPane()
                         end),
                     },
                     props = {
-                        text = prefix .. title .. marker .. reqText,
+                        position = util.vector2(x, y),
+                        autoSize = false,
+                        size = nodeSize,
+                    },
+                    content = ui.content {
+                        {
+                            type = ui.TYPE.Text,
+                            template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                            props = {
+                                text = title,
+                                autoSize = false,
+                                size = nodeSize,
+                                textAlignH = ui.ALIGNMENT.Center,
+                                textAlignV = ui.ALIGNMENT.Center,
+                            },
+                        },
                     },
                 })
             end
         end
+
+        table.insert(perksCol, {
+            type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.boxTransparentThick,
+            props = {
+                autoSize = false,
+                size = viewportSize,
+                clip = true,
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Container,
+                    props = {
+                        autoSize = false,
+                        size = viewportSize,
+                    },
+                    content = ui.content(canvasElements),
+                },
+            },
+        })
     else
         for i, perkID in ipairs(filteredPerkIDs) do
             local perk = interfaces[MOD_NAME].getPerks()[perkID]

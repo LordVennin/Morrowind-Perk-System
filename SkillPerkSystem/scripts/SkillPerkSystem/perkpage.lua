@@ -48,6 +48,8 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 local selectedTreeNodeID = nil
 local treePanBySkill = {}
+local isDraggingTree = false
+local lastMousePos = nil
 
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
@@ -112,6 +114,11 @@ local function getTreePan(skillID)
         treePanBySkill[skillID] = state
     end
     return state
+end
+
+local function clampTreePan(pan)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
 end
 
 local function findPerkIndexByID(perkID)
@@ -449,14 +456,21 @@ local function buildPerkPane()
 
     if #treeNodes > 0 then
         local pan = getTreePan(selectedSkillID)
-        local lastVisibleY = nil
-        local topPadInserted = false
+        local viewportSize = util.vector2(520, 468)
+        local nodeHeight = 28
+        local lineThickness = 2
+        local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), viewportSize.y - 56)
+        local nodeByID = {}
+
+        for _, node in ipairs(treeNodes) do
+            nodeByID[node.id] = node
+        end
 
         table.insert(perksCol, {
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textDisabled,
             props = {
-                text = string.format("Tree view (WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
+                text = string.format("Tree view (Drag + WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
             },
         })
         table.insert(perksCol, {
@@ -464,90 +478,115 @@ local function buildPerkPane()
             props = { size = util.vector2(1, 6) },
         })
 
+        local treeCanvasContent = {}
+
+        local function toCanvasPos(node)
+            return util.vector2(
+                treeOrigin.x + node.x - pan.x,
+                treeOrigin.y - node.y - pan.y
+            )
+        end
+
+        local function addLine(x, y, w, h)
+            if w <= 0 or h <= 0 then
+                return
+            end
+            table.insert(treeCanvasContent, {
+                type = ui.TYPE.Container,
+                template = interfaces.MWUI.templates.boxTransparent,
+                props = {
+                    autoSize = false,
+                    position = util.vector2(math.floor(x), math.floor(y)),
+                    size = util.vector2(math.max(lineThickness, math.floor(w)), math.max(lineThickness, math.floor(h))),
+                },
+                userData = {
+                    drawLayer = 0,
+                },
+            })
+        end
+
         for _, node in ipairs(treeNodes) do
-            local perkIndex = findPerkIndexByID(node.id)
-            local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
-            local yOffset = node.y - pan.y
+            local childPos = toCanvasPos(node)
+            local childTopY = childPos.y - math.floor(nodeHeight / 2)
+            for _, reqID in ipairs(node.requires or {}) do
+                local parentNode = nodeByID[reqID]
+                if parentNode ~= nil then
+                    local parentPos = toCanvasPos(parentNode)
+                    local parentBottomY = parentPos.y + math.floor(nodeHeight / 2)
+                    local middleY = math.floor((parentBottomY + childTopY) / 2)
 
-            if yOffset >= -120 and yOffset <= 620 then
-                if not topPadInserted then
-                    local topPad = math.max(0, math.min(240, math.floor((yOffset + 40) / 4)))
-                    if topPad > 0 then
-                        table.insert(perksCol, {
-                            type = ui.TYPE.Widget,
-                            props = { size = util.vector2(1, topPad) },
-                        })
-                    end
-                    topPadInserted = true
-                end
+                    local startY = math.min(parentBottomY, middleY)
+                    local vertical1Height = math.abs(middleY - parentBottomY)
+                    addLine(parentPos.x, startY, lineThickness, vertical1Height)
 
-                if lastVisibleY ~= nil then
-                    local dy = math.max(0, yOffset - lastVisibleY)
-                    if dy > 0 then
-                        table.insert(perksCol, {
-                            type = ui.TYPE.Widget,
-                            props = { size = util.vector2(1, math.min(42, math.floor(dy / 6))) },
-                        })
-                    end
-                end
-                lastVisibleY = yOffset
+                    local leftX = math.min(parentPos.x, childPos.x)
+                    local horizontalWidth = math.abs(childPos.x - parentPos.x)
+                    addLine(leftX, middleY, horizontalWidth, lineThickness)
 
-                local xOffset = math.floor(node.x - pan.x + 240)
-                local leftPad = math.max(0, math.min(360, xOffset))
-                local title = node.title or node.id
-                local nodeLabel = title
-                if perkIndex > 0 and hasPerk(node.id) then
-                    nodeLabel = nodeLabel .. " [owned]"
-                elseif perkIndex == 0 then
-                    nodeLabel = nodeLabel .. " [node]"
-                end
-
-                table.insert(perksCol, {
-                    type = ui.TYPE.Flex,
-                    props = {
-                        horizontal = true,
-                        autoSize = false,
-                        size = util.vector2(520, 28),
-                    },
-                    content = ui.content {
-                        {
-                            type = ui.TYPE.Widget,
-                            props = { size = util.vector2(leftPad, 1) },
-                        },
-                        createBoxedButton(nodeLabel, function()
-                            selectedTreeNodeID = node.id
-                            selectedPerkIndex = perkIndex
-                            menu.layout = buildLayout()
-                            menu:update()
-                        end, util.vector2(isSelected and 190 or 180, 24)),
-                    },
-                })
-
-                if #node.requires > 0 then
-                    table.insert(perksCol, {
-                        type = ui.TYPE.Flex,
-                        props = {
-                            horizontal = true,
-                            autoSize = false,
-                            size = util.vector2(520, 18),
-                        },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Widget,
-                                props = { size = util.vector2(leftPad + 8, 1) },
-                            },
-                            {
-                                type = ui.TYPE.Text,
-                                template = interfaces.MWUI.templates.textDisabled,
-                                props = {
-                                    text = "requires: " .. table.concat(node.requires, ", "),
-                                },
-                            },
-                        },
-                    })
+                    local startY2 = math.min(middleY, childTopY)
+                    local vertical2Height = math.abs(childTopY - middleY)
+                    addLine(childPos.x, startY2, lineThickness, vertical2Height)
                 end
             end
         end
+
+        for _, node in ipairs(treeNodes) do
+            local perkIndex = findPerkIndexByID(node.id)
+            local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
+            local title = node.title or node.id
+            local nodeLabel = title
+            if perkIndex > 0 and hasPerk(node.id) then
+                nodeLabel = nodeLabel .. " [owned]"
+            elseif perkIndex == 0 then
+                nodeLabel = nodeLabel .. " [node]"
+            end
+
+            local buttonSize = util.vector2(isSelected and 196 or 184, 26)
+            local nodePos = toCanvasPos(node)
+
+            table.insert(treeCanvasContent, {
+                type = ui.TYPE.Widget,
+                props = {
+                    autoSize = false,
+                    position = util.vector2(
+                        math.floor(nodePos.x - buttonSize.x / 2),
+                        math.floor(nodePos.y - buttonSize.y / 2)
+                    ),
+                    size = buttonSize,
+                },
+                userData = {
+                    drawLayer = 1,
+                },
+                content = ui.content {
+                    createBoxedButton(nodeLabel, function()
+                        selectedTreeNodeID = node.id
+                        selectedPerkIndex = perkIndex
+                        menu.layout = buildLayout()
+                        menu:update()
+                    end, buttonSize, 1),
+                },
+            })
+        end
+
+        table.insert(perksCol, {
+            type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.boxTransparent,
+            props = {
+                autoSize = false,
+                size = viewportSize,
+                clip = true,
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Widget,
+                    props = {
+                        autoSize = false,
+                        relativeSize = util.vector2(1, 1),
+                    },
+                    content = ui.content(treeCanvasContent),
+                },
+            },
+        })
     else
         for i, perkID in ipairs(filteredPerkIDs) do
             local perk = interfaces[MOD_NAME].getPerks()[perkID]
@@ -753,6 +792,39 @@ local function buildPerkPane()
                             autoSize = false,
                             size = util.vector2(540, 510),
                         },
+                        events = #treeNodes > 0 and {
+                            mousePress = async:callback(function(mouseEvent)
+                                if mouseEvent.button ~= 1 then
+                                    return
+                                end
+                                isDraggingTree = true
+                                lastMousePos = mouseEvent.position
+                            end),
+                            mouseMove = async:callback(function(mouseEvent)
+                                if not isDraggingTree or lastMousePos == nil then
+                                    return
+                                end
+                                local selectedSkillIDForPan = getSelectedSkillID()
+                                local dragPan = getTreePan(selectedSkillIDForPan)
+                                local delta = mouseEvent.position - lastMousePos
+                                dragPan.x = dragPan.x - delta.x
+                                dragPan.y = dragPan.y - delta.y
+                                clampTreePan(dragPan)
+                                lastMousePos = mouseEvent.position
+                                menu.layout = buildLayout()
+                                menu:update()
+                            end),
+                            mouseRelease = async:callback(function(mouseEvent)
+                                if mouseEvent.button == 1 then
+                                    isDraggingTree = false
+                                    lastMousePos = nil
+                                end
+                            end),
+                            focusLoss = async:callback(function()
+                                isDraggingTree = false
+                                lastMousePos = nil
+                            end),
+                        } or nil,
                         content = ui.content(perksCol),
                     },
                     {
@@ -1041,8 +1113,7 @@ local function onFrame(dt)
             end
 
             if moved then
-                pan.x = math.max(-600, math.min(600, pan.x))
-                pan.y = math.max(-600, math.min(600, pan.y))
+                clampTreePan(pan)
                 menu.layout = buildLayout()
                 menu:update()
             end

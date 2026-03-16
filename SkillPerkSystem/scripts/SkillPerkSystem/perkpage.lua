@@ -60,6 +60,8 @@ local SKILL_SELECTOR_ROW_WIDTH = 560
 local TREE_VIEWPORT_WIDTH = 540
 local TREE_VIEWPORT_HEIGHT = 510
 local TREE_CANVAS_MARGIN = 140
+local TREE_CONTENT_OFFSET_X = 240
+local TREE_CONTENT_OFFSET_Y = 140
 
 local buildLayout
 
@@ -141,6 +143,74 @@ local function clampTreePan(skillID, pan)
 
     pan.x = math.max(bounds.minX, math.min(bounds.maxX, pan.x))
     pan.y = math.max(bounds.minY, math.min(bounds.maxY, pan.y))
+end
+
+local function calculateTreePanBounds(treeNodes, viewportWidth, viewportHeight, offsetX, offsetY, margin)
+    if treeNodes == nil or #treeNodes == 0 then
+        return nil, nil, nil
+    end
+
+    local minNodeX, maxNodeX = math.huge, -math.huge
+    local minNodeY, maxNodeY = math.huge, -math.huge
+    for _, node in ipairs(treeNodes) do
+        minNodeX = math.min(minNodeX, node.x)
+        maxNodeX = math.max(maxNodeX, node.x)
+        minNodeY = math.min(minNodeY, node.y)
+        maxNodeY = math.max(maxNodeY, node.y)
+    end
+
+    local contentMinX = minNodeX + offsetX - margin
+    local contentMaxX = maxNodeX + offsetX + margin
+    local contentMinY = minNodeY + offsetY - margin
+    local contentMaxY = maxNodeY + offsetY + margin
+
+    local panMinX = contentMinX
+    local panMaxX = contentMaxX - viewportWidth
+    if panMinX > panMaxX then
+        local centerX = (contentMinX + contentMaxX - viewportWidth) * 0.5
+        panMinX = centerX
+        panMaxX = centerX
+    end
+
+    local panMinY = contentMinY
+    local panMaxY = contentMaxY - viewportHeight
+    if panMinY > panMaxY then
+        local centerY = (contentMinY + contentMaxY - viewportHeight) * 0.5
+        panMinY = centerY
+        panMaxY = centerY
+    end
+
+    return {
+        minX = panMinX,
+        maxX = panMaxX,
+        minY = panMinY,
+        maxY = panMaxY,
+    }, util.vector2(contentMinX, contentMinY), util.vector2(contentMaxX - contentMinX, contentMaxY - contentMinY)
+end
+
+local function updateTreePanBounds(skillID, treeNodes)
+    if skillID == nil then
+        return nil, nil, nil
+    end
+
+    local nodes = treeNodes
+    if nodes == nil then
+        nodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
+            and interfaces[MOD_NAME].getTreeNodesForSkill(skillID)
+            or {}
+    end
+
+    local bounds, canvasOrigin, canvasSize = calculateTreePanBounds(
+        nodes,
+        TREE_VIEWPORT_WIDTH,
+        TREE_VIEWPORT_HEIGHT,
+        TREE_CONTENT_OFFSET_X,
+        TREE_CONTENT_OFFSET_Y,
+        TREE_CANVAS_MARGIN
+    )
+
+    treePanBoundsBySkill[skillID] = bounds
+    return bounds, canvasOrigin, canvasSize
 end
 
 local function findPerkIndexByID(perkID)
@@ -479,49 +549,9 @@ local function buildPerkPane()
 
     if #treeNodes > 0 then
         local pan = getTreePan(selectedSkillID)
-        local offsetX = 240
-        local offsetY = 140
-
-        local minNodeX, maxNodeX = math.huge, -math.huge
-        local minNodeY, maxNodeY = math.huge, -math.huge
-        for _, node in ipairs(treeNodes) do
-            minNodeX = math.min(minNodeX, node.x)
-            maxNodeX = math.max(maxNodeX, node.x)
-            minNodeY = math.min(minNodeY, node.y)
-            maxNodeY = math.max(maxNodeY, node.y)
-        end
-
-        local contentMinX = minNodeX + offsetX - TREE_CANVAS_MARGIN
-        local contentMaxX = maxNodeX + offsetX + TREE_CANVAS_MARGIN
-        local contentMinY = minNodeY + offsetY - TREE_CANVAS_MARGIN
-        local contentMaxY = maxNodeY + offsetY + TREE_CANVAS_MARGIN
-
-        local panMinX = contentMinX
-        local panMaxX = contentMaxX - TREE_VIEWPORT_WIDTH
-        if panMinX > panMaxX then
-            local centerX = (contentMinX + contentMaxX - TREE_VIEWPORT_WIDTH) * 0.5
-            panMinX = centerX
-            panMaxX = centerX
-        end
-
-        local panMinY = contentMinY
-        local panMaxY = contentMaxY - TREE_VIEWPORT_HEIGHT
-        if panMinY > panMaxY then
-            local centerY = (contentMinY + contentMaxY - TREE_VIEWPORT_HEIGHT) * 0.5
-            panMinY = centerY
-            panMaxY = centerY
-        end
-
-        treePanBoundsBySkill[selectedSkillID] = {
-            minX = panMinX,
-            maxX = panMaxX,
-            minY = panMinY,
-            maxY = panMaxY,
-        }
+        local _, canvasOrigin, canvasSize = updateTreePanBounds(selectedSkillID, treeNodes)
         clampTreePan(selectedSkillID, pan)
 
-        local canvasOrigin = util.vector2(contentMinX, contentMinY)
-        local canvasSize = util.vector2(contentMaxX - contentMinX, contentMaxY - contentMinY)
         local treeCanvasContent = {
             {
                 type = ui.TYPE.Text,
@@ -550,7 +580,10 @@ local function buildPerkPane()
                 menu.layout = buildLayout()
                 menu:update()
             end, util.vector2(isSelected and 190 or 180, 24))
-            nodeButton.props.position = util.vector2(node.x + offsetX - canvasOrigin.x, node.y + offsetY - canvasOrigin.y)
+            nodeButton.props.position = util.vector2(
+                node.x + TREE_CONTENT_OFFSET_X - canvasOrigin.x,
+                node.y + TREE_CONTENT_OFFSET_Y - canvasOrigin.y
+            )
 
             table.insert(treeCanvasContent, nodeButton)
 
@@ -559,7 +592,10 @@ local function buildPerkPane()
                     type = ui.TYPE.Text,
                     template = interfaces.MWUI.templates.textDisabled,
                     props = {
-                        position = util.vector2(node.x + offsetX - canvasOrigin.x + 8, node.y + offsetY - canvasOrigin.y + 26),
+                        position = util.vector2(
+                            node.x + TREE_CONTENT_OFFSET_X - canvasOrigin.x + 8,
+                            node.y + TREE_CONTENT_OFFSET_Y - canvasOrigin.y + 26
+                        ),
                         text = "requires: " .. table.concat(node.requires, ", "),
                     },
                 })
@@ -813,6 +849,7 @@ local function buildPerkPane()
                                 local delta = mouseEvent.position - lastMousePos
                                 dragPan.x = dragPan.x - delta.x
                                 dragPan.y = dragPan.y - delta.y
+                                updateTreePanBounds(selectedSkillIDForPan)
                                 clampTreePan(selectedSkillIDForPan, dragPan)
                                 lastMousePos = mouseEvent.position
                                 updateTreeCanvasPosition(selectedSkillIDForPan)
@@ -1097,6 +1134,7 @@ local function onFrame(dt)
             local pan = getTreePan(selectedSkillID)
             local panDelta = 320 * dt
             local moved = false
+            updateTreePanBounds(selectedSkillID, treeNodes)
             local leftDown = anyKeyDown({"LeftArrow", "Left", "A"})
             local rightDown = anyKeyDown({"RightArrow", "Right", "D"})
             local upDown = anyKeyDown({"UpArrow", "Up", "W"})

@@ -614,41 +614,23 @@ buildLayout = function()
                 },
                 content = ui.content {
                     {
-                        type = ui.TYPE.Flex,
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.boxTransparentThick,
                         props = {
-                            horizontal = true,
                             autoSize = false,
                             size = util.vector2(980, 30),
                         },
                         content = ui.content {
                             {
-                                type = ui.TYPE.Widget,
-                                external = { grow = 1 },
-                            },
-                            {
-                                type = ui.TYPE.Container,
-                                template = interfaces.MWUI.templates.boxTransparentThick,
+                                type = ui.TYPE.Text,
+                                template = interfaces.MWUI.templates.textHeader,
                                 props = {
+                                    text = "Skill Perks",
                                     autoSize = false,
-                                    size = util.vector2(180, 28),
+                                    size = util.vector2(980, 30),
+                                    textAlignH = ui.ALIGNMENT.Center,
+                                    textAlignV = ui.ALIGNMENT.Center,
                                 },
-                                content = ui.content {
-                                    {
-                                        type = ui.TYPE.Text,
-                                        template = interfaces.MWUI.templates.textHeader,
-                                        props = {
-                                            text = "Skill Perks",
-                                            autoSize = false,
-                                            size = util.vector2(180, 28),
-                                            textAlignH = ui.ALIGNMENT.Center,
-                                            textAlignV = ui.ALIGNMENT.Center,
-                                        },
-                                    },
-                                },
-                            },
-                            {
-                                type = ui.TYPE.Widget,
-                                external = { grow = 1 },
                             },
                         },
                     },

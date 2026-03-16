@@ -22,15 +22,25 @@ end
 
 local function getSkillIds()
     local out = {}
-    for skillID, _ in pairs(core.stats.Skill.records) do
-        table.insert(out, skillID)
+    for _, record in ipairs(core.stats.Skill.records) do
+        table.insert(out, record.id)
     end
     table.sort(out)
     return out
 end
 
 local function skillBase(skillID)
-    return types.NPC.stats.skills[skillID](pself).base
+    local accessor = types.NPC.stats.skills[skillID]
+    if type(accessor) ~= "function" then
+        print("[" .. MOD_NAME .. "] Missing NPC skill accessor for skill id: " .. tostring(skillID))
+        return 0
+    end
+
+    local stat = accessor(pself)
+    if stat == nil or type(stat.base) ~= "number" then
+        return 0
+    end
+    return stat.base
 end
 
 local function milestonesForSkill(skillID)

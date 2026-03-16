@@ -177,11 +177,55 @@ local function createBoxedButton(label, onPress, size)
 
     local buttonLayout = {
         type = ui.TYPE.Container,
-        template = interfaces.MWUI.templates.boxButton,
+        template = interfaces.MWUI.templates.boxTransparent,
         props = {
             size = size or util.vector2(140, 28),
         },
         content = ui.content { textLayout }
+    }
+
+    buttonLayout.events = {
+        mousePress = async:callback(function(mouseEvent)
+            if mouseEvent.button == 1 then
+                ambient.playSound("Menu Click")
+                textLayout.template = interfaces.MWUI.templates.textHeader
+                if menu ~= nil then menu:update() end
+            end
+        end),
+        mouseRelease = async:callback(function(mouseEvent)
+            if mouseEvent.button == 1 then
+                textLayout.template = interfaces.MWUI.templates.textNormal
+                if menu ~= nil then menu:update() end
+                onPress()
+            end
+        end),
+        focusGain = async:callback(function()
+            textLayout.template = interfaces.MWUI.templates.textHeader
+            if menu ~= nil then menu:update() end
+        end),
+        focusLoss = async:callback(function()
+            textLayout.template = interfaces.MWUI.templates.textNormal
+            if menu ~= nil then menu:update() end
+        end),
+    }
+
+    return buttonLayout
+end
+
+local function withTopOffset(element, offset)
+    return {
+        type = ui.TYPE.Flex,
+        props = {
+            horizontal = false,
+            autoSize = true,
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(1, offset or 2) },
+            },
+            element,
+        },
     }
 
     buttonLayout.events = {
@@ -256,12 +300,12 @@ local function buildSkillTabs()
         props = {
             horizontal = true,
             autoSize = false,
-            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 32),
+            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 36),
         },
         content = ui.content {
-            createBoxedButton("<", function()
+            withTopOffset(createBoxedButton("<", function()
                 changeSelectedSkill(-1)
-            end, util.vector2(48, 28)),
+            end, util.vector2(48, 28)), 3),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
@@ -291,9 +335,9 @@ local function buildSkillTabs()
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(8, 1) },
             },
-            createBoxedButton(">", function()
+            withTopOffset(createBoxedButton(">", function()
                 changeSelectedSkill(1)
-            end, util.vector2(48, 28)),
+            end, util.vector2(48, 28)), 3),
             {
                 type = ui.TYPE.Widget,
                 props = { size = util.vector2(12, 1) },

@@ -39,6 +39,55 @@ local SKILL_SELECTOR_ROW_WIDTH = 560
 
 local buildLayout
 
+local function clampTreePan(pan)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
+end
+
+local function extractMousePosition(mouseEvent)
+    if mouseEvent == nil then
+        return nil
+    end
+    local pos = mouseEvent.position or mouseEvent.cursorPosition or mouseEvent.screenPosition
+    if pos == nil then
+        return nil
+    end
+    if pos.x == nil or pos.y == nil then
+        return nil
+    end
+    return { x = pos.x, y = pos.y }
+end
+
+local function canPanTree(skillID)
+    if menu == nil or skillID == nil then
+        return false
+    end
+    if type(interfaces[MOD_NAME].getTreeNodesForSkill) ~= "function" then
+        return false
+    end
+    local treeNodes = interfaces[MOD_NAME].getTreeNodesForSkill(skillID) or {}
+    return #treeNodes > 0
+end
+
+local function applyTreePanDelta(skillID, deltaX, deltaY)
+    if not canPanTree(skillID) then
+        return false
+    end
+
+    local pan = getTreePan(skillID)
+    local oldX, oldY = pan.x, pan.y
+    pan.x = pan.x + deltaX
+    pan.y = pan.y + deltaY
+    clampTreePan(pan)
+
+    if pan.x ~= oldX or pan.y ~= oldY then
+        menu.layout = buildLayout()
+        menu:update()
+        return true
+    end
+    return false
+end
+
 local function getSkillIDs()
     local out = {}
     for skillID, _ in pairs(core.stats.Skill.records) do
@@ -131,12 +180,34 @@ local function requirementSatisfied(perk)
     return true
 end
 
+local function getMissingParentPerks(perkID)
+    if type(interfaces[MOD_NAME].getTreeNode) ~= "function" then
+        return {}
+    end
+
+    local node = interfaces[MOD_NAME].getTreeNode(perkID)
+    if node == nil then
+        return {}
+    end
+
+    local missing = {}
+    for _, requiredID in ipairs(node.requires or {}) do
+        if not hasPerk(requiredID) then
+            table.insert(missing, requiredID)
+        end
+    end
+    return missing
+end
+
 local function canPurchasePerk(perkID)
     local perk = interfaces[MOD_NAME].getPerks()[perkID]
     if perk == nil or hasPerk(perkID) then
         return false
     end
     if not requirementSatisfied(perk) then
+        return false
+    end
+    if #getMissingParentPerks(perkID) > 0 then
         return false
     end
     return interfaces[MOD_NAME .. "Player"].availablePoints(perk.skill) >= perk.cost
@@ -896,6 +967,9 @@ local function showMenu()
 end
 
 local function closeMenu()
+    isDraggingTree = false
+    lastMousePos = nil
+
     if menu ~= nil then
         menu:destroy()
         menu = nil

@@ -655,31 +655,30 @@ buildLayout = function()
                                     },
                                     {
                                         type = ui.TYPE.Container,
-                                        template = interfaces.MWUI.templates.background,
+                                        template = interfaces.MWUI.templates.borders,
                                         props = {
                                             autoSize = false,
                                             size = util.vector2(180, 24),
                                         },
                                         content = ui.content {
                                             {
-                                                type = ui.TYPE.Container,
-                                                template = interfaces.MWUI.templates.borders,
+                                                type = ui.TYPE.Image,
                                                 props = {
+                                                    resource = ui.texture { path = "white" },
+                                                    relativeSize = util.vector2(1, 1),
+                                                    color = util.color.rgb(0, 0, 0),
+                                                    alpha = 1,
+                                                },
+                                            },
+                                            {
+                                                type = ui.TYPE.Text,
+                                                template = interfaces.MWUI.templates.textHeader,
+                                                props = {
+                                                    text = "Skill Perks",
                                                     autoSize = false,
                                                     size = util.vector2(180, 24),
-                                                },
-                                                content = ui.content {
-                                                    {
-                                                        type = ui.TYPE.Text,
-                                                        template = interfaces.MWUI.templates.textHeader,
-                                                        props = {
-                                                            text = "Skill Perks",
-                                                            autoSize = false,
-                                                            size = util.vector2(180, 24),
-                                                            textAlignH = ui.ALIGNMENT.Center,
-                                                            textAlignV = ui.ALIGNMENT.Center,
-                                                        },
-                                                    },
+                                                    textAlignH = ui.ALIGNMENT.Center,
+                                                    textAlignV = ui.ALIGNMENT.Center,
                                                 },
                                             },
                                         },

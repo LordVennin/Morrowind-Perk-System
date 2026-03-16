@@ -402,7 +402,6 @@ local function buildPerkPane()
                         size = util.vector2(374, 54),
                         textAlignH = ui.ALIGNMENT.Center,
                         textAlignV = ui.ALIGNMENT.Center,
-                        textWrap = true,
                     },
                 },
                 {
@@ -411,14 +410,13 @@ local function buildPerkPane()
                 },
                 {
                     type = ui.TYPE.Text,
-                    template = interfaces.MWUI.templates.textNormal,
+                    template = interfaces.MWUI.templates.textParagraph,
                     props = {
                         text = skillDescription,
                         autoSize = false,
                         size = util.vector2(374, 296),
                         textAlignH = ui.ALIGNMENT.Center,
-                        textAlignV = ui.ALIGNMENT.Top,
-                        textWrap = true,
+                        textAlignV = ui.ALIGNMENT.Start,
                     },
                 },
             },
@@ -434,7 +432,6 @@ local function buildPerkPane()
                 text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
                 autoSize = false,
                 size = util.vector2(374, 360),
-                textWrap = true,
             },
         }
     end

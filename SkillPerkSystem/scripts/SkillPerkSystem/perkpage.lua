@@ -32,12 +32,63 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 local selectedTreeNodeID = nil
 local treePanBySkill = {}
+local isDraggingTree = false
+local lastMousePos = nil
 
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
 local SKILL_SELECTOR_ROW_WIDTH = 560
 
 local buildLayout
+
+local function clampTreePan(pan)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
+end
+
+local function extractMousePosition(mouseEvent)
+    if mouseEvent == nil then
+        return nil
+    end
+    local pos = mouseEvent.position or mouseEvent.cursorPosition or mouseEvent.screenPosition
+    if pos == nil then
+        return nil
+    end
+    if pos.x == nil or pos.y == nil then
+        return nil
+    end
+    return { x = pos.x, y = pos.y }
+end
+
+local function canPanTree(skillID)
+    if menu == nil or skillID == nil then
+        return false
+    end
+    if type(interfaces[MOD_NAME].getTreeNodesForSkill) ~= "function" then
+        return false
+    end
+    local treeNodes = interfaces[MOD_NAME].getTreeNodesForSkill(skillID) or {}
+    return #treeNodes > 0
+end
+
+local function applyTreePanDelta(skillID, deltaX, deltaY)
+    if not canPanTree(skillID) then
+        return false
+    end
+
+    local pan = getTreePan(skillID)
+    local oldX, oldY = pan.x, pan.y
+    pan.x = pan.x + deltaX
+    pan.y = pan.y + deltaY
+    clampTreePan(pan)
+
+    if pan.x ~= oldX or pan.y ~= oldY then
+        menu.layout = buildLayout()
+        menu:update()
+        return true
+    end
+    return false
+end
 
 local function getSkillIDs()
     local out = {}
@@ -517,6 +568,51 @@ local function buildPerkPane()
         table.insert(perksCol, {
             type = ui.TYPE.Container,
             template = interfaces.MWUI.templates.boxTransparentThick,
+            events = {
+                mousePress = async:callback(function(mouseEvent)
+                    if mouseEvent.button ~= 1 then
+                        return
+                    end
+                    if not canPanTree(selectedSkillID) then
+                        return
+                    end
+
+                    local pos = extractMousePosition(mouseEvent)
+                    if pos == nil then
+                        return
+                    end
+
+                    isDraggingTree = true
+                    lastMousePos = pos
+                end),
+                mouseMove = async:callback(function(mouseEvent)
+                    if not isDraggingTree or menu == nil then
+                        return
+                    end
+
+                    local pos = extractMousePosition(mouseEvent)
+                    if pos == nil then
+                        return
+                    end
+
+                    if lastMousePos == nil then
+                        lastMousePos = pos
+                        return
+                    end
+
+                    local dx = pos.x - lastMousePos.x
+                    local dy = pos.y - lastMousePos.y
+                    lastMousePos = pos
+                    applyTreePanDelta(selectedSkillID, -dx, -dy)
+                end),
+                mouseRelease = async:callback(function(mouseEvent)
+                    if mouseEvent.button ~= 1 then
+                        return
+                    end
+                    isDraggingTree = false
+                    lastMousePos = nil
+                end),
+            },
             props = {
                 autoSize = false,
                 size = viewportSize,
@@ -945,6 +1041,9 @@ local function showMenu()
 end
 
 local function closeMenu()
+    isDraggingTree = false
+    lastMousePos = nil
+
     if menu ~= nil then
         menu:destroy()
         menu = nil
@@ -1001,32 +1100,25 @@ local function onFrame(dt)
             or {}
 
         if #treeNodes > 0 then
-            local pan = getTreePan(selectedSkillID)
             local panDelta = 320 * dt
-            local moved = false
+            local deltaX = 0
+            local deltaY = 0
 
             if input.isKeyPressed(input.KEY.LEFT) or input.isKeyPressed(input.KEY.A) then
-                pan.x = pan.x - panDelta
-                moved = true
+                deltaX = deltaX - panDelta
             end
             if input.isKeyPressed(input.KEY.RIGHT) or input.isKeyPressed(input.KEY.D) then
-                pan.x = pan.x + panDelta
-                moved = true
+                deltaX = deltaX + panDelta
             end
             if input.isKeyPressed(input.KEY.UP) or input.isKeyPressed(input.KEY.W) then
-                pan.y = pan.y - panDelta
-                moved = true
+                deltaY = deltaY - panDelta
             end
             if input.isKeyPressed(input.KEY.DOWN) or input.isKeyPressed(input.KEY.S) then
-                pan.y = pan.y + panDelta
-                moved = true
+                deltaY = deltaY + panDelta
             end
 
-            if moved then
-                pan.x = math.max(-600, math.min(600, pan.x))
-                pan.y = math.max(-600, math.min(600, pan.y))
-                menu.layout = buildLayout()
-                menu:update()
+            if deltaX ~= 0 or deltaY ~= 0 then
+                applyTreePanDelta(selectedSkillID, deltaX, deltaY)
             end
         end
     end

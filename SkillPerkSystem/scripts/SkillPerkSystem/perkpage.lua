@@ -4,7 +4,7 @@ local util = require("openmw.util")
 local async = require("openmw.async")
 local ambientLoaded, ambient = pcall(require, "openmw.ambient")
 local interfaces = require("openmw.interfaces")
-local input = require("openmw.input")
+local inputLoaded, input = pcall(require, "openmw.input")
 local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
@@ -12,6 +12,12 @@ local MOD_NAME = settings.MOD_NAME
 
 if not ambientLoaded then
     ambient = nil
+    print("[" .. MOD_NAME .. "] Ambient sound API unavailable; click sounds disabled")
+end
+
+if not inputLoaded then
+    input = nil
+    print("[" .. MOD_NAME .. "] Input key API unavailable; hotkey disabled, console command still usable")
 end
 
 local function playClickSound()
@@ -22,7 +28,9 @@ end
 
 local function resolveToggleKey()
     if type(input) ~= "table" or type(input.KEY) ~= "table" then
-        print("[" .. MOD_NAME .. "] Keyboard input API unavailable; hotkey toggle disabled")
+        if inputLoaded then
+            print("[" .. MOD_NAME .. "] Input key API unavailable; hotkey disabled, console command still usable")
+        end
         return nil
     end
 

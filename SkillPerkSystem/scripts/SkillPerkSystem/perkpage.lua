@@ -30,6 +30,8 @@ local selectedPerkIndex = 1
 
 local skillIDs = {}
 local filteredPerkIDs = {}
+local selectedTreeNodeID = nil
+local treePanBySkill = {}
 
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
@@ -70,12 +72,39 @@ local function getSelectedSkillID()
     return skillIDs[selectedSkillIndex]
 end
 
+local function getTreePan(skillID)
+    if skillID == nil then
+        return { x = 0, y = 0 }
+    end
+    local state = treePanBySkill[skillID]
+    if state == nil then
+        state = { x = 0, y = 0 }
+        treePanBySkill[skillID] = state
+    end
+    return state
+end
+
+local function findPerkIndexByID(perkID)
+    for i, id in ipairs(filteredPerkIDs) do
+        if id == perkID then
+            return i
+        end
+    end
+    return 0
+end
+
 local function updateFilteredPerks()
     local selectedSkillID = getSelectedSkillID()
     if selectedSkillID == nil then
         filteredPerkIDs = {}
+        selectedTreeNodeID = nil
         return
     end
+
+    if type(interfaces[MOD_NAME].loadSkillTree) == "function" then
+        interfaces[MOD_NAME].loadSkillTree(selectedSkillID)
+    end
+
     filteredPerkIDs = interfaces[MOD_NAME].getPerkIDsForSkill(selectedSkillID)
     table.sort(filteredPerkIDs)
     if selectedPerkIndex > #filteredPerkIDs then
@@ -83,6 +112,13 @@ local function updateFilteredPerks()
     end
     if selectedPerkIndex < 0 then
         selectedPerkIndex = 0
+    end
+
+    if selectedTreeNodeID ~= nil and type(interfaces[MOD_NAME].getTreeNode) == "function" then
+        local node = interfaces[MOD_NAME].getTreeNode(selectedTreeNodeID)
+        if node == nil or node.skill ~= selectedSkillID then
+            selectedTreeNodeID = nil
+        end
     end
 end
 
@@ -253,6 +289,7 @@ local function changeSelectedSkill(delta)
     end
 
     selectedPerkIndex = 0
+    selectedTreeNodeID = nil
     updateFilteredPerks()
 
     if menu ~= nil then
@@ -353,27 +390,75 @@ end
 
 local function buildPerkPane()
     local perksCol = {}
-    for i, perkID in ipairs(filteredPerkIDs) do
-        local perk = interfaces[MOD_NAME].getPerks()[perkID]
-        local owned = hasPerk(perkID) and " [owned]" or ""
-        local isSelected = i == selectedPerkIndex
+    local selectedSkillID = getSelectedSkillID()
+    local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
+        and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
+        or {}
+
+    if #treeNodes > 0 then
+        local pan = getTreePan(selectedSkillID)
         table.insert(perksCol, {
             type = ui.TYPE.Text,
-            template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
-            events = {
-                mouseClick = async:callback(function()
-                    selectedPerkIndex = i
-                    menu.layout = buildLayout()
-                    menu:update()
-                end),
-            },
+            template = interfaces.MWUI.templates.textDisabled,
             props = {
-                text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
-            }
+                text = string.format("Tree view (WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
+            },
         })
+        table.insert(perksCol, {
+            type = ui.TYPE.Widget,
+            props = { size = util.vector2(1, 8) },
+        })
+
+        for _, node in ipairs(treeNodes) do
+            local perkIndex = findPerkIndexByID(node.id)
+            local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
+            local yOffset = node.y - pan.y
+            if yOffset >= -90 and yOffset <= 560 then
+                local indent = math.max(0, math.floor((node.x - pan.x + 260) / 70))
+                local prefix = string.rep("  ", math.min(10, indent))
+                local reqText = (#node.requires > 0) and (" <- " .. table.concat(node.requires, ", ")) or ""
+                local marker = (perkIndex > 0 and hasPerk(node.id)) and " [owned]" or ((perkIndex > 0) and "" or " [node]")
+                local title = node.title or node.id
+                table.insert(perksCol, {
+                    type = ui.TYPE.Text,
+                    template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                    events = {
+                        mouseClick = async:callback(function()
+                            selectedTreeNodeID = node.id
+                            selectedPerkIndex = perkIndex
+                            menu.layout = buildLayout()
+                            menu:update()
+                        end),
+                    },
+                    props = {
+                        text = prefix .. title .. marker .. reqText,
+                    },
+                })
+            end
+        end
+    else
+        for i, perkID in ipairs(filteredPerkIDs) do
+            local perk = interfaces[MOD_NAME].getPerks()[perkID]
+            local owned = hasPerk(perkID) and " [owned]" or ""
+            local isSelected = i == selectedPerkIndex
+            table.insert(perksCol, {
+                type = ui.TYPE.Text,
+                template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                events = {
+                    mouseClick = async:callback(function()
+                        selectedTreeNodeID = nil
+                        selectedPerkIndex = i
+                        menu.layout = buildLayout()
+                        menu:update()
+                    end),
+                },
+                props = {
+                    text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
+                }
+            })
+        end
     end
 
-    local selectedSkillID = getSelectedSkillID()
     local skillRecord = selectedSkillID ~= nil and core.stats.Skill.records[selectedSkillID] or nil
     local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Skill"
     local skillDescription = "No description available."
@@ -382,6 +467,9 @@ local function buildPerkPane()
     end
 
     local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
+    if selectedPerkID == nil and selectedTreeNodeID ~= nil then
+        selectedPerkID = selectedTreeNodeID
+    end
 
     local function wrapTextLines(text, maxChars)
         local lines = {}
@@ -496,17 +584,33 @@ local function buildPerkPane()
         }
     else
         local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
-        local owned = hasPerk(selectedPerkID)
-        local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
-        perkDetail = {
-            type = ui.TYPE.Text,
-            template = interfaces.MWUI.templates.textNormal,
-            props = {
-                text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
-                autoSize = false,
-                size = util.vector2(374, 360),
-            },
-        }
+        if selectedPerk ~= nil then
+            local owned = hasPerk(selectedPerkID)
+            local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
+            perkDetail = {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                    autoSize = false,
+                    size = util.vector2(374, 360),
+                },
+            }
+        else
+            local node = type(interfaces[MOD_NAME].getTreeNode) == "function" and interfaces[MOD_NAME].getTreeNode(selectedPerkID) or nil
+            local nodeReqs = (node ~= nil and #node.requires > 0) and table.concat(node.requires, ", ") or "None"
+            local nodeTitle = (node ~= nil and node.title) or selectedPerkID
+            local nodeDescription = (node ~= nil and node.description) or "Tree node defined but no registered perk found yet."
+            perkDetail = {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = string.format("%s\nNode ID: %s\nRequires: %s\n\n%s", nodeTitle, selectedPerkID, nodeReqs, nodeDescription),
+                    autoSize = false,
+                    size = util.vector2(374, 360),
+                },
+            }
+        end
     end
 
     return {
@@ -719,6 +823,7 @@ local function showMenu()
     skillIDs = getSkillIDs()
     selectedSkillIndex = math.max(1, math.min(selectedSkillIndex, #skillIDs))
     selectedPerkIndex = 0
+    selectedTreeNodeID = nil
     updateFilteredPerks()
 
     -- Use an isolated interface mode so the perk page has cursor/UI input without
@@ -792,6 +897,43 @@ local function onConsoleCommand(mode, command, selectedObject)
 end
 
 local function onFrame(dt)
+    if menu ~= nil then
+        local selectedSkillID = getSelectedSkillID()
+        local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
+            and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
+            or {}
+
+        if #treeNodes > 0 then
+            local pan = getTreePan(selectedSkillID)
+            local panDelta = 320 * dt
+            local moved = false
+
+            if input.isKeyPressed(input.KEY.LEFT) or input.isKeyPressed(input.KEY.A) then
+                pan.x = pan.x - panDelta
+                moved = true
+            end
+            if input.isKeyPressed(input.KEY.RIGHT) or input.isKeyPressed(input.KEY.D) then
+                pan.x = pan.x + panDelta
+                moved = true
+            end
+            if input.isKeyPressed(input.KEY.UP) or input.isKeyPressed(input.KEY.W) then
+                pan.y = pan.y - panDelta
+                moved = true
+            end
+            if input.isKeyPressed(input.KEY.DOWN) or input.isKeyPressed(input.KEY.S) then
+                pan.y = pan.y + panDelta
+                moved = true
+            end
+
+            if moved then
+                pan.x = math.max(-600, math.min(600, pan.x))
+                pan.y = math.max(-600, math.min(600, pan.y))
+                menu.layout = buildLayout()
+                menu:update()
+            end
+        end
+    end
+
     local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
     if isPressed and not toggleKeyWasPressed then
         toggleMenu()

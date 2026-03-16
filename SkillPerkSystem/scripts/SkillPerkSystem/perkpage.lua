@@ -23,7 +23,7 @@ local function resolveToggleKey()
 end
 
 local TOGGLE_UI_KEY_CODE = resolveToggleKey()
-local TOGGLE_UI_KEY_NAME = tostring(settings.TOGGLE_UI_KEY or "p"):lower()
+local toggleKeyWasPressed = false
 
 local menu = nil
 local selectedSkillIndex = 1
@@ -605,16 +605,12 @@ local function onConsoleCommand(mode, command, selectedObject)
     end
 end
 
-local function onKeyPress(event)
-    local key = event and (event.key or event.symbol or event.code or event.keyCode)
-    if key == TOGGLE_UI_KEY_CODE then
-        toggleMenu()
-        return
-    end
-
-    if type(key) == "string" and key:lower() == TOGGLE_UI_KEY_NAME then
+local function onFrame(dt)
+    local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
+    if isPressed and not toggleKeyWasPressed then
         toggleMenu()
     end
+    toggleKeyWasPressed = isPressed
 end
 
 return {
@@ -625,6 +621,6 @@ return {
     },
     engineHandlers = {
         onConsoleCommand = onConsoleCommand,
-        onKeyPress = onKeyPress,
+        onFrame = onFrame,
     }
 }

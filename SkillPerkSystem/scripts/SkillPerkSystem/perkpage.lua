@@ -24,8 +24,13 @@ local TOGGLE_UI_KEY_CODE = resolveToggleKey()
 local toggleKeyWasPressed = false
 
 local function keyDown(keyName)
-    local code = rawget(input.KEY, keyName)
-    return code ~= nil and input.isKeyPressed(code)
+    local ok, code = pcall(function()
+        return input.KEY[keyName]
+    end)
+    if not ok or code == nil then
+        return false
+    end
+    return input.isKeyPressed(code)
 end
 
 local menu = nil

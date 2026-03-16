@@ -502,7 +502,7 @@ local function buildPerkPane()
                         content = ui.content {
                             createBoxedButton("Exit", function()
                                 pself:sendEvent(MOD_NAME .. "closePerkUI")
-                            end, util.vector2(120, 28)),
+                            end, util.vector2(64, 28)),
                         },
                     },
                 }

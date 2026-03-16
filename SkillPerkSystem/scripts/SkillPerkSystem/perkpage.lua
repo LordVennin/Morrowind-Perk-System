@@ -54,6 +54,11 @@ local lastMousePos = nil
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
 local SKILL_SELECTOR_ROW_WIDTH = 560
+local TREE_VIEWPORT_WIDTH = 540
+local TREE_VIEWPORT_HEIGHT = 510
+local TREE_CANVAS_MARGIN = 140
+local TREE_CONTENT_OFFSET_X = 240
+local TREE_CONTENT_OFFSET_Y = 140
 
 local buildLayout
 
@@ -449,6 +454,7 @@ end
 
 local function buildPerkPane()
     local perksCol = {}
+    local treeViewportContent = nil
     local selectedSkillID = getSelectedSkillID()
     local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
         and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
@@ -598,6 +604,8 @@ local function buildPerkPane()
             },
         })
     else
+        activeTreeCanvasLayout = nil
+        activeTreeCanvasSkillID = nil
         for i, perkID in ipairs(filteredPerkIDs) do
             local perk = interfaces[MOD_NAME].getPerks()[perkID]
             local owned = hasPerk(perkID) and " [owned]" or ""
@@ -1104,20 +1112,29 @@ local function onFrame(dt)
             local pan = getTreePan(selectedSkillID)
             local panDelta = 320 * dt
             local moved = false
+            updateTreePanBounds(selectedSkillID, treeNodes)
+            local leftDown = anyKeyDown({"LeftArrow", "Left", "A"})
+            local rightDown = anyKeyDown({"RightArrow", "Right", "D"})
+            local upDown = anyKeyDown({"UpArrow", "Up", "W"})
+            local downDown = anyKeyDown({"DownArrow", "Down", "S"})
 
-            if anyKeyDown({"LeftArrow", "Left", "A"}) then
+            if leftDown or rightDown or upDown or downDown then
+                print(string.format("[%s][DEBUG] onFrame keys L=%s R=%s U=%s D=%s dt=%.4f panDelta=%.2f", MOD_NAME, tostring(leftDown), tostring(rightDown), tostring(upDown), tostring(downDown), dt, panDelta))
+            end
+
+            if leftDown then
                 pan.x = pan.x - panDelta
                 moved = true
             end
-            if anyKeyDown({"RightArrow", "Right", "D"}) then
+            if rightDown then
                 pan.x = pan.x + panDelta
                 moved = true
             end
-            if anyKeyDown({"UpArrow", "Up", "W"}) then
+            if upDown then
                 pan.y = pan.y - panDelta
                 moved = true
             end
-            if anyKeyDown({"DownArrow", "Down", "S"}) then
+            if downDown then
                 pan.y = pan.y + panDelta
                 moved = true
             end

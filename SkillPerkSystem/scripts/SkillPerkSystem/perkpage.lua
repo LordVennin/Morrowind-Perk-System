@@ -472,13 +472,27 @@ local function buildPerkPane()
             nodeByID[node.id] = node
         end
 
-        table.insert(perksCol, {
+        local treePanLabel = string.format(
+            "Tree view (Drag + WASD/Arrows): x=%d y=%d",
+            math.floor(pan.x),
+            math.floor(pan.y)
+        )
+
+        local treeHintRow = {
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textDisabled,
             props = {
-                text = string.format("Tree view (Drag + WASD/Arrows): x=%d y=%d", math.floor(pan.x), math.floor(pan.y)),
+                text = treePanLabel,
             },
         }
+
+        local treeHintSpacer = {
+            type = ui.TYPE.Widget,
+            props = { size = util.vector2(1, 6) },
+        }
+
+        table.insert(perksCol, treeHintRow)
+        table.insert(perksCol, treeHintSpacer)
 
         local treeCanvasContent = {}
 

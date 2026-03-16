@@ -29,8 +29,8 @@ local selectedPerkIndex = 1
 local skillIDs = {}
 local filteredPerkIDs = {}
 
-local SKILL_SELECTOR_WIDTH = 260
-local SKILL_INDEX_WIDTH = 64
+local SKILL_SELECTOR_WIDTH = 320
+local SKILL_INDEX_WIDTH = 96
 
 local buildLayout
 
@@ -215,10 +215,10 @@ local function buildSkillTabs()
             },
             {
                 type = ui.TYPE.Container,
-                template = interfaces.MWUI.templates.boxTransparent,
+                template = interfaces.MWUI.templates.boxTransparentThick,
                 props = {
                     autoSize = false,
-                    size = util.vector2(SKILL_SELECTOR_WIDTH, 24),
+                    size = util.vector2(SKILL_SELECTOR_WIDTH, 28),
                 },
                 content = ui.content {
                     {
@@ -246,10 +246,10 @@ local function buildSkillTabs()
             },
             {
                 type = ui.TYPE.Container,
-                template = interfaces.MWUI.templates.boxTransparent,
+                template = interfaces.MWUI.templates.boxTransparentThick,
                 props = {
                     autoSize = false,
-                    size = util.vector2(SKILL_INDEX_WIDTH, 24),
+                    size = util.vector2(SKILL_INDEX_WIDTH, 28),
                 },
                 content = ui.content {
                     {
@@ -296,7 +296,7 @@ local function buildPerkPane()
         props = {
             text = "Select a perk",
             autoSize = false,
-            size = util.vector2(474, 390),
+            size = util.vector2(374, 360),
             textWrap = true,
         }
     }
@@ -337,7 +337,7 @@ local function buildPerkPane()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(1240, 560),
+            size = util.vector2(980, 520),
         },
         content = ui.content {
             {
@@ -345,7 +345,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(1220, 420),
+                    size = util.vector2(960, 390),
                 },
                 content = ui.content {
                     {
@@ -354,7 +354,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(700, 420),
+                            size = util.vector2(550, 390),
                         },
                         content = ui.content(perksCol),
                     },
@@ -368,7 +368,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(504, 420),
+                            size = util.vector2(394, 390),
                         },
                         content = ui.content { perkDetail },
                     },
@@ -383,7 +383,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(1220, 36),
+                    size = util.vector2(960, 32),
                 },
                 content = ui.content {
                     {

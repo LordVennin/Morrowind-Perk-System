@@ -131,61 +131,82 @@ Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua`
 
 ## Create your own plugin
 
-Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). It now follows the recommended folder-based plugin layout:
+Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). Recommended pack layout is now **one file per skill**:
 
 ```text
 scripts/<PackName>/
   skillperk_manifest.lua
   perks/
-    <skillId>/
-      <module>.lua
-  effects/
-    <module>.lua
-  trees/                   <-- optional
-    <skillId>/
-      <module>.lua
+    <skillId>.lua              <-- primary convention (single file per skill)
+  effects/                     <-- optional
+    <effectId>.lua
 ```
 
-### Naming convention for obvious load order
+### Loader behavior (primary + fallback)
 
-Use numeric prefixes in module names and keep the manifest list ordered to match gameplay progression:
+Plugin discovery now treats `scripts.<PackName>.perks.<skillId>` as the primary skill module path.
 
-- `01_core.lua` (foundation/base unlock)
-- `10_bleed.lua` (mid-chain upgrade)
-- `20_execute.lua` (later specialization)
+- If this module exists and returns a valid skill schema (`perks` and/or `nodes`), it is used as the canonical source for that skill.
+- If that primary module is missing or does not provide a skill schema, the loader falls back to nested modules under `scripts.<PackName>.perks.<skillId>.*` for backward compatibility.
 
-This makes both filesystem browsing and manifest review immediately clear.
+This keeps one-skill-file packs simple while preserving compatibility for older folder-split packs.
 
-### Recommended manifest pattern
+### Deterministic merge behavior across packs (same skill)
 
-Treat `skillperk_manifest.lua` as the pack entrypoint and explicit loader:
+Multiple packs can define perks for the same `skill` ID. Merging is deterministic by registration order and perk ID policy:
 
-- declare ordered module lists for effects/perks/trees,
-- `require(...)` each list in order,
-- register definitions via `api.registerEffect`, `api.registerPerk`, and optional `api.registerTreeNode`.
+1. Packs are discovered from enabled content files.
+2. Skill modules are loaded per pack.
+3. Perks are merged into the shared registry by unique perk ID.
 
-### Migration note (flat -> folder-based)
+Uniqueness policy is controlled by `ALLOW_DUPLICATE_REGISTRATION_OVERRIDE` in `scripts/SkillPerkSystem/settings.lua`:
 
-Older packs often used flat files such as:
+- `false` (default): duplicate perk IDs are validation errors (`strict(error)`).
+- `true`: duplicate IDs are allowed with `override(last-write-wins)` behavior.
 
-- `scripts/<PackName>/perks/longblade.lua`
-- `scripts/<PackName>/effects/example_bonus_damage.lua`
+Recommended practice: keep perk IDs globally unique (for example `<pack>_<skill>_<name>`) to avoid accidental overrides.
 
-Recommended migration:
+### Copy/paste examples (one-skill-file packs)
 
-1. Move each flat skill file into `perks/<skillId>/` and split it into focused modules (`01_core.lua`, `10_bleed.lua`, etc.).
-2. Move effect handlers to `effects/<module>.lua` with the same numeric convention where ordering matters.
-3. Add `trees/<skillId>/<module>.lua` only if you provide tree node data.
-4. Update `skillperk_manifest.lua` with the new module paths and explicit ordering.
-5. Keep existing perk/effect IDs stable to avoid save-game migration breakage.
+Manifest module list:
 
-### Included starter example pack
+```lua
+local PERK_MODULES = {
+  "scripts.MyPack.perks.longblade",
+  "scripts.MyPack.perks.block",
+}
 
-`SkillPerkSystem/plugin_starter/` now includes:
+for _, moduleName in ipairs(PERK_MODULES) do
+  local moduleData = require(moduleName)
+  for _, perk in ipairs(moduleData.perks or {}) do
+    api.registerPerk(perk)
+  end
+end
+```
 
-- one skill (`longblade`) with 2 perk modules (`01_core.lua` + `10_bleed.lua`),
-- one effect module (`10_bonus_damage.lua`),
-- one optional tree node module (`trees/longblade/10_starter.lua`).
+Single skill file:
+
+```lua
+-- scripts/MyPack/perks/longblade.lua
+return {
+  perks = {
+    {
+      id = "mypack_longblade_core",
+      skill = "longblade",
+      effectId = "mypack_bonus_damage",
+      requirements = {},
+      cost = 1,
+    },
+    {
+      id = "mypack_longblade_bleed",
+      skill = "longblade",
+      effectId = "mypack_bonus_damage",
+      requires = { "mypack_longblade_core" },
+      cost = 1,
+    },
+  },
+}
+```
 
 ## Notes
 

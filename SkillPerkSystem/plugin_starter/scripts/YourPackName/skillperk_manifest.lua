@@ -1,12 +1,17 @@
 -- Copy this folder as: scripts/<YourPackName>/
 -- Keep this file path exactly: scripts/<YourPackName>/skillperk_manifest.lua
+--
+-- Recommended pack convention:
+--   scripts/<PackName>/perks/<skillId>.lua (one file per skill)
+--
+-- Copy/paste and rename the module paths below.
 
 local EFFECT_MODULES = {
-    "scripts.YourPackName.effects.10_bonus_damage",
+    "scripts.YourPackName.effects.10_bonus_damage", -- optional
 }
 
 local PERK_MODULES = {
-    "scripts.YourPackName.perks.longblade",
+    "scripts.YourPackName.perks.longblade", -- one module per skill
 }
 
 local function extend(into, values)

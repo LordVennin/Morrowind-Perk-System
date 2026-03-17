@@ -5,10 +5,7 @@ local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 local pluginLoader = require("scripts.SkillPerkSystem.plugin_loader")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
-local demoPerks = require("scripts.SkillPerkSystem.test_perks")
-
 local SOURCE_MANIFEST = "scripts.SkillPerkSystem.manifest"
-local SOURCE_DEMO = "scripts.SkillPerkSystem.test_perks"
 
 local function registerPerk(data)
     return pluginAPI.registerPerk(data, SOURCE_MANIFEST)
@@ -22,7 +19,6 @@ local function registerEffect(data)
     return pluginAPI.registerEffect(data, SOURCE_MANIFEST)
 end
 
-demoPerks.registerDemoPerks(registerPerk, SOURCE_DEMO)
 local pluginValidationReport = pluginLoader.loadInstalledPacks(pluginAPI)
 
 

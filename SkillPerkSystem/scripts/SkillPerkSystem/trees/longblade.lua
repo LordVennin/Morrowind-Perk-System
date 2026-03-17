@@ -1,5 +1,5 @@
 -- Demo Long Blade tree used to validate chain layout + panning.
--- These node ids match demo perks registered in scripts/SkillPerkSystem/test_perks.lua.
+-- These node ids match demo perks in scripts/SkillPerkSystem/perks/longblade/*.lua.
 
 return {
     {

@@ -221,6 +221,6 @@ Node files support `id`, `skill`, `x`, `y`, and `requires` so chains/branches ca
 
 ### Demo tree content toggle
 
-`settings.lua` now includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which registers no-effect Long Blade demo perks used for testing the tree UI.
+`settings.lua` now includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which registers no-effect built-in demo perks (currently Long Blade + Block) through `scripts/SkillPerkSystem/skillperk_manifest.lua`.
 
-Set it to `false` to disable demo perk registration.
+Built-in perk modules are organized under `scripts/SkillPerkSystem/perks/<skillId>/` and loaded in deterministic alphabetical order (`01_core.lua`, `10_branch.lua`, ...). Set the toggle to `false` to disable demo perk registration.

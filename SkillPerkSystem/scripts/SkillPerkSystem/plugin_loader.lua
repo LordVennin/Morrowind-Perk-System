@@ -43,10 +43,26 @@ local function getNameVariants(rawName)
     local variants = {}
     local seen = {}
 
+    if type(rawName) ~= "string" or rawName == "" then
+        return variants
+    end
+
     pushUnique(variants, seen, rawName)
     pushUnique(variants, seen, rawName:gsub("%s+", ""))
     pushUnique(variants, seen, rawName:gsub("%s+", "_"))
     pushUnique(variants, seen, rawName:gsub("%-", "_"))
+
+    local sanitized = rawName:gsub("[%s%-]+", "_")
+    sanitized = sanitized:gsub("[^%w_]", "")
+    sanitized = sanitized:gsub("_+", "_")
+    sanitized = sanitized:gsub("^_+", "")
+    sanitized = sanitized:gsub("_+$", "")
+
+    local sanitizedLower = sanitized:lower()
+    pushUnique(variants, seen, sanitized)
+    pushUnique(variants, seen, sanitizedLower)
+    pushUnique(variants, seen, sanitized:gsub("_", ""))
+    pushUnique(variants, seen, sanitizedLower:gsub("_", ""))
 
     return variants
 end

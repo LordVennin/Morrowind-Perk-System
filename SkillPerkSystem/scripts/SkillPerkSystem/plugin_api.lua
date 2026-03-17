@@ -1,8 +1,23 @@
 local core = require("openmw.core")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
+local settings = require("scripts.SkillPerkSystem.settings")
 
 local PLUGIN_API_VERSION = 1
+
+local function normalizeSource(source)
+    if type(source) ~= "string" or source == "" then
+        return "unknown"
+    end
+    return source
+end
+
+local function duplicatePolicyLabel()
+    if settings.ALLOW_DUPLICATE_REGISTRATION_OVERRIDE then
+        return "override(last-write-wins)"
+    end
+    return "strict(error)"
+end
 
 local function hasSkillRecord(skillID)
     if core.stats.Skill.records[skillID] ~= nil then
@@ -35,7 +50,7 @@ local function assertCompatibleApiVersion(expectedVersion)
     return true
 end
 
-local function registerPerk(data)
+local function registerPerk(data, source)
     if type(data) ~= "table" then
         error("registerPerk() expects a table", 2)
     end
@@ -69,10 +84,24 @@ local function registerPerk(data)
         error("registerPerk(" .. tostring(data.id) .. ") field 'cost' must be a positive integer", 2)
     end
 
-    registryState.upsertPerk(data)
+    local sourceName = normalizeSource(source)
+    local ok, previousSource = registryState.registerPerk(data, sourceName, settings.ALLOW_DUPLICATE_REGISTRATION_OVERRIDE)
+    if not ok then
+        error(
+            "registerPerk() duplicate perk id '"
+                .. tostring(data.id)
+                .. "' from source='"
+                .. tostring(sourceName)
+                .. "' conflicts with source='"
+                .. tostring(previousSource)
+                .. "' policy="
+                .. duplicatePolicyLabel(),
+            2
+        )
+    end
 end
 
-local function registerTreeNode(data)
+local function registerTreeNode(data, source)
     if type(data) ~= "table" then
         error("registerTreeNode() expects a table", 2)
     end
@@ -109,16 +138,29 @@ local function registerTreeNode(data)
         error("registerTreeNode(" .. tostring(data.id) .. ") field 'description' must be a string", 2)
     end
 
-    if not registryState.addTreeNode(data) then
-        error("registerTreeNode() duplicate node id: " .. tostring(data.id), 2)
+    local sourceName = normalizeSource(source)
+    local ok, previousSource = registryState.registerTreeNode(data, sourceName, settings.ALLOW_DUPLICATE_REGISTRATION_OVERRIDE)
+    if not ok then
+        error(
+            "registerTreeNode() duplicate node id '"
+                .. tostring(data.id)
+                .. "' from source='"
+                .. tostring(sourceName)
+                .. "' conflicts with source='"
+                .. tostring(previousSource)
+                .. "' policy="
+                .. duplicatePolicyLabel(),
+            2
+        )
     end
 end
 
-local function registerEffect(data)
+local function registerEffect(data, source)
     if type(data) ~= "table" or type(data.id) ~= "string" or data.id == "" then
         error("registerEffect() requires a table with non-empty string field 'id'", 2)
     end
-    effectsRegistry.registerEffect(data.id, data)
+    local sourceName = normalizeSource(source)
+    effectsRegistry.registerEffect(data.id, data, sourceName)
 end
 
 local function registerPointSource(data)

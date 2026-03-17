@@ -3,16 +3,16 @@ local registryState = require("scripts.SkillPerkSystem.registry_state")
 
 local loadedSkills = {}
 
-local function registerTreeNode(node)
-    pluginAPI.registerTreeNode(node)
+local function registerTreeNode(node, source)
+    pluginAPI.registerTreeNode(node, source)
 end
 
-local function registerTreeNodes(nodes)
+local function registerTreeNodes(nodes, source)
     if type(nodes) ~= "table" then
         error("registerTreeNodes() expects a list", 2)
     end
     for _, node in ipairs(nodes) do
-        registerTreeNode(node)
+        registerTreeNode(node, source)
     end
 end
 
@@ -39,7 +39,7 @@ local function loadSkillTree(skillID)
             local ok, result = pcall(require, moduleName)
             if ok then
                 if type(result) == "table" then
-                    registerTreeNodes(result)
+                    registerTreeNodes(result, moduleName)
                 end
                 return
             end

@@ -15,6 +15,10 @@ local function registerTreeNode(data)
     return pluginAPI.registerTreeNode(data, SOURCE_MANIFEST)
 end
 
+local function registerPerkModule(data, expectedSkill)
+    return pluginAPI.registerPerkModule(data, SOURCE_MANIFEST, expectedSkill)
+end
+
 local function registerEffect(data)
     return pluginAPI.registerEffect(data, SOURCE_MANIFEST)
 end
@@ -181,6 +185,7 @@ return {
         assertCompatibleApiVersion = pluginAPI.assertCompatibleApiVersion,
         registerPerk = registerPerk,
         registerTreeNode = registerTreeNode,
+        registerPerkModule = registerPerkModule,
         registerEffect = registerEffect,
         registerPointSource = pluginAPI.registerPointSource,
         getPerks = getPerks,

@@ -2,7 +2,6 @@ local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 
 local loadedSkills = {}
-local warnedLegacySkills = {}
 
 local function registerTreeNode(node, source)
     pluginAPI.registerTreeNode(node, source)
@@ -35,47 +34,15 @@ local function requireOptional(moduleName)
     error(result, 0)
 end
 
-local function loadFolderTreeModules(baseModuleName)
-    local moduleCount = 0
-    local nodeCount = 0
-
-    local listModule = baseModuleName .. ".modules"
-    local listFound, list = requireOptional(listModule)
-    if not listFound then
-        return moduleCount, nodeCount
-    end
-
-    if type(list) ~= "table" then
-        error("Tree module list must return a table: " .. listModule, 2)
-    end
-
-    for _, moduleSuffix in ipairs(list) do
-        local moduleName = baseModuleName .. "." .. moduleSuffix
-        local found, nodes = requireOptional(moduleName)
-        if found then
-            moduleCount = moduleCount + 1
-            if type(nodes) == "table" then
-                registerTreeNodes(nodes, moduleName)
-                nodeCount = nodeCount + #nodes
-            end
+local function hasRegisteredPerksForSkill(skillID)
+    local perksById = registryState.getPerks()
+    for _, perkID in ipairs(registryState.getPerkIDs()) do
+        local perk = perksById[perkID]
+        if type(perk) == "table" and perk.skill == skillID then
+            return true
         end
     end
-
-    return moduleCount, nodeCount
-end
-
-local function loadLegacyTreeModule(baseModuleName)
-    local found, nodes = requireOptional(baseModuleName)
-    if not found then
-        return 0, 0
-    end
-
-    if type(nodes) == "table" then
-        registerTreeNodes(nodes, baseModuleName)
-        return 1, #nodes
-    end
-
-    return 1, 0
+    return false
 end
 
 local function loadSkillTree(skillID)
@@ -85,6 +52,11 @@ local function loadSkillTree(skillID)
 
     local alreadyRegisteredNodes = registryState.getTreeNodesForSkill(skillID)
     if type(alreadyRegisteredNodes) == "table" and #alreadyRegisteredNodes > 0 then
+        loadedSkills[skillID] = true
+        return
+    end
+
+    if hasRegisteredPerksForSkill(skillID) then
         loadedSkills[skillID] = true
         return
     end
@@ -104,44 +76,26 @@ local function loadSkillTree(skillID)
     for _, candidate in ipairs(candidates) do
         if candidate ~= "" and not tried[candidate] then
             tried[candidate] = true
-            local baseModule = "scripts.SkillPerkSystem.trees." .. candidate
-
-            local folderModulesLoaded, folderNodesLoaded = loadFolderTreeModules(baseModule)
-            local modulesLoaded = folderModulesLoaded
-            local nodesLoaded = folderNodesLoaded
-
-            if modulesLoaded == 0 then
-                local legacyModulesLoaded, legacyNodesLoaded = loadLegacyTreeModule(baseModule)
-                modulesLoaded = modulesLoaded + legacyModulesLoaded
-                nodesLoaded = nodesLoaded + legacyNodesLoaded
-                if legacyModulesLoaded > 0 and not warnedLegacySkills[skillString] then
-                    warnedLegacySkills[skillString] = true
-                    print(
-                        "[SkillPerkSystem] DEPRECATION: legacy flat tree module used for skill '"
-                            .. skillString
-                            .. "' at "
-                            .. baseModule
-                            .. ". Prefer co-located node data in perks/<skillId>.lua."
-                    )
-                end
-            end
-
-            if modulesLoaded > 0 then
+            local moduleName = "scripts.SkillPerkSystem.perks." .. candidate
+            local found, perkModule = requireOptional(moduleName)
+            if found then
+                local result = pluginAPI.registerPerkModule(perkModule, moduleName, skillString)
                 print(
-                    "[SkillPerkSystem] Loaded tree skill '"
+                    "[SkillPerkSystem] Loaded perk skill module '"
                         .. skillString
                         .. "' via "
-                        .. modulesLoaded
-                        .. " module(s), registered "
-                        .. nodesLoaded
-                        .. " node(s)."
+                        .. moduleName
+                        .. " perks="
+                        .. tostring(result and result.perks or 0)
+                        .. " nodes="
+                        .. tostring(result and result.nodes or 0)
                 )
                 return
             end
         end
     end
 
-    print("[SkillPerkSystem] No tree file loaded for skill id '" .. skillString .. "' (checked folder and legacy module variants)")
+    print("[SkillPerkSystem] No perks module loaded for skill id '" .. skillString .. "'")
 end
 
 local function getTreeNode(nodeID)

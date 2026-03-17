@@ -1,14 +1,4 @@
--- Example moddable perk-tree layout for a single skill.
---
--- Fields:
---   id          : unique node/perk id
---   skill       : OpenMW skill id
---   title       : display name in tree
---   description : optional extra text for right-hand detail panel
---   x, y        : map coordinates for future panning/tree-canvas rendering
---   requires    : list of parent node ids (chain/branching dependencies)
-
-return {
+local nodes = {
     {
         id = "block_basic_guard",
         skill = "block",
@@ -45,4 +35,14 @@ return {
         y = 260,
         requires = { "block_reactive_guard", "block_bulwark_stance" },
     },
+}
+
+local function register(api)
+    for _, node in ipairs(nodes) do
+        api.registerTreeNode(node)
+    end
+end
+
+return {
+    register = register,
 }

@@ -162,18 +162,20 @@ PR/task confirmation requirement:
 - Every SkillPerkSystem PR or task handoff must explicitly confirm that no files were added, edited, or removed under either reference-only folder above.
 - Use `SkillPerkSystem/TASK_TEMPLATE.md` for planning/new tasks so this policy is inherited by default.
 
-## Experimental tree layout data (modder-facing)
+## Built-in content is shipped as a first-party plugin pack
 
-The framework now includes an experimental, data-driven tree-node registry for future map-style perk UIs.
+Core framework scripts under `scripts/SkillPerkSystem/` now provide API, registry, loader, and UI behavior only.
 
-- Put per-skill node files in `scripts/SkillPerkSystem/trees/<skillId>.lua`
-- See `scripts/SkillPerkSystem/trees/README.md` for schema
-- Example included: `scripts/SkillPerkSystem/trees/block.lua`
+Shipped first-party content lives in `scripts/SkillPerkSystemBuiltin/` and is registered through the same plugin API used by external mods:
 
-Node files support `id`, `skill`, `x`, `y`, and `requires` so chains/branches can be authored in script files without editing core UI code.
+- `scripts/SkillPerkSystemBuiltin/skillperk_manifest.lua`
+- `scripts/SkillPerkSystemBuiltin/perks/<skillId>.lua`
+- `scripts/SkillPerkSystemBuiltin/trees/<skillId>.lua`
+
+This keeps built-in perk/tree definitions modular and avoids hardcoded, skill-specific data paths in core framework code.
 
 ### Demo tree content toggle
 
-`settings.lua` now includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which registers no-effect Long Blade demo perks used for testing the tree UI.
+`settings.lua` includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which controls the built-in Long Blade demo perks shipped in `scripts/SkillPerkSystemBuiltin/perks/longblade.lua`.
 
 Set it to `false` to disable demo perk registration.

@@ -1,8 +1,6 @@
 local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 
-local loadedSkills = {}
-
 local function registerTreeNode(node, source)
     pluginAPI.registerTreeNode(node, source)
 end
@@ -16,37 +14,10 @@ local function registerTreeNodes(nodes, source)
     end
 end
 
-local function loadSkillTree(skillID)
-    if loadedSkills[skillID] then
-        return
-    end
-    loadedSkills[skillID] = true
-
-    local skillString = tostring(skillID)
-    local normalized = skillString:lower()
-    local candidates = {
-        normalized,
-        normalized:gsub("%s+", ""),
-        normalized:gsub("%s+", "_"),
-        normalized:gsub("%s+", "-"),
-    }
-
-    local tried = {}
-    for _, candidate in ipairs(candidates) do
-        if candidate ~= "" and not tried[candidate] then
-            tried[candidate] = true
-            local moduleName = "scripts.SkillPerkSystem.trees." .. candidate
-            local ok, result = pcall(require, moduleName)
-            if ok then
-                if type(result) == "table" then
-                    registerTreeNodes(result, moduleName)
-                end
-                return
-            end
-        end
-    end
-
-    print("[SkillPerkSystem] No tree file loaded for skill id '" .. skillString .. "' (checked normalized filename variants)")
+local function loadSkillTree(_skillID)
+    -- Retained for API compatibility. Tree content is now registered by first-party
+    -- and external plugin manifests during startup.
+    return
 end
 
 local function getTreeNode(nodeID)
@@ -54,7 +25,6 @@ local function getTreeNode(nodeID)
 end
 
 local function getTreeNodesForSkill(skillID)
-    loadSkillTree(skillID)
     local nodes = registryState.getTreeNodesForSkill(skillID)
     local out = {}
     for _, node in ipairs(nodes) do

@@ -5,10 +5,9 @@ local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 local pluginLoader = require("scripts.SkillPerkSystem.plugin_loader")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
-local demoPerks = require("scripts.SkillPerkSystem.test_perks")
+local builtinManifest = require("scripts.SkillPerkSystemBuiltin.skillperk_manifest")
 
 local SOURCE_MANIFEST = "scripts.SkillPerkSystem.manifest"
-local SOURCE_DEMO = "scripts.SkillPerkSystem.test_perks"
 
 local function registerPerk(data)
     return pluginAPI.registerPerk(data, SOURCE_MANIFEST)
@@ -22,9 +21,33 @@ local function registerEffect(data)
     return pluginAPI.registerEffect(data, SOURCE_MANIFEST)
 end
 
-demoPerks.registerDemoPerks(registerPerk, SOURCE_DEMO)
-local pluginValidationReport = pluginLoader.loadInstalledPacks(pluginAPI)
+local function registerBuiltinContent()
+    if type(builtinManifest) ~= "table" or type(builtinManifest.register) ~= "function" then
+        return
+    end
 
+    local sourceAwareAPI = {
+        PLUGIN_API_VERSION = pluginAPI.PLUGIN_API_VERSION,
+        assertCompatibleApiVersion = pluginAPI.assertCompatibleApiVersion,
+        registerPerk = function(data)
+            return pluginAPI.registerPerk(data, "scripts.SkillPerkSystemBuiltin.skillperk_manifest")
+        end,
+        registerTreeNode = function(data)
+            return pluginAPI.registerTreeNode(data, "scripts.SkillPerkSystemBuiltin.skillperk_manifest")
+        end,
+        registerEffect = function(data)
+            return pluginAPI.registerEffect(data, "scripts.SkillPerkSystemBuiltin.skillperk_manifest")
+        end,
+        registerPointSource = function(sourceId, handlers)
+            return pluginAPI.registerPointSource(sourceId, handlers, "scripts.SkillPerkSystemBuiltin.skillperk_manifest")
+        end,
+    }
+
+    builtinManifest.register(sourceAwareAPI)
+end
+
+registerBuiltinContent()
+local pluginValidationReport = pluginLoader.loadInstalledPacks(pluginAPI)
 
 local function buildPluginValidationSummary(report)
     local packs = (type(report) == "table" and type(report.packs) == "table") and report.packs or {}

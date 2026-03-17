@@ -1,8 +1,4 @@
 local settings = require("scripts.SkillPerkSystem.settings")
-local interfaces = require("openmw.interfaces")
-
-local MOD_NAME = settings.MOD_NAME
-local registered = false
 
 local demoPerks = {
     { id = "longblade_demo_root", skill = "longblade", cost = 1, requires = {} },
@@ -19,39 +15,31 @@ local demoPerks = {
     },
 }
 
-local function buildRequirement(parentID)
-    return {
-        check = function()
-            local playerInterface = interfaces[MOD_NAME .. "Player"]
-            return playerInterface ~= nil and playerInterface.hasPerk(parentID)
-        end,
-    }
-end
-
-local function registerDemoPerks(registerPerk, source)
-    if registered or not settings.ENABLE_DEMO_TREE_PERKS then
+local function register(api)
+    if not settings.ENABLE_DEMO_TREE_PERKS then
         return
     end
 
     for _, record in ipairs(demoPerks) do
         local requirements = {}
         for _, parentID in ipairs(record.requires or {}) do
-            table.insert(requirements, buildRequirement(parentID))
+            table.insert(requirements, {
+                check = function()
+                    return api.playerHasPerk(parentID)
+                end,
+            })
         end
 
-        registerPerk({
+        api.registerPerk({
             id = record.id,
             skill = record.skill,
             requirements = requirements,
             cost = record.cost,
             effectId = "demo_noop",
-        }, source)
+        })
     end
-
-    registered = true
-    print("[" .. MOD_NAME .. "] Registered Long Blade demo tree perks (" .. tostring(#demoPerks) .. ")")
 end
 
 return {
-    registerDemoPerks = registerDemoPerks,
+    register = register,
 }

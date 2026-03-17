@@ -1,7 +1,4 @@
--- Demo Long Blade tree used to validate chain layout + panning.
--- These node ids match demo perks registered in scripts/SkillPerkSystem/test_perks.lua.
-
-return {
+local nodes = {
     {
         id = "longblade_demo_root",
         skill = "longblade",
@@ -65,4 +62,14 @@ return {
         y = 420,
         requires = { "longblade_demo_duelist", "longblade_demo_whirlwind", "longblade_demo_pressure" },
     },
+}
+
+local function register(api)
+    for _, node in ipairs(nodes) do
+        api.registerTreeNode(node)
+    end
+end
+
+return {
+    register = register,
 }

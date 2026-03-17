@@ -184,10 +184,6 @@ local function updateFilteredPerks()
         return
     end
 
-    if type(interfaces[MOD_NAME].loadSkillTree) == "function" then
-        interfaces[MOD_NAME].loadSkillTree(selectedSkillID)
-    end
-
     filteredPerkIDs = interfaces[MOD_NAME].getPerkIDsForSkill(selectedSkillID)
     table.sort(filteredPerkIDs)
     if selectedPerkIndex > #filteredPerkIDs then

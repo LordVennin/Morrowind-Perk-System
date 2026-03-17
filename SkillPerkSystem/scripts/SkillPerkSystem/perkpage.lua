@@ -493,6 +493,8 @@ local function buildPerkPane()
         local viewportSize = util.vector2(520, 468)
         local nodeHeight = 28
         local lineThickness = 2
+        local horizontalLineTexture = ui.texture { path = "textures/menu_thin_border_top.dds" }
+        local verticalLineTexture = ui.texture { path = "textures/menu_thin_border_left.dds" }
         local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), math.floor(viewportSize.y / 2))
         local nodeByID = {}
 
@@ -535,13 +537,18 @@ local function buildPerkPane()
             if w <= 0 or h <= 0 then
                 return
             end
+
+            local width = math.max(lineThickness, math.floor(w))
+            local height = math.max(lineThickness, math.floor(h))
+            local horizontal = width >= height
+
             table.insert(treeCanvasContent, {
-                type = ui.TYPE.Container,
-                template = interfaces.MWUI.templates.boxSolid,
+                type = ui.TYPE.Image,
                 props = {
                     autoSize = false,
                     position = util.vector2(math.floor(x), math.floor(y)),
-                    size = util.vector2(math.max(lineThickness, math.floor(w)), math.max(lineThickness, math.floor(h))),
+                    size = util.vector2(width, height),
+                    resource = horizontal and horizontalLineTexture or verticalLineTexture,
                 },
                 userData = {
                     drawLayer = 0,
@@ -614,7 +621,6 @@ local function buildPerkPane()
 
         table.insert(perksCol, {
             type = ui.TYPE.Container,
-            template = interfaces.MWUI.templates.boxTransparent,
             props = {
                 autoSize = false,
                 size = viewportSize,

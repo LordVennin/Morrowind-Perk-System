@@ -6,6 +6,8 @@ return {
     DEBUG_LOGS = false,
     -- Enables detailed plugin validation logs (per-module load attempts/failures).
     PLUGIN_VALIDATION_VERBOSE = false,
+    -- Optional external content pack discovery. Internal pack modules always load from the internal index.
+    ENABLE_EXTERNAL_PLUGIN_SCANNING = true,
     -- Duplicate registration policy:
     -- false (default) = hard-error on duplicate ids
     -- true            = last-write-wins (development convenience)

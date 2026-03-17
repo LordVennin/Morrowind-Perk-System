@@ -37,7 +37,10 @@ end
 
 ```lua
 return {
-  id = "yourpack_longblade_core_training",
+  schema = "skillperks.vNext",
+  perks = {
+    {
+      id = "yourpack_longblade_core_training",
   skill = "longblade",
   effectId = "yourpack_bonus_damage",
   requires = {},
@@ -46,5 +49,7 @@ return {
   y = 0,
   title = "Core Training",
   description = "Starter node data is co-located with perk behavior.",
+    },
+  },
 }
 ```

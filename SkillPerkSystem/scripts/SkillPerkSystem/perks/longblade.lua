@@ -1,6 +1,7 @@
 local settings = require("scripts.SkillPerkSystem.settings")
 
 return {
+    schema = "skillperks.vNext",
     enabled = settings.ENABLE_DEMO_TREE_PERKS,
     perks = {
         {

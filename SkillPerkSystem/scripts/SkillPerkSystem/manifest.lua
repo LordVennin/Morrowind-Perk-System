@@ -33,12 +33,19 @@ local function buildPluginValidationSummary(report)
 
     local loadedSuccessfully = 0
     local failedOrSkipped = 0
+    local strictValidationFailures = 0
 
     for _, packReport in ipairs(packs) do
         if packReport.status == "loaded" then
             loadedSuccessfully = loadedSuccessfully + 1
         else
             failedOrSkipped = failedOrSkipped + 1
+        end
+
+        for _, failure in ipairs(packReport.moduleFailures or {}) do
+            if failure.class == "validation" then
+                strictValidationFailures = strictValidationFailures + 1
+            end
         end
     end
 
@@ -51,7 +58,13 @@ local function buildPluginValidationSummary(report)
             .. tostring(loadedSuccessfully)
             .. " failed_or_skipped="
             .. tostring(failedOrSkipped)
+            .. " strict_validation_failures="
+            .. tostring(strictValidationFailures)
     )
+
+    if strictValidationFailures > 0 then
+        print("[" .. settings.MOD_NAME .. "] !!! STRICT SCHEMA VALIDATION FAILURES DETECTED !!!")
+    end
 
     for _, packReport in ipairs(packs) do
         if packReport.status ~= "loaded" then
@@ -66,6 +79,22 @@ local function buildPluginValidationSummary(report)
                     .. tostring(packReport.reason)
                     .. "'"
             )
+        end
+
+        for _, failure in ipairs(packReport.moduleFailures or {}) do
+            if failure.class == "validation" then
+                print(
+                    "["
+                        .. settings.MOD_NAME
+                        .. "] STRICT validation failure: pack='"
+                        .. tostring(packReport.packName)
+                        .. "' module='"
+                        .. tostring(failure.module)
+                        .. "' reason='"
+                        .. tostring(failure.reason)
+                        .. "'"
+                )
+            end
         end
     end
 

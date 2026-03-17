@@ -3,6 +3,7 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
+local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -130,6 +131,7 @@ local function tryRequire(packName, moduleName, packReport)
     return false, nil
 end
 
+
 local function tryRequireOptional(packName, moduleName, packReport)
     packReport.modulesAttemptedCount = packReport.modulesAttemptedCount + 1
     local ok, resultOrErr = pcall(require, moduleName)
@@ -149,95 +151,6 @@ local function tryRequireOptional(packName, moduleName, packReport)
     appendFailure(packReport, moduleName, resultOrErr)
     logVerbose("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
     return false, nil
-end
-
-local function loadSkillFolderModuleSet(packName, pluginAPI, packReport, skillID, basePerkModule, skillModuleStats)
-    local listModule = basePerkModule .. ".modules"
-    local listFound, listModuleData = tryRequireOptional(packName, listModule, packReport)
-    skillModuleStats.attempted = skillModuleStats.attempted + 1
-    if not listFound then
-        return {
-            found = false,
-            loaded = 0,
-            registered = 0,
-        }
-    end
-
-    if type(listModuleData) ~= "table" then
-        appendFailure(
-            packReport,
-            listModule,
-            VALIDATION_ERROR_TAG
-                .. ": skill folder module list must return a table for skill '"
-                .. tostring(skillID)
-                .. "'"
-        )
-        return {
-            found = true,
-            loaded = 0,
-            registered = 0,
-        }
-    end
-
-    local loaded = 0
-    local registered = 0
-    for i, moduleSuffix in ipairs(listModuleData) do
-        if type(moduleSuffix) ~= "string" or moduleSuffix == "" then
-            appendFailure(
-                packReport,
-                listModule,
-                VALIDATION_ERROR_TAG
-                    .. ": skill folder module list entry #"
-                    .. tostring(i)
-                    .. " must be a non-empty string for skill '"
-                    .. tostring(skillID)
-                    .. "'"
-            )
-        else
-            local moduleName = basePerkModule .. "." .. moduleSuffix
-            local loadedNested, nestedModuleData = tryRequire(packName, moduleName, packReport)
-            skillModuleStats.attempted = skillModuleStats.attempted + 1
-            if loadedNested then
-                loaded = loaded + 1
-                skillModuleStats.loaded = skillModuleStats.loaded + 1
-                if tryRegisterSkillModule(pluginAPI, packReport, skillID, moduleName, nestedModuleData) then
-                    registered = registered + 1
-                end
-            end
-        end
-    end
-
-    return {
-        found = true,
-        loaded = loaded,
-        registered = registered,
-    }
-end
-
-local function discoverSubmodules(modulePrefix)
-    local out = {}
-    local seen = {}
-
-    local function collectFrom(source)
-        if type(source) ~= "table" then
-            return
-        end
-        for moduleName, _ in pairs(source) do
-            if type(moduleName) == "string" and moduleName:find(modulePrefix, 1, true) == 1 then
-                local suffix = moduleName:sub(#modulePrefix + 1)
-                if suffix ~= "" and not seen[moduleName] then
-                    seen[moduleName] = true
-                    table.insert(out, moduleName)
-                end
-            end
-        end
-    end
-
-    collectFrom(package.preload)
-    collectFrom(package.loaded)
-
-    table.sort(out)
-    return out
 end
 
 local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
@@ -262,6 +175,36 @@ local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
     }
 end
 
+local function validateSkillModuleSchema(packReport, skillID, skillFolderPath, moduleName, moduleData)
+    if type(moduleData) ~= "table" then
+        return false,
+            VALIDATION_ERROR_TAG
+                .. ": strict schema validation failed: pack='"
+                .. tostring(packReport.packName)
+                .. "' skill_folder='"
+                .. tostring(skillFolderPath)
+                .. "' module='"
+                .. tostring(moduleName)
+                .. "' must return a table"
+    end
+
+    if moduleData.schema ~= REQUIRED_PERK_MODULE_SCHEMA then
+        return false,
+            VALIDATION_ERROR_TAG
+                .. ": strict schema validation failed: pack='"
+                .. tostring(packReport.packName)
+                .. "' skill_folder='"
+                .. tostring(skillFolderPath)
+                .. "' module='"
+                .. tostring(moduleName)
+                .. "' missing required schema='"
+                .. REQUIRED_PERK_MODULE_SCHEMA
+                .. "'"
+    end
+
+    return true, nil
+end
+
 local function registerSkillModule(pluginAPI, skillID, moduleName, moduleData)
     local result = pluginAPI.registerPerkModule(moduleData, moduleName, skillID)
     if result == nil or result.skipped then
@@ -272,7 +215,14 @@ local function registerSkillModule(pluginAPI, skillID, moduleName, moduleData)
     return true
 end
 
-local function tryRegisterSkillModule(pluginAPI, packReport, skillID, moduleName, moduleData)
+local function tryRegisterSkillModule(pluginAPI, packReport, skillID, skillFolderPath, moduleName, moduleData)
+    local schemaValid, schemaErr = validateSkillModuleSchema(packReport, skillID, skillFolderPath, moduleName, moduleData)
+    if not schemaValid then
+        appendFailure(packReport, moduleName, schemaErr)
+        log("strict schema validation failed: pack='" .. tostring(packReport.packName) .. "' skill_folder='" .. tostring(skillFolderPath) .. "' module='" .. tostring(moduleName) .. "'")
+        return false
+    end
+
     local ok, usedSchemaOrErr = pcall(registerSkillModule, pluginAPI, skillID, moduleName, moduleData)
     if not ok then
         appendFailure(packReport, moduleName, usedSchemaOrErr)
@@ -379,53 +329,15 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
             variant = "none",
         }
 
-        -- Primary convention: one module per skill at scripts.<PackName>.perks.<skillId>
         local basePerkModule = "scripts." .. packName .. ".perks." .. skillID
+        local skillFolderPath = "scripts/" .. packName .. "/perks/" .. skillID
         local loadedBase, baseModuleData = tryRequireOptional(packName, basePerkModule, report)
         skillModuleStats.attempted = skillModuleStats.attempted + 1
-        local usedPrimarySkillModule = false
-        local folderModuleSetResult = loadSkillFolderModuleSet(packName, pluginAPI, report, skillID, basePerkModule, skillModuleStats)
+
         if loadedBase then
             skillModuleStats.loaded = skillModuleStats.loaded + 1
-            usedPrimarySkillModule = tryRegisterSkillModule(pluginAPI, report, skillID, basePerkModule, baseModuleData)
-        end
-
-        if usedPrimarySkillModule then
-            skillModuleStats.variant = "single-file"
-            if folderModuleSetResult.found then
-                log(
-                    "pack='"
-                        .. packName
-                        .. "' skill='"
-                        .. tostring(skillID)
-                        .. "' found both skill module variants (single-file + folder-module-set); precedence=single-file"
-                )
-            end
-        elseif folderModuleSetResult.found then
-            if loadedBase then
-                log(
-                    "pack='"
-                        .. packName
-                        .. "' skill='"
-                        .. tostring(skillID)
-                        .. "' found both skill module variants (single-file + folder-module-set); single-file missing schema so folder-module-set used"
-                )
-            end
-
-            if folderModuleSetResult.loaded > 0 then
-                skillModuleStats.variant = "folder-module-set"
-            end
-        else
-            local namespacedModules = discoverSubmodules(basePerkModule .. ".")
-            for _, moduleName in ipairs(namespacedModules) do
-                local loadedNested, nestedModuleData = tryRequire(packName, moduleName, report)
-                skillModuleStats.attempted = skillModuleStats.attempted + 1
-                if loadedNested then
-                    skillModuleStats.loaded = skillModuleStats.loaded + 1
-                    if tryRegisterSkillModule(pluginAPI, report, skillID, moduleName, nestedModuleData) then
-                        skillModuleStats.variant = "legacy-nested"
-                    end
-                end
+            if tryRegisterSkillModule(pluginAPI, report, skillID, skillFolderPath, basePerkModule, baseModuleData) then
+                skillModuleStats.variant = "single-file"
             end
         end
 

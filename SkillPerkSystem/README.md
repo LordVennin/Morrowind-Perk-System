@@ -34,6 +34,17 @@ OpenMW versions differ in Lua console context behavior; if `lua ...` prints cont
 - You can change this in `scripts/SkillPerkSystem/settings.lua` via `TOGGLE_UI_KEY` (single letter key names such as `"k"`, `"o"`, etc.).
 - The perk UI uses a compact skill selector across the top (with previous/next controls) and includes a boxed `Exit` button in the bottom-right corner.
 
+### UI settings
+
+Perk UI pane layout can be tuned in `scripts/SkillPerkSystem/settings.lua`:
+
+- `PERK_UI_LEFT_PANE_WIDTH` (default `540`)
+- `PERK_UI_RIGHT_PANE_WIDTH` (default `408`)
+- `PERK_UI_SIDE_PADDING` (default `8`)
+- `PERK_UI_GUTTER_WIDTH` (default `16`)
+
+These values are used together to compute the total UI row width internally, keeping left/right pane sizing, spacing, and bottom-row `Exit` alignment consistent.
+
 ## Point source API
 
 Use `registerPointSource(sourceId, handlers)` to define custom, event-driven reward sources.

@@ -11,6 +11,11 @@ return {
     -- true            = last-write-wins (development convenience)
     ALLOW_DUPLICATE_REGISTRATION_OVERRIDE = false,
     TOGGLE_UI_KEY = "p",
+    -- Perk UI layout tunables.
+    PERK_UI_LEFT_PANE_WIDTH = 540,
+    PERK_UI_RIGHT_PANE_WIDTH = 408,
+    PERK_UI_SIDE_PADDING = 8,
+    PERK_UI_GUTTER_WIDTH = 16,
     ENABLE_DEMO_TREE_PERKS = true,
     POINT_SOURCES = {
         levelUpRewards = {

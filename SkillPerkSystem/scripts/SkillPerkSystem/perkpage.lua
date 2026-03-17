@@ -230,7 +230,9 @@ local function canPurchasePerk(perkID)
     if #getMissingParentPerks(perkID) > 0 then
         return false
     end
-    return interfaces[MOD_NAME .. "Player"].availablePoints(perk.skill) >= perk.cost
+    local playerApi = interfaces[MOD_NAME .. "Player"]
+    local available = type(playerApi.globalAvailablePoints) == "function" and playerApi.globalAvailablePoints() or playerApi.availablePoints(perk.skill)
+    return available >= perk.cost
 end
 
 local function createButton(label, onPress, enabled, size)
@@ -404,7 +406,9 @@ local function buildSkillTabs()
     end
 
     local skillID = getSelectedSkillID()
-    local label = string.format("%s (%d)", getSkillLabel(skillID), interfaces[MOD_NAME .. "Player"].availablePoints(skillID))
+    local playerApi = interfaces[MOD_NAME .. "Player"]
+    local globalPoints = type(playerApi.globalAvailablePoints) == "function" and playerApi.globalAvailablePoints() or playerApi.availablePoints(skillID)
+    local label = string.format("%s (global %d)", getSkillLabel(skillID), globalPoints)
 
     return {
         type = ui.TYPE.Flex,

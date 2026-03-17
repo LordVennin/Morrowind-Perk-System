@@ -51,8 +51,12 @@ local function getTreeNodesForSkill(skillID)
     return state.treeNodesBySkill[skillID] or {}
 end
 
-local function registerPointSource(source)
-    state.pointSourcesByID[source.id] = source
+local function registerPointSource(sourceId, handlers, source)
+    state.pointSourcesByID[sourceId] = {
+        id = sourceId,
+        handlers = handlers,
+        source = source,
+    }
 end
 
 return {

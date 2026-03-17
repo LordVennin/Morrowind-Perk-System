@@ -91,7 +91,9 @@ local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
         registerEffect = function(data)
             return pluginAPI.registerEffect(data, sourceName)
         end,
-        registerPointSource = pluginAPI.registerPointSource,
+        registerPointSource = function(sourceId, handlers)
+            return pluginAPI.registerPointSource(sourceId, handlers, sourceName)
+        end,
     }
 end
 

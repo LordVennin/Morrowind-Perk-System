@@ -5,15 +5,17 @@ local settings = require("scripts.SkillPerkSystem.settings")
 local types = require("openmw.types")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
 local pointsLedger = require("scripts.SkillPerkSystem.points")
+local registryState = require("scripts.SkillPerkSystem.registry_state")
 
 local MOD_NAME = settings.MOD_NAME
-local MILESTONE_STEP = settings.MILESTONE_STEP
+local POINT_SOURCE_SETTINGS = settings.POINT_SOURCES or {}
 local DEBUG_LOGS = settings.DEBUG_LOGS == true
 
 local earnedMilestonesBySkill = {}
 local spentPointsBySkill = {}
 local activePerks = {}
 local updateTimer = 0
+local pointSourcesInitialized = false
 
 local function debugPrint(message)
     if not DEBUG_LOGS then
@@ -45,8 +47,40 @@ local function skillBase(skillID)
     return stat.base
 end
 
-local function milestonesForSkill(skillID)
-    return math.floor(skillBase(skillID) / MILESTONE_STEP)
+
+local function playerLevel()
+    local levelAccessor = types.NPC.stats.level
+    if type(levelAccessor) ~= "function" then
+        return 1
+    end
+
+    local levelStat = levelAccessor(pself)
+    if levelStat == nil or type(levelStat.base) ~= "number" then
+        return 1
+    end
+
+    return math.max(1, math.floor(levelStat.base))
+end
+
+local function sortedNumericKeys(map)
+    local keys = {}
+    for key, _ in pairs(map or {}) do
+        if type(key) == "number" then
+            table.insert(keys, key)
+        end
+    end
+    table.sort(keys)
+    return keys
+end
+
+local function awardFromSource(sourceId, claimId, amount, reason)
+    local ok, resultOrErr = pointsLedger.claimAndAddPoints(sourceId, claimId, amount, reason)
+    if ok then
+        debugPrint(string.format("Point source '%s' granted %d for claim '%s'", sourceId, amount, claimId))
+    elseif resultOrErr ~= "already claimed" then
+        print("[" .. MOD_NAME .. "] point source '" .. tostring(sourceId) .. "' failed claim='" .. tostring(claimId) .. "': " .. tostring(resultOrErr))
+    end
+    return ok
 end
 
 local function earnedPoints(skillID)
@@ -65,6 +99,87 @@ end
 
 local function globalAvailablePoints()
     return pointsLedger.getAvailablePoints()
+end
+
+local function registerBuiltInPointSources()
+    local levelUpConfig = POINT_SOURCE_SETTINGS.levelUpRewards or {}
+    if levelUpConfig.enabled ~= false then
+        pointsLedger.registerPointSource("level-up", {
+            onUpdate = function(_)
+                local pointsPerLevel = tonumber(levelUpConfig.pointsPerLevel) or 1
+                local firstRewardLevel = math.max(1, math.floor(tonumber(levelUpConfig.firstRewardLevel) or 2))
+                for level = firstRewardLevel, playerLevel() do
+                    awardFromSource("level-up", "level:" .. tostring(level), pointsPerLevel, "Level up reward")
+                end
+            end,
+        })
+    end
+
+    local milestoneConfig = POINT_SOURCE_SETTINGS.skillMilestoneRewards or {}
+    if milestoneConfig.enabled ~= false then
+        local rewardsByLevel = milestoneConfig.rewardsBySkillLevel or {
+            [50] = 1,
+            [75] = 1,
+            [100] = 1,
+        }
+        pointsLedger.registerPointSource("skill-milestones", {
+            onUpdate = function(_)
+                for _, skillID in ipairs(getSkillIds()) do
+                    local skillLevel = skillBase(skillID)
+                    local grantedCount = 0
+                    for _, milestone in ipairs(sortedNumericKeys(rewardsByLevel)) do
+                        if skillLevel >= milestone then
+                            local reward = rewardsByLevel[milestone]
+                            if type(reward) == "number" and reward > 0 then
+                                local claimId = skillID .. ":" .. tostring(milestone)
+                                if awardFromSource("skill-milestones", claimId, reward, "Skill milestone reward") then
+                                    grantedCount = grantedCount + reward
+                                end
+                            end
+                        end
+                    end
+                    if grantedCount > 0 then
+                        earnedMilestonesBySkill[skillID] = (earnedMilestonesBySkill[skillID] or 0) + grantedCount
+                    end
+                end
+            end,
+        })
+    end
+
+    local questConfig = POINT_SOURCE_SETTINGS.questCompletionRewards or {}
+    if questConfig.enabled ~= false then
+        pointsLedger.registerPointSource("quest-completion", {
+            onQuestCompleted = function(data)
+                local questId = type(data.questId) == "string" and data.questId or nil
+                if questId == nil or questId == "" then
+                    return
+                end
+                local points = tonumber(data.points) or tonumber(questConfig.defaultPoints) or 1
+                if points <= 0 then
+                    return
+                end
+                awardFromSource("quest-completion", "quest:" .. questId, points, "Quest completion reward")
+            end,
+        })
+    end
+end
+
+local function registerExternalPointSources()
+    for sourceId, source in pairs(registryState.getPointSources()) do
+        if type(source) == "table" and type(source.handlers) == "table" then
+            pointsLedger.registerPointSource(sourceId, source.handlers)
+        end
+    end
+end
+
+local function initializePointSources()
+    if pointSourcesInitialized then
+        return
+    end
+
+    registerBuiltInPointSources()
+    registerExternalPointSources()
+    pointSourcesInitialized = true
 end
 
 local function requirementSatisfied(perk)
@@ -112,29 +227,6 @@ local function getActivePerks()
     return out
 end
 
-local function grantRetroactiveMilestones()
-    for _, skillID in ipairs(getSkillIds()) do
-        local oldMilestones = earnedPoints(skillID)
-        local currentMilestones = milestonesForSkill(skillID)
-        if currentMilestones > oldMilestones then
-            local delta = currentMilestones - oldMilestones
-            earnedMilestonesBySkill[skillID] = currentMilestones
-            pointsLedger.addPoints(delta, "Skill milestone", skillID)
-            debugPrint(string.format(
-                "Retroactive milestones increased for %s: %d -> %d (delta=%d, available=%d)",
-                skillID,
-                oldMilestones,
-                currentMilestones,
-                delta,
-                availablePoints(skillID)
-            ))
-        end
-        if spentPointsBySkill[skillID] == nil then
-            spentPointsBySkill[skillID] = 0
-        end
-    end
-end
-
 local function reconcileSaveState()
     local perks = interfaces[MOD_NAME].getPerks()
     local filteredActivePerks = {}
@@ -157,30 +249,20 @@ local function reconcileSaveState()
     activePerks = filteredActivePerks
     spentPointsBySkill = recomputedSpentBySkill
 
-    for _, skillID in ipairs(getSkillIds()) do
-        local earned = earnedPoints(skillID)
-        local spent = spentPoints(skillID)
-        if spent > earned then
-            spentPointsBySkill[skillID] = earned
-        end
-    end
-
     local recomputedSpentTotal = 0
     for _, skillID in ipairs(getSkillIds()) do
         recomputedSpentTotal = recomputedSpentTotal + spentPointsBySkill[skillID]
     end
 
-    local recomputedEarnedTotal = 0
-    for _, skillID in ipairs(getSkillIds()) do
-        recomputedEarnedTotal = recomputedEarnedTotal + earnedPoints(skillID)
-    end
-
-    if pointsLedger.getAvailablePoints() + recomputedSpentTotal ~= recomputedEarnedTotal then
+    local totalAdded = pointsLedger.getTotalAdded()
+    local expectedBalance = math.max(0, totalAdded - recomputedSpentTotal)
+    if pointsLedger.getAvailablePoints() ~= expectedBalance or pointsLedger.getTotalSpent() ~= recomputedSpentTotal then
         pointsLedger.importState({
-            balance = math.max(0, recomputedEarnedTotal - recomputedSpentTotal),
-            totalAdded = recomputedEarnedTotal,
+            balance = expectedBalance,
+            totalAdded = totalAdded,
             totalSpent = recomputedSpentTotal,
             history = pointsLedger.getHistory(),
+            claimedRewardsBySource = pointsLedger.exportState().claimedRewardsBySource,
         })
     end
 end
@@ -381,7 +463,7 @@ local function onUpdate(dt)
         return
     end
     updateTimer = 1
-    grantRetroactiveMilestones()
+    pointsLedger.emitPointSourceEvent("onUpdate", { dt = dt })
 end
 
 local function shouldShowUI()
@@ -422,6 +504,8 @@ local function onLoad(data)
     activePerks = (data and data.activePerks) or {}
     pointsLedger.importState((data and data.pointsLedger) or nil)
 
+    initializePointSources()
+
     if data == nil or data.pointsLedger == nil then
         local migratedEarned = 0
         local migratedSpent = 0
@@ -446,25 +530,22 @@ local function onLoad(data)
         })
     end
 
+    pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
     reconcileSaveState()
-    grantRetroactiveMilestones()
-
-    local totalEarned = 0
-    local totalSpent = 0
-    for _, skillID in ipairs(getSkillIds()) do
-        totalEarned = totalEarned + earnedPoints(skillID)
-        totalSpent = totalSpent + spentPoints(skillID)
-    end
 
     print(string.format(
-        "[%s] Loaded (skills=%d, activePerks=%d, earned=%d, spent=%d, available=%d)",
+        "[%s] Loaded (skills=%d, activePerks=%d, totalAdded=%d, spent=%d, available=%d)",
         MOD_NAME,
         #getSkillIds(),
         #activePerks,
-        totalEarned,
-        totalSpent,
-        totalEarned - totalSpent
+        pointsLedger.getTotalAdded(),
+        pointsLedger.getTotalSpent(),
+        pointsLedger.getAvailablePoints()
     ))
+end
+
+local function onQuestCompleted(data)
+    pointsLedger.emitPointSourceEvent("onQuestCompleted", data or {})
 end
 
 local function onSave()
@@ -488,11 +569,13 @@ return {
         addPoints = pointsLedger.addPoints,
         spendPoints = pointsLedger.spendPoints,
         getPointHistory = pointsLedger.getHistory,
+        registerPointSource = pointsLedger.registerPointSource,
     },
     eventHandlers = {
         UiModeChanged = UiModeChanged,
         [MOD_NAME .. "addPerk"] = addPerk,
         [MOD_NAME .. "removePerk"] = removePerk,
+        [MOD_NAME .. "questCompleted"] = onQuestCompleted,
     },
     engineHandlers = {
         onUpdate = onUpdate,

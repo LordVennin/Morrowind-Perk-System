@@ -1,14 +1,14 @@
 # SkillPerkSystem
 
-A new OpenMW perk framework where each skill grants its own perk points:
+A new OpenMW perk framework with a global perk-point ledger and pluggable point sources.
 
-- 1 perk point at 25 in a skill
-- 1 more at 50
-- 1 more at 75
-- 1 more at 100
+Built-in point sources include:
 
-Perk points are tracked per skill and cannot be spent on other skills.
-Each perk may define a `cost` (default `1`) as a positive integer spent from that perk's skill pool when added and refunded when removed.
+- level-up rewards,
+- skill milestone rewards (50/75/100 by default),
+- quest completion rewards (event-driven).
+
+Each perk may define a `cost` (default `1`) as a positive integer spent from the global pool when added and refunded when removed.
 
 ## Install
 
@@ -33,6 +33,41 @@ OpenMW versions differ in Lua console context behavior; if `lua ...` prints cont
 - Press `P` to toggle the perk UI by default.
 - You can change this in `scripts/SkillPerkSystem/settings.lua` via `TOGGLE_UI_KEY` (single letter key names such as `"k"`, `"o"`, etc.).
 - The perk UI uses a compact skill selector across the top (with previous/next controls) and includes a boxed `Exit` button in the bottom-right corner.
+
+## Point source API
+
+Use `registerPointSource(sourceId, handlers)` to define custom, event-driven reward sources.
+
+```lua
+interfaces.SkillPerkSystem.registerPointSource("MyModBossKills", {
+  onBossKilled = function(data)
+    -- integrate with your own event and add points via the player interface
+  end,
+})
+```
+
+Built-in sources are registered by the player script and use one-time claim IDs persisted in save data.
+
+### Quest completion integration point
+
+Send this event from your quest system to trigger the built-in quest source:
+
+```lua
+self:sendEvent("SkillPerkSystemquestCompleted", {
+  questId = "my_unique_quest_id",
+  points = 2, -- optional; falls back to settings quest default
+})
+```
+
+Each `questId` is rewarded once per save.
+
+### Configuring built-in sources
+
+Edit `scripts/SkillPerkSystem/settings.lua` under `POINT_SOURCES`:
+
+- `levelUpRewards.enabled`, `pointsPerLevel`, `firstRewardLevel`
+- `skillMilestoneRewards.enabled`, `rewardsBySkillLevel`
+- `questCompletionRewards.enabled`, `defaultPoints`
 
 ## Registering perks from another mod
 
@@ -59,9 +94,9 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 
 ## Notes
 
-- Milestones are retroactive. If a save already has a skill above 25/50/75/100, points are granted on load.
-- Earned milestones are not reduced when a skill temporarily drops.
-- Save reconciliation runs on load: active perks missing from the currently registered perk list are dropped with a warning, spent points are recomputed from remaining perks, and per-skill spent points are clamped to earned points.
+- Built-in rewards are retroactive because sources are evaluated on load and tracked with one-time claims in save data.
+- Claimed milestone/quest rewards are persistent and are not granted twice.
+- Save reconciliation runs on load: active perks missing from the currently registered perk list are dropped with a warning, and spent totals are recomputed from remaining perks.
 
 ## Experimental tree layout data (modder-facing)
 

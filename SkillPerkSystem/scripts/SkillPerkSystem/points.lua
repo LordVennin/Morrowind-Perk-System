@@ -4,6 +4,8 @@ local state = {
     totalSpent = 0,
     nextEntryID = 1,
     history = {},
+    pointSources = {},
+    claimedRewardsBySource = {},
 }
 
 local function sanitizePositiveAmount(amount)
@@ -44,6 +46,61 @@ local function addPoints(amount, reason, sourceId)
     return true, pushHistoryEntry("add", normalizedAmount, reason, sourceId, nil)
 end
 
+local function ensureSourceClaims(sourceId)
+    state.claimedRewardsBySource[sourceId] = state.claimedRewardsBySource[sourceId] or {}
+    return state.claimedRewardsBySource[sourceId]
+end
+
+local function hasClaimed(sourceId, claimId)
+    local claims = ensureSourceClaims(sourceId)
+    return claims[claimId] == true
+end
+
+local function claimAndAddPoints(sourceId, claimId, amount, reason)
+    if type(sourceId) ~= "string" or sourceId == "" then
+        return false, "sourceId must be a non-empty string"
+    end
+    if type(claimId) ~= "string" or claimId == "" then
+        return false, "claimId must be a non-empty string"
+    end
+
+    local claims = ensureSourceClaims(sourceId)
+    if claims[claimId] == true then
+        return false, "already claimed"
+    end
+
+    local ok, result = addPoints(amount, reason, sourceId)
+    if not ok then
+        return false, result
+    end
+
+    claims[claimId] = true
+    return true, result
+end
+
+local function registerPointSource(sourceId, handlers)
+    if type(sourceId) ~= "string" or sourceId == "" then
+        error("registerPointSource() requires non-empty string sourceId", 2)
+    end
+    if type(handlers) ~= "table" then
+        error("registerPointSource(" .. tostring(sourceId) .. ") requires handlers table", 2)
+    end
+    state.pointSources[sourceId] = handlers
+    ensureSourceClaims(sourceId)
+end
+
+local function emitPointSourceEvent(eventName, data)
+    for sourceId, handlers in pairs(state.pointSources) do
+        local handler = handlers[eventName]
+        if type(handler) == "function" then
+            local ok, err = pcall(handler, data or {})
+            if not ok then
+                print("[SkillPerkSystem] point source '" .. sourceId .. "' handler '" .. eventName .. "' failed: " .. tostring(err))
+            end
+        end
+    end
+end
+
 local function spendPoints(amount, perkId)
     local normalizedAmount = sanitizePositiveAmount(amount)
     if normalizedAmount == nil then
@@ -65,6 +122,7 @@ local function exportState()
         totalSpent = state.totalSpent,
         nextEntryID = state.nextEntryID,
         history = state.history,
+        claimedRewardsBySource = state.claimedRewardsBySource,
     }
 end
 
@@ -75,6 +133,7 @@ local function importState(data)
     state.totalSpent = type(loaded.totalSpent) == "number" and math.max(0, math.floor(loaded.totalSpent)) or 0
     state.nextEntryID = type(loaded.nextEntryID) == "number" and math.max(1, math.floor(loaded.nextEntryID)) or 1
     state.history = type(loaded.history) == "table" and loaded.history or {}
+    state.claimedRewardsBySource = type(loaded.claimedRewardsBySource) == "table" and loaded.claimedRewardsBySource or {}
 
     if state.nextEntryID <= #state.history then
         state.nextEntryID = #state.history + 1
@@ -98,6 +157,10 @@ return {
         return state.totalSpent
     end,
     getHistory = getHistory,
+    registerPointSource = registerPointSource,
+    emitPointSourceEvent = emitPointSourceEvent,
+    claimAndAddPoints = claimAndAddPoints,
+    hasClaimed = hasClaimed,
     exportState = exportState,
     importState = importState,
 }

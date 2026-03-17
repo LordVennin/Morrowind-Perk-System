@@ -1,2 +1,2 @@
 # PackName: VenninsPerks (normalized from "Vennin's Perks")
-PLAYER:scripts/VenninsPerks/dummy.lua
+PLAYER:scripts/VenninsPerks/bootstrap.lua

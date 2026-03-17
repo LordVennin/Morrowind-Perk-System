@@ -31,14 +31,14 @@ local function buildPluginValidationSummary(report)
     local totalPacksDetected = (type(report) == "table" and type(report.totalPacksDetected) == "number") and report.totalPacksDetected
         or #packs
 
-    local successful = 0
-    local failing = 0
+    local loadedSuccessfully = 0
+    local failedOrSkipped = 0
 
     for _, packReport in ipairs(packs) do
-        if #packReport.moduleFailures == 0 then
-            successful = successful + 1
+        if packReport.status == "loaded" then
+            loadedSuccessfully = loadedSuccessfully + 1
         else
-            failing = failing + 1
+            failedOrSkipped = failedOrSkipped + 1
         end
     end
 
@@ -47,24 +47,23 @@ local function buildPluginValidationSummary(report)
             .. settings.MOD_NAME
             .. "] plugin validation summary: packs="
             .. tostring(totalPacksDetected)
-            .. " registered="
-            .. tostring(successful)
-            .. " with_errors="
-            .. tostring(failing)
+            .. " loaded="
+            .. tostring(loadedSuccessfully)
+            .. " failed_or_skipped="
+            .. tostring(failedOrSkipped)
     )
 
     for _, packReport in ipairs(packs) do
-        if #packReport.moduleFailures > 0 then
-            local firstError = packReport.moduleFailures[1]
+        if packReport.status ~= "loaded" then
             print(
                 "["
                     .. settings.MOD_NAME
-                    .. "] plugin error: pack='"
+                    .. "] plugin validation issue: pack='"
                     .. tostring(packReport.packName)
-                    .. "' module='"
-                    .. tostring(firstError.module)
+                    .. "' status='"
+                    .. tostring(packReport.status)
                     .. "' reason='"
-                    .. tostring(firstError.reason)
+                    .. tostring(packReport.reason)
                     .. "'"
             )
         end
@@ -77,10 +76,14 @@ local function buildPluginValidationSummary(report)
                     .. settings.MOD_NAME
                     .. "] plugin report: pack='"
                     .. tostring(packReport.packName)
+                    .. "' status='"
+                    .. tostring(packReport.status)
                     .. "' manifest_found="
                     .. tostring(packReport.manifest and packReport.manifest.found)
                     .. " register_success="
                     .. tostring(packReport.manifest and packReport.manifest.registerSuccess)
+                    .. " modules_attempted="
+                    .. tostring(packReport.modulesAttemptedCount)
                     .. " modules_loaded="
                     .. tostring(packReport.modulesLoadedCount)
                     .. " failures="

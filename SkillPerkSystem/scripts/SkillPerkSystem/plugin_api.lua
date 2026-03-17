@@ -1,4 +1,5 @@
 local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
 local settings = require("scripts.SkillPerkSystem.settings")
@@ -163,6 +164,172 @@ local function registerTreeNode(data, source)
     end
 end
 
+local function buildRequirement(parentID)
+    return {
+        check = function()
+            local playerInterface = interfaces[settings.MOD_NAME .. "Player"]
+            return playerInterface ~= nil and playerInterface.hasPerk(parentID)
+        end,
+    }
+end
+
+local function normalizePerkDefinition(perk)
+    local normalized = {
+        id = perk.id,
+        skill = perk.skill,
+        effectId = perk.effectId,
+        cost = perk.cost,
+        requirements = perk.requirements,
+    }
+
+    if normalized.requirements == nil then
+        normalized.requirements = {}
+        for _, parentID in ipairs(perk.requires or {}) do
+            table.insert(normalized.requirements, buildRequirement(parentID))
+        end
+    end
+
+    return normalized
+end
+
+local function deriveNodeFromPerk(perk, sourceName)
+    local hasEmbeddedNode = type(perk.node) == "table"
+    local hasInlineNodeFields = type(perk.x) == "number" or type(perk.y) == "number" or perk.title ~= nil or perk.description ~= nil
+
+    if not hasEmbeddedNode and not hasInlineNodeFields then
+        return nil
+    end
+
+    if hasEmbeddedNode and hasInlineNodeFields then
+        validationError(
+            "module '"
+                .. tostring(sourceName)
+                .. "' perk '"
+                .. tostring(perk.id)
+                .. "' cannot define both node table and inline node fields",
+            2
+        )
+    end
+
+    local nodeData = hasEmbeddedNode and perk.node or perk
+    local nodeID = nodeData.id or nodeData.nodeId or nodeData.nodeID or perk.nodeId or perk.nodeID or perk.id
+    return {
+        id = nodeID,
+        skill = nodeData.skill or perk.skill,
+        x = nodeData.x,
+        y = nodeData.y,
+        requires = nodeData.requires,
+        title = nodeData.title,
+        description = nodeData.description,
+    }, nodeData.perkId or nodeData.perkID or perk.perkId or perk.perkID or perk.id
+end
+
+local function registerPerkModule(data, source, expectedSkill)
+    if type(data) ~= "table" then
+        validationError("registerPerkModule() expects a table", 2)
+    end
+
+    local enabled = data.enabled
+    if type(enabled) == "function" then
+        enabled = enabled()
+    end
+    if enabled == false then
+        return { perks = 0, nodes = 0, skipped = true }
+    end
+
+    local perks = data.perks
+    local nodes = data.nodes
+    if type(perks) ~= "table" and type(nodes) ~= "table" and type(data.id) == "string" then
+        perks = { data }
+    end
+
+    if type(perks) ~= "table" and type(nodes) ~= "table" then
+        validationError("registerPerkModule() requires a module with perks and/or nodes", 2)
+    end
+
+    local perkIds = {}
+    local hasPerkEntries = false
+    local registeredPerks = 0
+    local registeredNodes = 0
+
+    if type(perks) == "table" then
+        for i, perk in ipairs(perks) do
+            if type(perk) ~= "table" then
+                validationError("registerPerkModule() perks[" .. tostring(i) .. "] must be a table", 2)
+            end
+            if type(expectedSkill) == "string" and expectedSkill ~= "" and type(perk.skill) == "string" and perk.skill ~= "" and perk.skill ~= expectedSkill then
+                validationError(
+                    "registerPerkModule() perk '"
+                        .. tostring(perk.id)
+                        .. "' declares skill '"
+                        .. tostring(perk.skill)
+                        .. "' but expected '"
+                        .. tostring(expectedSkill)
+                        .. "'",
+                    2
+                )
+            end
+
+            registerPerk(normalizePerkDefinition(perk), source)
+            perkIds[perk.id] = true
+            hasPerkEntries = true
+            registeredPerks = registeredPerks + 1
+
+            local derivedNode, mappedPerkID = deriveNodeFromPerk(perk, source)
+            if derivedNode ~= nil then
+                if mappedPerkID ~= nil and mappedPerkID ~= "" and mappedPerkID ~= perk.id then
+                    validationError(
+                        "registerPerkModule() perk '"
+                            .. tostring(perk.id)
+                            .. "' derived node mapped to unexpected perk id '"
+                            .. tostring(mappedPerkID)
+                            .. "'",
+                        2
+                    )
+                end
+                registerTreeNode(derivedNode, source)
+                registeredNodes = registeredNodes + 1
+            end
+        end
+    end
+
+    if type(nodes) == "table" then
+        for i, node in ipairs(nodes) do
+            if type(node) ~= "table" then
+                validationError("registerPerkModule() nodes[" .. tostring(i) .. "] must be a table", 2)
+            end
+            if type(expectedSkill) == "string" and expectedSkill ~= "" and type(node.skill) == "string" and node.skill ~= "" and node.skill ~= expectedSkill then
+                validationError(
+                    "registerPerkModule() node '"
+                        .. tostring(node.id)
+                        .. "' declares skill '"
+                        .. tostring(node.skill)
+                        .. "' but expected '"
+                        .. tostring(expectedSkill)
+                        .. "'",
+                    2
+                )
+            end
+            local mappedPerkID = node.perkId or node.perkID or node.id
+            if hasPerkEntries and mappedPerkID ~= nil and mappedPerkID ~= "" and not perkIds[mappedPerkID] then
+                validationError(
+                    "registerPerkModule() node '"
+                        .. tostring(node.id)
+                        .. "' maps to missing perk id '"
+                        .. tostring(mappedPerkID)
+                        .. "'",
+                    2
+                )
+            end
+
+            registerTreeNode(node, source)
+            registeredNodes = registeredNodes + 1
+        end
+    end
+
+    return { perks = registeredPerks, nodes = registeredNodes, skipped = false }
+end
+
 local function registerEffect(data, source)
     if type(data) ~= "table" or type(data.id) ~= "string" or data.id == "" then
         validationError("registerEffect() requires a table with non-empty string field 'id'", 2)
@@ -188,6 +355,7 @@ return {
     assertCompatibleApiVersion = assertCompatibleApiVersion,
     registerPerk = registerPerk,
     registerTreeNode = registerTreeNode,
+    registerPerkModule = registerPerkModule,
     registerEffect = registerEffect,
     registerPointSource = registerPointSource,
 }

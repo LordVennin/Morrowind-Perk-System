@@ -897,7 +897,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(390, 510),
+                            size = util.vector2(408, 510),
                         },
                         content = ui.content { perkDetail },
                     },
@@ -934,6 +934,10 @@ local function buildPerkPane()
                                 pself:sendEvent(MOD_NAME .. "closePerkUI")
                             end, util.vector2(64, 28)),
                         },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = util.vector2(8, 1) },
                     },
                 }
             }

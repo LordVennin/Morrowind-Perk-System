@@ -429,20 +429,37 @@ end
 local function extractSkillModuleName(packName, moduleName)
     local prefix = "scripts." .. packName .. ".perks."
     if type(moduleName) ~= "string" or moduleName:sub(1, #prefix) ~= prefix then
-        return nil
+        return nil, nil
     end
 
     local suffix = moduleName:sub(#prefix + 1)
     if suffix == "" then
-        return nil
+        return nil, nil
     end
 
     local skillID = suffix:match("^([^.]+)%..+")
     if type(skillID) ~= "string" or skillID == "" then
-        return nil
+        return nil, nil
     end
 
-    return skillID
+    local moduleFile = suffix:match("^[^.]+%.([^.]+)$")
+    if type(moduleFile) ~= "string" or moduleFile == "" then
+        return nil, nil
+    end
+
+    return skillID, moduleFile
+end
+
+local function sortDiscoveredPerkModules(modules)
+    table.sort(modules, function(left, right)
+        if left.skillID ~= right.skillID then
+            return left.skillID < right.skillID
+        end
+        if left.moduleFile ~= right.moduleFile then
+            return left.moduleFile < right.moduleFile
+        end
+        return left.moduleName < right.moduleName
+    end)
 end
 
 local function preloadPerkModules(pluginAPI)
@@ -465,23 +482,43 @@ local function preloadPerkModules(pluginAPI)
     for _, packReport in ipairs(validationReport.packs or {}) do
         report.packsScanned = report.packsScanned + 1
         local seen = {}
-        for _, moduleAttempt in ipairs(packReport.moduleAttempts or {}) do
-            local skillID = extractSkillModuleName(packReport.packName, moduleAttempt.module)
-            if skillID ~= nil and not seen[moduleAttempt.module] then
-                seen[moduleAttempt.module] = true
-                report.modulesDiscovered = report.modulesDiscovered + 1
+        local discoveredModules = {}
 
-                if moduleAttempt.success then
-                    local ok, moduleData = pcall(require, moduleAttempt.module)
-                    local skillFolderPath = "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(skillID)
-                    if ok and tryRegisterSkillModule(pluginAPI, packReport, skillID, skillFolderPath, moduleAttempt.module, moduleData) then
-                        report.modulesLoaded = report.modulesLoaded + 1
-                    else
-                        report.modulesFailed = report.modulesFailed + 1
-                    end
+        for _, moduleAttempt in ipairs(packReport.moduleAttempts or {}) do
+            local skillID, moduleFile = extractSkillModuleName(packReport.packName, moduleAttempt.module)
+            if skillID ~= nil and moduleFile ~= nil and not seen[moduleAttempt.module] then
+                seen[moduleAttempt.module] = true
+                table.insert(discoveredModules, {
+                    skillID = skillID,
+                    moduleFile = moduleFile,
+                    moduleName = moduleAttempt.module,
+                    attempt = moduleAttempt,
+                })
+            end
+        end
+
+        sortDiscoveredPerkModules(discoveredModules)
+
+        for _, moduleInfo in ipairs(discoveredModules) do
+            report.modulesDiscovered = report.modulesDiscovered + 1
+            if moduleInfo.attempt.success then
+                local ok, moduleData = pcall(require, moduleInfo.moduleName)
+                local skillFolderPath =
+                    "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)
+                if ok and tryRegisterSkillModule(
+                    pluginAPI,
+                    packReport,
+                    moduleInfo.skillID,
+                    skillFolderPath,
+                    moduleInfo.moduleName,
+                    moduleData
+                ) then
+                    report.modulesLoaded = report.modulesLoaded + 1
                 else
                     report.modulesFailed = report.modulesFailed + 1
                 end
+            else
+                report.modulesFailed = report.modulesFailed + 1
             end
         end
     end

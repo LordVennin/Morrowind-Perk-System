@@ -315,15 +315,7 @@ local function buildPreloadSummary(report)
     print(
         "["
             .. settings.MOD_NAME
-            .. "] perk preload summary: packs_scanned="
-            .. tostring(report.packsScanned or 0)
-            .. " modules_discovered="
-            .. tostring(report.modulesDiscovered or 0)
-            .. " modules_loaded="
-            .. tostring(report.modulesLoaded or 0)
-            .. " modules_failed="
-            .. tostring(report.modulesFailed or 0)
-            .. " internal_modules_discovered="
+            .. "] perk preload summary (internal): modules_discovered="
             .. tostring(report.internalModulesDiscovered or 0)
             .. " internal_modules_loaded="
             .. tostring(report.internalModulesLoaded or 0)
@@ -332,6 +324,35 @@ local function buildPreloadSummary(report)
             .. " duration_ms="
             .. tostring(report.durationMs or 0)
     )
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] perk preload summary (external): modules_discovered="
+            .. tostring(report.externalModulesDiscovered or 0)
+            .. " external_modules_loaded="
+            .. tostring(report.externalModulesLoaded or 0)
+            .. " external_modules_failed="
+            .. tostring(report.externalModulesFailed or 0)
+            .. " external_packs_scanned="
+            .. tostring(report.packsScanned or 0)
+            .. " modules_discovered_total="
+            .. tostring(report.modulesDiscovered or 0)
+            .. " modules_loaded_total="
+            .. tostring(report.modulesLoaded or 0)
+            .. " modules_failed_total="
+            .. tostring(report.modulesFailed or 0)
+            .. " duration_ms="
+            .. tostring(report.durationMs or 0)
+    )
+
+    if (report.internalModulesLoaded or 0) == 0 then
+        print(
+            "["
+                .. settings.MOD_NAME
+                .. "] WARNING: internal perk modules loaded count is zero; default/test skill trees will not appear"
+        )
+    end
 end
 
 local function getPerks()

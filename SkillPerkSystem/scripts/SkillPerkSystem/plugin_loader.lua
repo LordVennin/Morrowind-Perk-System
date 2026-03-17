@@ -591,6 +591,9 @@ local function preloadPerkModules(pluginAPI)
         internalModulesDiscovered = 0,
         internalModulesLoaded = 0,
         internalModulesFailed = 0,
+        externalModulesDiscovered = 0,
+        externalModulesLoaded = 0,
+        externalModulesFailed = 0,
         perSkill = {},
         durationMs = 0,
     }
@@ -636,6 +639,8 @@ local function preloadPerkModules(pluginAPI)
             report.modulesDiscovered = report.modulesDiscovered + 1
             if isInternalPack then
                 report.internalModulesDiscovered = report.internalModulesDiscovered + 1
+            else
+                report.externalModulesDiscovered = report.externalModulesDiscovered + 1
             end
 
             local registrationResult = {
@@ -666,12 +671,16 @@ local function preloadPerkModules(pluginAPI)
                 skillSummary.loaded = skillSummary.loaded + 1
                 if isInternalPack then
                     report.internalModulesLoaded = report.internalModulesLoaded + 1
+                else
+                    report.externalModulesLoaded = report.externalModulesLoaded + 1
                 end
             else
                 report.modulesFailed = report.modulesFailed + 1
                 skillSummary.failed = skillSummary.failed + 1
                 if isInternalPack then
                     report.internalModulesFailed = report.internalModulesFailed + 1
+                else
+                    report.externalModulesFailed = report.externalModulesFailed + 1
                 end
             end
 
@@ -722,20 +731,26 @@ local function preloadPerkModules(pluginAPI)
     end
 
     local summary =
-        "preload summary: packs_scanned="
-        .. tostring(report.packsScanned)
-        .. " modules_discovered="
-        .. tostring(report.modulesDiscovered)
-        .. " modules_loaded="
-        .. tostring(report.modulesLoaded)
-        .. " modules_failed="
-        .. tostring(report.modulesFailed)
-        .. " internal_modules_discovered="
+        "preload summary: internal_modules_discovered="
         .. tostring(report.internalModulesDiscovered)
         .. " internal_modules_loaded="
         .. tostring(report.internalModulesLoaded)
         .. " internal_modules_failed="
         .. tostring(report.internalModulesFailed)
+        .. " external_modules_discovered="
+        .. tostring(report.externalModulesDiscovered)
+        .. " external_modules_loaded="
+        .. tostring(report.externalModulesLoaded)
+        .. " external_modules_failed="
+        .. tostring(report.externalModulesFailed)
+        .. " external_packs_scanned="
+        .. tostring(report.packsScanned)
+        .. " modules_discovered_total="
+        .. tostring(report.modulesDiscovered)
+        .. " modules_loaded_total="
+        .. tostring(report.modulesLoaded)
+        .. " modules_failed_total="
+        .. tostring(report.modulesFailed)
 
     if startTimeSeconds ~= nil then
         local endTimeSeconds = readLoaderTimeSeconds()

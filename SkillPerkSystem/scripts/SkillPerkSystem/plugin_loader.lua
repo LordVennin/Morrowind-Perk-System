@@ -8,6 +8,12 @@ local function log(message)
     print(LOADER_TAG .. tostring(message))
 end
 
+local function logVerbose(message)
+    if settings.PLUGIN_VALIDATION_VERBOSE then
+        log(message)
+    end
+end
+
 local function pushUnique(list, seen, value)
     if type(value) == "string" and value ~= "" and not seen[value] then
         seen[value] = true
@@ -95,16 +101,27 @@ local function appendFailure(packReport, moduleName, err)
     })
 end
 
+local function appendModuleAttempt(packReport, moduleName, ok, err)
+    table.insert(packReport.moduleAttempts, {
+        module = moduleName,
+        success = ok,
+        reason = ok and nil or compactReason(err),
+    })
+end
+
 local function tryRequire(packName, moduleName, packReport)
+    packReport.modulesAttemptedCount = packReport.modulesAttemptedCount + 1
     local ok, resultOrErr = pcall(require, moduleName)
+    appendModuleAttempt(packReport, moduleName, ok, resultOrErr)
+
     if ok then
-        log("loaded pack='" .. packName .. "' module='" .. moduleName .. "'")
         packReport.modulesLoadedCount = packReport.modulesLoadedCount + 1
+        logVerbose("loaded pack='" .. packName .. "' module='" .. moduleName .. "'")
         return true, resultOrErr
     end
 
-    log("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
     appendFailure(packReport, moduleName, resultOrErr)
+    logVerbose("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
     return false, nil
 end
 
@@ -138,12 +155,12 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
         packReport.manifest.registerAttempted = true
         if ok then
             packReport.manifest.registerSuccess = true
-            log("executed manifest register() for pack='" .. packName .. "'")
+            logVerbose("executed manifest register() for pack='" .. packName .. "'")
         else
             packReport.manifest.registerSuccess = false
             packReport.manifest.registerError = compactReason(err)
             appendFailure(packReport, manifestPath, err)
-            log("manifest register() failed for pack='" .. packName .. "' error='" .. tostring(err) .. "'")
+            logVerbose("manifest register() failed for pack='" .. packName .. "' error='" .. tostring(err) .. "'")
         end
     end
 
@@ -156,6 +173,30 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
     end
 end
 
+local function finalizePackStatus(packReport)
+    if not packReport.manifest.found then
+        packReport.status = "skipped"
+        packReport.reason = "manifest missing"
+        return
+    end
+
+    if packReport.manifest.registerAttempted and packReport.manifest.registerSuccess == false then
+        packReport.status = "failed"
+        packReport.reason = "manifest register failed: " .. tostring(packReport.manifest.registerError)
+        return
+    end
+
+    if #packReport.moduleFailures > 0 then
+        local firstFailure = packReport.moduleFailures[1]
+        packReport.status = "failed"
+        packReport.reason = "module load failed: " .. tostring(firstFailure.module) .. " - " .. tostring(firstFailure.reason)
+        return
+    end
+
+    packReport.status = "loaded"
+    packReport.reason = "ok"
+end
+
 local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     local report = {
         packName = packName,
@@ -166,8 +207,12 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
             registerSuccess = nil,
             registerError = nil,
         },
+        modulesAttemptedCount = 0,
         modulesLoadedCount = 0,
+        moduleAttempts = {},
         moduleFailures = {},
+        status = "unknown",
+        reason = nil,
     }
 
     local loadedManifest, manifestModule = tryRequire(packName, report.manifest.path, report)
@@ -184,6 +229,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         tryRequire(packName, "scripts." .. packName .. ".effects." .. effectID, report)
     end
 
+    finalizePackStatus(report)
     return report
 end
 
@@ -223,11 +269,17 @@ local function loadInstalledPacks(pluginAPI)
             log(
                 "report pack='"
                     .. packReport.packName
+                    .. "' status="
+                    .. tostring(packReport.status)
+                    .. " reason='"
+                    .. tostring(packReport.reason)
                     .. "' manifest="
                     .. tostring(packReport.manifest.found)
                     .. " register="
                     .. tostring(packReport.manifest.registerSuccess)
-                    .. " modulesLoaded="
+                    .. " modules_attempted="
+                    .. tostring(packReport.modulesAttemptedCount)
+                    .. " modules_loaded="
                     .. tostring(packReport.modulesLoadedCount)
                     .. " failures="
                     .. tostring(#packReport.moduleFailures)

@@ -1,6 +1,8 @@
 local core = require("openmw.core")
+local settings = require("scripts.SkillPerkSystem.settings")
 
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
+local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -67,14 +69,42 @@ local function getRecordIDs(records)
     return ids
 end
 
-local function tryRequire(packName, moduleName)
+local function compactReason(err)
+    local full = tostring(err)
+    local reason = full:match(":%d+:%s*(.*)$") or full
+    if reason == "" then
+        reason = full
+    end
+    return reason
+end
+
+local function classifyFailure(err)
+    local full = tostring(err)
+    if full:find(VALIDATION_ERROR_TAG, 1, true) then
+        return "validation"
+    end
+    return "runtime"
+end
+
+local function appendFailure(packReport, moduleName, err)
+    local reason = compactReason(err)
+    table.insert(packReport.moduleFailures, {
+        module = moduleName,
+        reason = reason,
+        class = classifyFailure(err),
+    })
+end
+
+local function tryRequire(packName, moduleName, packReport)
     local ok, resultOrErr = pcall(require, moduleName)
     if ok then
         log("loaded pack='" .. packName .. "' module='" .. moduleName .. "'")
+        packReport.modulesLoadedCount = packReport.modulesLoadedCount + 1
         return true, resultOrErr
     end
 
     log("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
+    appendFailure(packReport, moduleName, resultOrErr)
     return false, nil
 end
 
@@ -97,7 +127,7 @@ local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
     }
 end
 
-local function runManifest(packName, manifestModule, pluginAPI, manifestPath)
+local function runManifest(packName, manifestModule, pluginAPI, manifestPath, packReport)
     if type(manifestModule) ~= "table" then
         return
     end
@@ -105,9 +135,14 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath)
     if type(manifestModule.register) == "function" then
         local sourceAwareAPI = buildSourceAwarePluginAPI(pluginAPI, manifestPath)
         local ok, err = pcall(manifestModule.register, sourceAwareAPI)
+        packReport.manifest.registerAttempted = true
         if ok then
+            packReport.manifest.registerSuccess = true
             log("executed manifest register() for pack='" .. packName .. "'")
         else
+            packReport.manifest.registerSuccess = false
+            packReport.manifest.registerError = compactReason(err)
+            appendFailure(packReport, manifestPath, err)
             log("manifest register() failed for pack='" .. packName .. "' error='" .. tostring(err) .. "'")
         end
     end
@@ -115,40 +150,62 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath)
     if type(manifestModule.modules) == "table" then
         for _, moduleName in ipairs(manifestModule.modules) do
             if type(moduleName) == "string" and moduleName ~= "" then
-                tryRequire(packName, moduleName)
+                tryRequire(packName, moduleName, packReport)
             end
         end
     end
 end
 
 local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
-    local manifestPath = "scripts." .. packName .. ".skillperk_manifest"
-    local loadedManifest, manifestModule = tryRequire(packName, manifestPath)
+    local report = {
+        packName = packName,
+        manifest = {
+            path = "scripts." .. packName .. ".skillperk_manifest",
+            found = false,
+            registerAttempted = false,
+            registerSuccess = nil,
+            registerError = nil,
+        },
+        modulesLoadedCount = 0,
+        moduleFailures = {},
+    }
+
+    local loadedManifest, manifestModule = tryRequire(packName, report.manifest.path, report)
+    report.manifest.found = loadedManifest
     if loadedManifest then
-        runManifest(packName, manifestModule, pluginAPI, manifestPath)
+        runManifest(packName, manifestModule, pluginAPI, report.manifest.path, report)
     end
 
     for _, skillID in ipairs(skillIDs) do
-        tryRequire(packName, "scripts." .. packName .. ".perks." .. skillID)
+        tryRequire(packName, "scripts." .. packName .. ".perks." .. skillID, report)
     end
 
     for _, effectID in ipairs(effectIDs) do
-        tryRequire(packName, "scripts." .. packName .. ".effects." .. effectID)
+        tryRequire(packName, "scripts." .. packName .. ".effects." .. effectID, report)
     end
+
+    return report
 end
 
 local hasLoaded = false
+local lastReport = nil
 
 local function loadInstalledPacks(pluginAPI)
     if hasLoaded then
-        return
+        return lastReport
     end
     hasLoaded = true
 
     local packs = getDetectedPackNames()
+    local report = {
+        totalPacksDetected = #packs,
+        packs = {},
+    }
+    lastReport = report
+
     if #packs == 0 then
         log("no content files detected; skipping plugin discovery")
-        return
+        return report
     end
 
     local skillIDs = getRecordIDs(core.stats and core.stats.Skill and core.stats.Skill.records)
@@ -158,8 +215,27 @@ local function loadInstalledPacks(pluginAPI)
     )
 
     for _, packName in ipairs(packs) do
-        loadPack(packName, skillIDs, effectIDs, pluginAPI)
+        table.insert(report.packs, loadPack(packName, skillIDs, effectIDs, pluginAPI))
     end
+
+    if settings.PLUGIN_VALIDATION_VERBOSE then
+        for _, packReport in ipairs(report.packs) do
+            log(
+                "report pack='"
+                    .. packReport.packName
+                    .. "' manifest="
+                    .. tostring(packReport.manifest.found)
+                    .. " register="
+                    .. tostring(packReport.manifest.registerSuccess)
+                    .. " modulesLoaded="
+                    .. tostring(packReport.modulesLoadedCount)
+                    .. " failures="
+                    .. tostring(#packReport.moduleFailures)
+            )
+        end
+    end
+
+    return report
 end
 
 return {

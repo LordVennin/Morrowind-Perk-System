@@ -23,7 +23,88 @@ local function registerEffect(data)
 end
 
 demoPerks.registerDemoPerks(registerPerk, SOURCE_DEMO)
-pluginLoader.loadInstalledPacks(pluginAPI)
+local pluginValidationReport = pluginLoader.loadInstalledPacks(pluginAPI)
+
+
+local function buildPluginValidationSummary(report)
+    local packs = (type(report) == "table" and type(report.packs) == "table") and report.packs or {}
+    local totalPacksDetected = (type(report) == "table" and type(report.totalPacksDetected) == "number") and report.totalPacksDetected
+        or #packs
+
+    local successful = 0
+    local failing = 0
+
+    for _, packReport in ipairs(packs) do
+        if #packReport.moduleFailures == 0 then
+            successful = successful + 1
+        else
+            failing = failing + 1
+        end
+    end
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] plugin validation summary: packs="
+            .. tostring(totalPacksDetected)
+            .. " registered="
+            .. tostring(successful)
+            .. " with_errors="
+            .. tostring(failing)
+    )
+
+    for _, packReport in ipairs(packs) do
+        if #packReport.moduleFailures > 0 then
+            local firstError = packReport.moduleFailures[1]
+            print(
+                "["
+                    .. settings.MOD_NAME
+                    .. "] plugin error: pack='"
+                    .. tostring(packReport.packName)
+                    .. "' module='"
+                    .. tostring(firstError.module)
+                    .. "' reason='"
+                    .. tostring(firstError.reason)
+                    .. "'"
+            )
+        end
+    end
+
+    if settings.PLUGIN_VALIDATION_VERBOSE then
+        for _, packReport in ipairs(packs) do
+            print(
+                "["
+                    .. settings.MOD_NAME
+                    .. "] plugin report: pack='"
+                    .. tostring(packReport.packName)
+                    .. "' manifest_found="
+                    .. tostring(packReport.manifest and packReport.manifest.found)
+                    .. " register_success="
+                    .. tostring(packReport.manifest and packReport.manifest.registerSuccess)
+                    .. " modules_loaded="
+                    .. tostring(packReport.modulesLoadedCount)
+                    .. " failures="
+                    .. tostring(#packReport.moduleFailures)
+            )
+
+            for _, failure in ipairs(packReport.moduleFailures) do
+                print(
+                    "["
+                        .. settings.MOD_NAME
+                        .. "] plugin report detail: pack='"
+                        .. tostring(packReport.packName)
+                        .. "' class='"
+                        .. tostring(failure.class)
+                        .. "' module='"
+                        .. tostring(failure.module)
+                        .. "' reason='"
+                        .. tostring(failure.reason)
+                        .. "'"
+                )
+            end
+        end
+    end
+end
 
 local function getPerks()
     return registryState.getPerks()
@@ -92,6 +173,7 @@ local function buildStartupSummary()
 end
 
 buildStartupSummary()
+buildPluginValidationSummary(pluginValidationReport)
 
 return {
     interfaceName = settings.MOD_NAME,

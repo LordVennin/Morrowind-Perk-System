@@ -92,6 +92,32 @@ interfaces.SkillPerkSystem.registerPerk({
 
 Registration validation note: `registerPerk` requires `skill` to match a valid `openmw.core.stats.Skill.records` ID and raises an error that includes both the perk ID and invalid skill ID when it does not. The optional `cost` field must be a positive integer.
 
+
+## Plugin validation report
+
+At startup, plugin discovery now emits a compact validator summary:
+
+```
+[SkillPerkSystem] plugin validation summary: packs=<detected> registered=<success> with_errors=<failures>
+[SkillPerkSystem] plugin error: pack='<PackName>' module='<module.path>' reason='<first error>'
+```
+
+- `packs` counts all detected content-file name variants scanned for plugins.
+- `registered` counts packs with no module/manifest errors during discovery.
+- `with_errors` counts packs with at least one manifest or module failure.
+- For each failing pack, the first error line includes the failing source module path for quick triage.
+
+### Verbose diagnostics (optional)
+
+Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua` to print per-pack details and every captured failure, including a simple error class (`validation` vs `runtime`).
+
+### Troubleshooting tips
+
+- Errors prefixed with `VALIDATION_ERROR:` indicate plugin API contract issues (missing/invalid fields, duplicate IDs under strict mode, incompatible API declaration).
+- Runtime errors usually indicate require path issues, script syntax errors, or exceptions inside plugin code.
+- If `manifest_found=false` in verbose output, verify your pack exposes `scripts/<PackName>/skillperk_manifest.lua` and that content file naming matches your scripts folder.
+- Keep module names in `skillperk_manifest.modules` fully-qualified Lua require paths.
+
 ## Create your own plugin
 
 Start from the modder-facing starter template:

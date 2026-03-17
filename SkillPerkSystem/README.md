@@ -26,6 +26,8 @@ content=SkillPerkSystem.omwscripts
 - `lua skillperks <skillId>` — compatibility form that prints one skill section.
 - `lua skillperksrespec` — removes all active perks, resets spent points to 0 for every skill, and prints a per-skill refund summary.
 
+- `skillperks_validate` — prints plugin/registry diagnostics: loaded packs, duplicate IDs, missing effect handlers, and malformed perk definitions.
+
 OpenMW versions differ in Lua console context behavior; if `lua ...` prints context usage text, use the direct command forms above.
 
 ## UI hotkey
@@ -113,3 +115,87 @@ Node files support `id`, `skill`, `x`, `y`, and `requires` so chains/branches ca
 `settings.lua` now includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which registers no-effect Long Blade demo perks used for testing the tree UI.
 
 Set it to `false` to disable demo perk registration.
+
+
+## Minimal plugin-pack file layout
+
+Use this copy-paste structure inside your mod:
+
+```text
+scripts/MyPerkPack/
+├─ skillperk_manifest.lua                # optional
+├─ perks/
+│  └─ longblade.lua                      # one file per skill id
+└─ effects/
+   └─ my_longblade_effect.lua            # one file per effect id
+```
+
+Naming conventions used by the auto-loader:
+
+- Skill perk files: `scripts/<PackName>/perks/<skillId>.lua` (example: `perks/longblade.lua`).
+- Effect files: `scripts/<PackName>/effects/<effectId>.lua` (example: `effects/my_longblade_effect.lua`).
+- Optional manifest: `scripts/<PackName>/skillperk_manifest.lua`.
+
+### Copy-paste: optional pack manifest
+
+```lua
+local M = {}
+
+function M.register(api)
+  api.assertCompatibleApiVersion(1)
+
+  api.registerPerk({
+    id = "my_longblade_perk",
+    skill = "longblade",
+    cost = 1,
+    effectId = "my_longblade_effect",
+    requirements = {},
+  })
+
+  api.registerTreeNode({
+    id = "my_longblade_perk",
+    skill = "longblade",
+    x = 0,
+    y = 0,
+    requires = {},
+    title = "My Long Blade Perk",
+  })
+end
+
+M.modules = {
+  "scripts.MyPerkPack.perks.longblade",
+  "scripts.MyPerkPack.effects.my_longblade_effect",
+}
+
+return M
+```
+
+### Copy-paste: skill perk file
+
+```lua
+local interfaces = require("openmw.interfaces")
+
+interfaces.SkillPerkSystem.registerPerk({
+  id = "my_longblade_perk_2",
+  skill = "longblade",
+  cost = 1,
+  effectId = "my_longblade_effect_2",
+  requirements = {},
+})
+```
+
+### Copy-paste: effect file
+
+```lua
+local interfaces = require("openmw.interfaces")
+
+interfaces.SkillPerkSystem.registerEffect({
+  id = "my_longblade_effect_2",
+  onAcquire = function(context)
+    print("Acquired perk: " .. tostring(context and context.perkID))
+  end,
+  onRemove = function(context)
+    print("Removed perk: " .. tostring(context and context.perkID))
+  end,
+})
+```

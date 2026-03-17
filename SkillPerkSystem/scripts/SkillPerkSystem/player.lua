@@ -6,6 +6,7 @@ local types = require("openmw.types")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
 local pointsLedger = require("scripts.SkillPerkSystem.points")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
+local validation = require("scripts.SkillPerkSystem.validation")
 
 local MOD_NAME = settings.MOD_NAME
 local POINT_SOURCE_SETTINGS = settings.POINT_SOURCES or {}
@@ -441,6 +442,8 @@ local function onConsoleCommand(mode, command, selectedObject)
 
     if lower == "lua skillperksrespec" or lower == "skillperksrespec" or lowerWithMode == "lua skillperksrespec" then
         respecAllPerks()
+    elseif lower == "lua skillperks_validate" or lower == "skillperks_validate" or lowerWithMode == "lua skillperks_validate" then
+        validation.printValidationSummary()
     else
         local suffix = getSuffixForCmd("skillperks")
         if suffix == nil then

@@ -6,11 +6,18 @@ local state = {
     treeNodeByID = {},
     treeNodeSourceByID = {},
     pointSourcesByID = {},
+    duplicatePerkRegistrations = {},
+    duplicateTreeNodeRegistrations = {},
 }
 
 local function registerPerk(perk, source, allowOverwrite)
     local previousSource = state.perkSourceByID[perk.id]
     if previousSource ~= nil and not allowOverwrite then
+        table.insert(state.duplicatePerkRegistrations, {
+            id = perk.id,
+            previousSource = previousSource,
+            attemptedSource = source,
+        })
         return false, previousSource
     end
 
@@ -27,6 +34,11 @@ local function registerTreeNode(node, source, allowOverwrite)
     local previousSource = state.treeNodeSourceByID[node.id]
     local previousNode = state.treeNodeByID[node.id]
     if previousNode ~= nil and not allowOverwrite then
+        table.insert(state.duplicateTreeNodeRegistrations, {
+            id = node.id,
+            previousSource = previousSource,
+            attemptedSource = source,
+        })
         return false, previousSource
     end
 
@@ -81,5 +93,11 @@ return {
     registerPointSource = registerPointSource,
     getPointSources = function()
         return state.pointSourcesByID
+    end,
+    getDuplicatePerkRegistrations = function()
+        return state.duplicatePerkRegistrations
+    end,
+    getDuplicateTreeNodeRegistrations = function()
+        return state.duplicateTreeNodeRegistrations
     end,
 }

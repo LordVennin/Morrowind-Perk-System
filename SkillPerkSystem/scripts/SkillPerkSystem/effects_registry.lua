@@ -13,6 +13,8 @@ local effectSourceByID = {
     demo_noop = "core:demo_builtin",
 }
 
+local duplicateEffectRegistrations = {}
+
 local function warn(message)
     print("[" .. MOD_NAME .. "][effects] WARNING: " .. tostring(message))
 end
@@ -35,6 +37,11 @@ local function registerEffect(effectID, callbacks, source)
     local sourceName = (type(source) == "string" and source ~= "") and source or "unknown"
     local previousSource = effectSourceByID[effectID]
     if previousSource ~= nil and not settings.ALLOW_DUPLICATE_REGISTRATION_OVERRIDE then
+        table.insert(duplicateEffectRegistrations, {
+            id = effectID,
+            previousSource = previousSource,
+            attemptedSource = sourceName,
+        })
         error(
             "registerEffect() duplicate effect id '"
                 .. tostring(effectID)
@@ -91,4 +98,7 @@ return {
     onRemove = onRemove,
     getEffects = getEffects,
     getEffectSource = getEffectSource,
+    getDuplicateEffectRegistrations = function()
+        return duplicateEffectRegistrations
+    end,
 }

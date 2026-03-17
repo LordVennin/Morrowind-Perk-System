@@ -59,7 +59,6 @@ return {
 When you ship your pack, users should enable your own `.omwscripts` content entry **after**:
 
 1. `content=SkillPerkSystem.omwscripts` (framework)
-2. `content=VenninsPerks.omwscripts` (optional bundled sample pack)
-3. `content=<YourPack>.omwscripts` (your plugin)
+2. `content=<YourPack>.omwscripts` (your plugin, optional)
 
-That order keeps framework initialization first and makes all packs (including the bundled sample pack) follow the same third-party plugin loading expectations.
+That order keeps framework initialization first so plugin packs can register after the core runtime.

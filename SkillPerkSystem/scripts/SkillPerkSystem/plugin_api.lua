@@ -256,6 +256,43 @@ local function registerPerkModule(data, source, expectedSkill)
         validationError("registerPerkModule() requires a module with perks and/or nodes", 2)
     end
 
+    local sourceName = normalizeSource(source)
+
+    local function validatePerkModuleEntry(perk, index)
+        local context = "registerPerkModule() source='" .. tostring(sourceName) .. "' perks[" .. tostring(index) .. "]"
+        if type(perk.id) ~= "string" or perk.id == "" then
+            validationError(context .. " missing non-empty string field 'id'", 2)
+        end
+        if type(perk.skill) ~= "string" or perk.skill == "" then
+            validationError(context .. " missing non-empty string field 'skill'", 2)
+        end
+        if type(perk.effectId) ~= "string" or perk.effectId == "" then
+            validationError(context .. " missing non-empty string field 'effectId'", 2)
+        end
+    end
+
+    local function validateNodeModuleEntry(node, index, nodeSource)
+        local context = "registerPerkModule() source='"
+            .. tostring(sourceName)
+            .. "' "
+            .. tostring(nodeSource)
+            .. "["
+            .. tostring(index)
+            .. "]"
+        if type(node.id) ~= "string" or node.id == "" then
+            validationError(context .. " missing non-empty string field 'id'", 2)
+        end
+        if type(node.skill) ~= "string" or node.skill == "" then
+            validationError(context .. " missing non-empty string field 'skill'", 2)
+        end
+        if type(node.x) ~= "number" then
+            validationError(context .. " missing numeric field 'x'", 2)
+        end
+        if type(node.y) ~= "number" then
+            validationError(context .. " missing numeric field 'y'", 2)
+        end
+    end
+
     local perkIds = {}
     local hasPerkEntries = false
     local registeredPerks = 0
@@ -266,6 +303,7 @@ local function registerPerkModule(data, source, expectedSkill)
             if type(perk) ~= "table" then
                 validationError("registerPerkModule() perks[" .. tostring(i) .. "] must be a table", 2)
             end
+            validatePerkModuleEntry(perk, i)
             if type(expectedSkill) == "string" and expectedSkill ~= "" and type(perk.skill) == "string" and perk.skill ~= "" and perk.skill ~= expectedSkill then
                 validationError(
                     "registerPerkModule() perk '"
@@ -286,6 +324,7 @@ local function registerPerkModule(data, source, expectedSkill)
 
             local derivedNode, mappedPerkID = deriveNodeFromPerk(perk, source)
             if derivedNode ~= nil then
+                validateNodeModuleEntry(derivedNode, i, "derived_nodes")
                 if mappedPerkID ~= nil and mappedPerkID ~= "" and mappedPerkID ~= perk.id then
                     validationError(
                         "registerPerkModule() perk '"
@@ -307,6 +346,7 @@ local function registerPerkModule(data, source, expectedSkill)
             if type(node) ~= "table" then
                 validationError("registerPerkModule() nodes[" .. tostring(i) .. "] must be a table", 2)
             end
+            validateNodeModuleEntry(node, i, "nodes")
             if type(expectedSkill) == "string" and expectedSkill ~= "" and type(node.skill) == "string" and node.skill ~= "" and node.skill ~= expectedSkill then
                 validationError(
                     "registerPerkModule() node '"
@@ -320,7 +360,9 @@ local function registerPerkModule(data, source, expectedSkill)
                 )
             end
             local mappedPerkID = node.perkId or node.perkID or node.id
-            if hasPerkEntries and mappedPerkID ~= nil and mappedPerkID ~= "" and not perkIds[mappedPerkID] then
+            local registeredPerksByID = registryState.getPerks()
+            local hasMappedPerk = mappedPerkID ~= nil and mappedPerkID ~= "" and (perkIds[mappedPerkID] or registeredPerksByID[mappedPerkID] ~= nil)
+            if hasPerkEntries and mappedPerkID ~= nil and mappedPerkID ~= "" and not hasMappedPerk then
                 validationError(
                     "registerPerkModule() node '"
                         .. tostring(node.id)

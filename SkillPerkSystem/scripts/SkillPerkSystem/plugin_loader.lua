@@ -264,10 +264,21 @@ local function registerSkillModule(pluginAPI, skillID, moduleName, moduleData)
     local result = pluginAPI.registerPerkModule(moduleData, moduleName, skillID)
     if result == nil or result.skipped then
         logVerbose("skipped disabled skill module schema skill='" .. tostring(skillID) .. "' module='" .. tostring(moduleName) .. "'")
-    else
-        log("registered skill module schema for skill='" .. tostring(skillID) .. "' module='" .. tostring(moduleName) .. "' perks=" .. tostring(result.perks or 0) .. " nodes=" .. tostring(result.nodes or 0))
+        return {
+            registered = false,
+            skipped = true,
+            perks = 0,
+            nodes = 0,
+        }
     end
-    return true
+
+    log("registered skill module schema for skill='" .. tostring(skillID) .. "' module='" .. tostring(moduleName) .. "' perks=" .. tostring(result.perks or 0) .. " nodes=" .. tostring(result.nodes or 0))
+    return {
+        registered = true,
+        skipped = false,
+        perks = result.perks or 0,
+        nodes = result.nodes or 0,
+    }
 end
 
 local function tryRegisterSkillModule(pluginAPI, packReport, skillID, skillFolderPath, moduleName, moduleData)
@@ -275,12 +286,17 @@ local function tryRegisterSkillModule(pluginAPI, packReport, skillID, skillFolde
     if not schemaValid then
         appendFailure(packReport, moduleName, schemaErr)
         log("strict schema validation failed: pack='" .. tostring(packReport.packName) .. "' skill_folder='" .. tostring(skillFolderPath) .. "' module='" .. tostring(moduleName) .. "'")
-        return false
+        return {
+            registered = false,
+            skipped = false,
+            perks = 0,
+            nodes = 0,
+        }
     end
 
-    local ok, usedSchemaOrErr = pcall(registerSkillModule, pluginAPI, skillID, moduleName, moduleData)
+    local ok, registrationResultOrErr = pcall(registerSkillModule, pluginAPI, skillID, moduleName, moduleData)
     if not ok then
-        appendFailure(packReport, moduleName, usedSchemaOrErr)
+        appendFailure(packReport, moduleName, registrationResultOrErr)
         logVerbose(
             "skill module schema failed pack='"
                 .. tostring(packReport.packName)
@@ -289,13 +305,18 @@ local function tryRegisterSkillModule(pluginAPI, packReport, skillID, skillFolde
                 .. "' module='"
                 .. tostring(moduleName)
                 .. "' error='"
-                .. tostring(usedSchemaOrErr)
+                .. tostring(registrationResultOrErr)
                 .. "'"
         )
-        return false
+        return {
+            registered = false,
+            skipped = false,
+            perks = 0,
+            nodes = 0,
+        }
     end
 
-    return usedSchemaOrErr == true
+    return registrationResultOrErr
 end
 
 local function runManifest(packName, manifestModule, pluginAPI, manifestPath, packReport)
@@ -546,6 +567,7 @@ local function preloadPerkModules(pluginAPI)
         modulesDiscovered = 0,
         modulesLoaded = 0,
         modulesFailed = 0,
+        perSkill = {},
         durationMs = 0,
     }
     preloadReport = report
@@ -577,6 +599,8 @@ local function preloadPerkModules(pluginAPI)
                     discovered = 0,
                     loaded = 0,
                     failed = 0,
+                    perks = 0,
+                    nodes = 0,
                 }
             end
 
@@ -584,29 +608,39 @@ local function preloadPerkModules(pluginAPI)
             skillSummary.discovered = skillSummary.discovered + 1
             report.modulesDiscovered = report.modulesDiscovered + 1
 
-            local registered = false
+            local registrationResult = {
+                registered = false,
+                skipped = false,
+                perks = 0,
+                nodes = 0,
+            }
             if moduleInfo.attempt.success then
                 local ok, moduleData = pcall(require, moduleInfo.moduleName)
                 local skillFolderPath =
                     "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)
                 local moduleSource = skillFolderPath .. "/" .. tostring(moduleInfo.moduleFile) .. ".lua"
-                registered = ok and tryRegisterSkillModule(
-                    pluginAPI,
-                    packReport,
-                    moduleInfo.skillID,
-                    skillFolderPath,
-                    moduleSource,
-                    moduleData
-                )
+                if ok then
+                    registrationResult = tryRegisterSkillModule(
+                        pluginAPI,
+                        packReport,
+                        moduleInfo.skillID,
+                        skillFolderPath,
+                        moduleSource,
+                        moduleData
+                    )
+                end
             end
 
-            if registered then
+            if registrationResult.registered or registrationResult.skipped then
                 report.modulesLoaded = report.modulesLoaded + 1
                 skillSummary.loaded = skillSummary.loaded + 1
             else
                 report.modulesFailed = report.modulesFailed + 1
                 skillSummary.failed = skillSummary.failed + 1
             end
+
+            skillSummary.perks = skillSummary.perks + (registrationResult.perks or 0)
+            skillSummary.nodes = skillSummary.nodes + (registrationResult.nodes or 0)
         end
 
         local sortedSkillIDs = {}
@@ -617,6 +651,21 @@ local function preloadPerkModules(pluginAPI)
 
         for _, skillID in ipairs(sortedSkillIDs) do
             local skillSummary = perSkillSummaries[skillID]
+            report.perSkill[skillID] = report.perSkill[skillID] or {
+                modulesDiscovered = 0,
+                modulesLoaded = 0,
+                modulesFailed = 0,
+                registeredPerks = 0,
+                registeredNodes = 0,
+            }
+
+            local aggregate = report.perSkill[skillID]
+            aggregate.modulesDiscovered = aggregate.modulesDiscovered + skillSummary.discovered
+            aggregate.modulesLoaded = aggregate.modulesLoaded + skillSummary.loaded
+            aggregate.modulesFailed = aggregate.modulesFailed + skillSummary.failed
+            aggregate.registeredPerks = aggregate.registeredPerks + skillSummary.perks
+            aggregate.registeredNodes = aggregate.registeredNodes + skillSummary.nodes
+
             log(
                 "pack='"
                     .. tostring(packReport.packName)
@@ -628,6 +677,10 @@ local function preloadPerkModules(pluginAPI)
                     .. tostring(skillSummary.loaded)
                     .. " perk_files_failed="
                     .. tostring(skillSummary.failed)
+                    .. " registered_perks="
+                    .. tostring(skillSummary.perks)
+                    .. " registered_nodes="
+                    .. tostring(skillSummary.nodes)
             )
         end
     end

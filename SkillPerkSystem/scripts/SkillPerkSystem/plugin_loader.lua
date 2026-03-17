@@ -76,11 +76,29 @@ local function getDetectedPackNames()
         return packs
     end
 
-    for _, contentFile in ipairs(contentFiles) do
+    for index, contentFile in ipairs(contentFiles) do
+        if settings.PLUGIN_VALIDATION_VERBOSE then
+            log("contentFiles[" .. tostring(index) .. "]='" .. tostring(contentFile) .. "'")
+        end
+
         if type(contentFile) == "string" then
             local fileName = contentFile:match("([^/\\]+)$") or contentFile
             local packName = fileName:gsub("%.[^%.]+$", "")
-            for _, candidate in ipairs(getNameVariants(packName)) do
+            local variants = getNameVariants(packName)
+
+            if settings.PLUGIN_VALIDATION_VERBOSE then
+                log(
+                    "detected contentFile='"
+                        .. contentFile
+                        .. "' packName='"
+                        .. tostring(packName)
+                        .. "' variants=["
+                        .. table.concat(variants, ", ")
+                        .. "]"
+                )
+            end
+
+            for _, candidate in ipairs(variants) do
                 pushUnique(packs, seen, candidate)
             end
         end
@@ -584,6 +602,11 @@ local function loadInstalledPacks(pluginAPI)
     else
         log("external plugin discovery disabled by settings; skipping external plugin scan")
     end
+
+    if settings.PLUGIN_VALIDATION_VERBOSE then
+        log("external pack candidates before loading=[" .. table.concat(externalPacks, ", ") .. "]")
+    end
+
     local skillIDs = getRecordIDs(core.stats and core.stats.Skill and core.stats.Skill.records)
     local effectIDs = getRecordIDs(
         (core.magic and core.magic.Effect and core.magic.Effect.records)

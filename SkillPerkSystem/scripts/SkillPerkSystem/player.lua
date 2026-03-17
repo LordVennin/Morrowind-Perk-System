@@ -4,6 +4,7 @@ local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 local types = require("openmw.types")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
+local pointsLedger = require("scripts.SkillPerkSystem.points")
 
 local MOD_NAME = settings.MOD_NAME
 local MILESTONE_STEP = settings.MILESTONE_STEP
@@ -57,7 +58,13 @@ local function spentPoints(skillID)
 end
 
 local function availablePoints(skillID)
-    return earnedPoints(skillID) - spentPoints(skillID)
+    -- Compatibility adapter during migration to global points.
+    -- Keep the skillID arg for callers that still pass it.
+    return pointsLedger.getAvailablePoints()
+end
+
+local function globalAvailablePoints()
+    return pointsLedger.getAvailablePoints()
 end
 
 local function requirementSatisfied(perk)
@@ -110,12 +117,15 @@ local function grantRetroactiveMilestones()
         local oldMilestones = earnedPoints(skillID)
         local currentMilestones = milestonesForSkill(skillID)
         if currentMilestones > oldMilestones then
+            local delta = currentMilestones - oldMilestones
             earnedMilestonesBySkill[skillID] = currentMilestones
+            pointsLedger.addPoints(delta, "Skill milestone", skillID)
             debugPrint(string.format(
-                "Retroactive milestones increased for %s: %d -> %d (available=%d)",
+                "Retroactive milestones increased for %s: %d -> %d (delta=%d, available=%d)",
                 skillID,
                 oldMilestones,
                 currentMilestones,
+                delta,
                 availablePoints(skillID)
             ))
         end
@@ -154,6 +164,25 @@ local function reconcileSaveState()
             spentPointsBySkill[skillID] = earned
         end
     end
+
+    local recomputedSpentTotal = 0
+    for _, skillID in ipairs(getSkillIds()) do
+        recomputedSpentTotal = recomputedSpentTotal + spentPointsBySkill[skillID]
+    end
+
+    local recomputedEarnedTotal = 0
+    for _, skillID in ipairs(getSkillIds()) do
+        recomputedEarnedTotal = recomputedEarnedTotal + earnedPoints(skillID)
+    end
+
+    if pointsLedger.getAvailablePoints() + recomputedSpentTotal ~= recomputedEarnedTotal then
+        pointsLedger.importState({
+            balance = math.max(0, recomputedEarnedTotal - recomputedSpentTotal),
+            totalAdded = recomputedEarnedTotal,
+            totalSpent = recomputedSpentTotal,
+            history = pointsLedger.getHistory(),
+        })
+    end
 end
 
 local function addPerk(data)
@@ -179,8 +208,14 @@ local function addPerk(data)
         return
     end
 
-    if availablePoints(perk.skill) < perk.cost then
-        print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": not enough " .. perk.skill .. " perk points (cost=" .. perk.cost .. ")")
+    if globalAvailablePoints() < perk.cost then
+        print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": not enough global perk points (cost=" .. perk.cost .. ")")
+        return
+    end
+
+    local spentOk = pointsLedger.spendPoints(perk.cost, data.perkID)
+    if not spentOk then
+        print("[" .. MOD_NAME .. "] Cannot add perk " .. data.perkID .. ": ledger rejected spend")
         return
     end
 
@@ -203,6 +238,7 @@ local function removePerk(data)
         if id == data.perkID then
             table.remove(activePerks, i)
             spentPointsBySkill[perk.skill] = math.max(0, spentPoints(perk.skill) - perk.cost)
+            pointsLedger.addPoints(perk.cost, "Perk removed", data.perkID)
             effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
             return
         end
@@ -250,6 +286,14 @@ local function respecAllPerks()
     activePerks = {}
     for _, skillID in ipairs(getSkillIds()) do
         spentPointsBySkill[skillID] = 0
+    end
+
+    local refunded = 0
+    for _, amount in pairs(refundsBySkill) do
+        refunded = refunded + amount
+    end
+    if refunded > 0 then
+        pointsLedger.addPoints(refunded, "Respec refund", "respec")
     end
 
     print("[" .. MOD_NAME .. "] Respec complete: removed " .. removedCount .. " perks")
@@ -342,7 +386,7 @@ end
 
 local function shouldShowUI()
     for _, skillID in ipairs(getSkillIds()) do
-        if availablePoints(skillID) > 0 then
+        if globalAvailablePoints() > 0 then
             return true
         end
     end
@@ -376,6 +420,32 @@ local function onLoad(data)
     earnedMilestonesBySkill = (data and data.earnedMilestonesBySkill) or {}
     spentPointsBySkill = (data and data.spentPointsBySkill) or {}
     activePerks = (data and data.activePerks) or {}
+    pointsLedger.importState((data and data.pointsLedger) or nil)
+
+    if data == nil or data.pointsLedger == nil then
+        local migratedEarned = 0
+        local migratedSpent = 0
+        for _, skillID in ipairs(getSkillIds()) do
+            migratedEarned = migratedEarned + earnedPoints(skillID)
+            migratedSpent = migratedSpent + spentPoints(skillID)
+        end
+        pointsLedger.importState({
+            balance = math.max(0, migratedEarned - migratedSpent),
+            totalAdded = migratedEarned,
+            totalSpent = migratedSpent,
+            history = {
+                {
+                    id = 1,
+                    type = "migration",
+                    amount = math.max(0, migratedEarned - migratedSpent),
+                    reason = "Migrated legacy per-skill points to global ledger",
+                    sourceId = "migration",
+                },
+            },
+            nextEntryID = 2,
+        })
+    end
+
     reconcileSaveState()
     grantRetroactiveMilestones()
 
@@ -402,6 +472,7 @@ local function onSave()
         earnedMilestonesBySkill = earnedMilestonesBySkill,
         spentPointsBySkill = spentPointsBySkill,
         activePerks = activePerks,
+        pointsLedger = pointsLedger.exportState(),
     }
 end
 
@@ -411,8 +482,12 @@ return {
         earnedPoints = earnedPoints,
         spentPoints = spentPoints,
         availablePoints = availablePoints,
+        globalAvailablePoints = globalAvailablePoints,
         hasPerk = hasPerk,
         getActivePerks = getActivePerks,
+        addPoints = pointsLedger.addPoints,
+        spendPoints = pointsLedger.spendPoints,
+        getPointHistory = pointsLedger.getHistory,
     },
     eventHandlers = {
         UiModeChanged = UiModeChanged,

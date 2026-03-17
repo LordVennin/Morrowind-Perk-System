@@ -5,7 +5,7 @@ return {
     MILESTONE_STEP = 25,
     DEBUG_LOGS = false,
     -- Enables detailed plugin validation logs (per-module load attempts/failures).
-    PLUGIN_VALIDATION_VERBOSE = false,
+    PLUGIN_VALIDATION_VERBOSE = true,
     -- Optional external content pack discovery. Internal pack modules always load from the internal index.
     ENABLE_EXTERNAL_PLUGIN_SCANNING = true,
     -- Strict modular architecture guard:

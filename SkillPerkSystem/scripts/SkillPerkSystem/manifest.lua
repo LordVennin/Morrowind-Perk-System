@@ -2,9 +2,11 @@ local settings = require("scripts.SkillPerkSystem.settings")
 local treeRegistry = require("scripts.SkillPerkSystem.tree_registry")
 local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
+local pluginLoader = require("scripts.SkillPerkSystem.plugin_loader")
 local demoPerks = require("scripts.SkillPerkSystem.test_perks")
 
 demoPerks.registerDemoPerks(pluginAPI.registerPerk)
+pluginLoader.loadInstalledPacks(pluginAPI)
 
 local function getPerks()
     return registryState.getPerks()

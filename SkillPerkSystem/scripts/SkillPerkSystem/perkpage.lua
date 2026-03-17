@@ -837,12 +837,12 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(960, 510),
+                    size = util.vector2(980, 510),
                 },
                 content = ui.content {
                     {
                         type = ui.TYPE.Widget,
-                        external = { grow = 1 },
+                        props = { size = util.vector2(8, 1) },
                     },
                     {
                         type = ui.TYPE.Flex,
@@ -903,7 +903,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Widget,
-                        external = { grow = 1 },
+                        props = { size = util.vector2(8, 1) },
                     },
                 }
             },
@@ -916,7 +916,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(960, 32),
+                    size = util.vector2(980, 32),
                 },
                 content = ui.content {
                     {

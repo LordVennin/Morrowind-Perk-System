@@ -109,6 +109,11 @@ local function appendModuleAttempt(packReport, moduleName, ok, err)
     })
 end
 
+local function isModuleNotFoundError(err, moduleName)
+    local full = tostring(err)
+    return full:find("module '" .. moduleName .. "' not found", 1, true) ~= nil
+end
+
 local function tryRequire(packName, moduleName, packReport)
     packReport.modulesAttemptedCount = packReport.modulesAttemptedCount + 1
     local ok, resultOrErr = pcall(require, moduleName)
@@ -123,6 +128,53 @@ local function tryRequire(packName, moduleName, packReport)
     appendFailure(packReport, moduleName, resultOrErr)
     logVerbose("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
     return false, nil
+end
+
+local function tryRequireOptional(packName, moduleName, packReport)
+    packReport.modulesAttemptedCount = packReport.modulesAttemptedCount + 1
+    local ok, resultOrErr = pcall(require, moduleName)
+    appendModuleAttempt(packReport, moduleName, ok, resultOrErr)
+
+    if ok then
+        packReport.modulesLoadedCount = packReport.modulesLoadedCount + 1
+        logVerbose("loaded pack='" .. packName .. "' module='" .. moduleName .. "'")
+        return true, resultOrErr
+    end
+
+    if isModuleNotFoundError(resultOrErr, moduleName) then
+        logVerbose("optional module missing pack='" .. packName .. "' module='" .. moduleName .. "'")
+        return false, nil
+    end
+
+    appendFailure(packReport, moduleName, resultOrErr)
+    logVerbose("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
+    return false, nil
+end
+
+local function discoverSubmodules(modulePrefix)
+    local out = {}
+    local seen = {}
+
+    local function collectFrom(source)
+        if type(source) ~= "table" then
+            return
+        end
+        for moduleName, _ in pairs(source) do
+            if type(moduleName) == "string" and moduleName:find(modulePrefix, 1, true) == 1 then
+                local suffix = moduleName:sub(#modulePrefix + 1)
+                if suffix ~= "" and not seen[moduleName] then
+                    seen[moduleName] = true
+                    table.insert(out, moduleName)
+                end
+            end
+        end
+    end
+
+    collectFrom(package.preload)
+    collectFrom(package.loaded)
+
+    table.sort(out)
+    return out
 end
 
 local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
@@ -211,6 +263,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         modulesLoadedCount = 0,
         moduleAttempts = {},
         moduleFailures = {},
+        perkSkillModules = {},
         status = "unknown",
         reason = nil,
     }
@@ -222,7 +275,42 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     end
 
     for _, skillID in ipairs(skillIDs) do
-        tryRequire(packName, "scripts." .. packName .. ".perks." .. skillID, report)
+        local skillModuleStats = {
+            skillID = skillID,
+            attempted = 0,
+            loaded = 0,
+        }
+
+        local basePerkModule = "scripts." .. packName .. ".perks." .. skillID
+        local loadedBase = tryRequireOptional(packName, basePerkModule, report)
+        skillModuleStats.attempted = skillModuleStats.attempted + 1
+        if loadedBase then
+            skillModuleStats.loaded = skillModuleStats.loaded + 1
+        end
+
+        local namespacedModules = discoverSubmodules(basePerkModule .. ".")
+        for _, moduleName in ipairs(namespacedModules) do
+            local loadedNested = tryRequire(packName, moduleName, report)
+            skillModuleStats.attempted = skillModuleStats.attempted + 1
+            if loadedNested then
+                skillModuleStats.loaded = skillModuleStats.loaded + 1
+            end
+        end
+
+        if skillModuleStats.attempted > 0 and skillModuleStats.loaded > 0 then
+            table.insert(report.perkSkillModules, skillModuleStats)
+        end
+
+        log(
+            "pack='"
+                .. packName
+                .. "' skill='"
+                .. tostring(skillID)
+                .. "' perk_modules_loaded="
+                .. tostring(skillModuleStats.loaded)
+                .. " perk_modules_attempted="
+                .. tostring(skillModuleStats.attempted)
+        )
     end
 
     for _, effectID in ipairs(effectIDs) do

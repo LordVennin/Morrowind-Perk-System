@@ -323,6 +323,12 @@ local function buildPreloadSummary(report)
             .. tostring(report.modulesLoaded or 0)
             .. " modules_failed="
             .. tostring(report.modulesFailed or 0)
+            .. " internal_modules_discovered="
+            .. tostring(report.internalModulesDiscovered or 0)
+            .. " internal_modules_loaded="
+            .. tostring(report.internalModulesLoaded or 0)
+            .. " internal_modules_failed="
+            .. tostring(report.internalModulesFailed or 0)
             .. " duration_ms="
             .. tostring(report.durationMs or 0)
     )

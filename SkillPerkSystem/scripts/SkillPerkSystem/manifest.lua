@@ -197,8 +197,15 @@ end
 
 local function buildPluginValidationSummary(report)
     local packs = (type(report) == "table" and type(report.packs) == "table") and report.packs or {}
-    local totalPacksDetected = (type(report) == "table" and type(report.totalPacksDetected) == "number") and report.totalPacksDetected
-        or #packs
+
+    local internalStatus = (type(report) == "table" and type(report.internalStatus) == "table") and report.internalStatus or {}
+    local externalStatus = (type(report) == "table" and type(report.externalStatus) == "table") and report.externalStatus or {}
+
+    local internalDiscovered = tonumber(internalStatus.discovered) or 0
+    local externalDiscovered = tonumber(externalStatus.discovered) or 0
+    local totalPacksDiscovered = (type(report) == "table" and type(report.totalPacksDiscovered) == "number")
+            and report.totalPacksDiscovered
+        or (internalDiscovered + externalDiscovered)
 
     local loadedSuccessfully = 0
     local failedOrSkipped = 0
@@ -218,17 +225,45 @@ local function buildPluginValidationSummary(report)
         end
     end
 
+    loadedSuccessfully = math.min(loadedSuccessfully, totalPacksDiscovered)
+    local internalLoaded = math.min(tonumber(internalStatus.loaded) or 0, internalDiscovered)
+    local externalLoaded = math.min(tonumber(externalStatus.loaded) or 0, externalDiscovered)
+    local internalFailedOrSkipped = tonumber(internalStatus.failedOrSkipped) or (internalDiscovered - internalLoaded)
+    local externalFailedOrSkipped = tonumber(externalStatus.failedOrSkipped) or (externalDiscovered - externalLoaded)
+
     print(
         "["
             .. settings.MOD_NAME
-            .. "] plugin validation summary: packs="
-            .. tostring(totalPacksDetected)
+            .. "] plugin validation summary: packs_discovered="
+            .. tostring(totalPacksDiscovered)
             .. " loaded="
             .. tostring(loadedSuccessfully)
             .. " failed_or_skipped="
             .. tostring(failedOrSkipped)
             .. " strict_validation_failures="
             .. tostring(strictValidationFailures)
+    )
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] plugin validation summary (internal): packs_discovered="
+            .. tostring(internalDiscovered)
+            .. " packs_loaded="
+            .. tostring(internalLoaded)
+            .. " packs_failed_or_skipped="
+            .. tostring(internalFailedOrSkipped)
+    )
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] plugin validation summary (external): packs_discovered="
+            .. tostring(externalDiscovered)
+            .. " packs_loaded="
+            .. tostring(externalLoaded)
+            .. " packs_failed_or_skipped="
+            .. tostring(externalFailedOrSkipped)
     )
 
     if strictValidationFailures > 0 then
@@ -350,7 +385,7 @@ local function buildPreloadSummary(report)
         print(
             "["
                 .. settings.MOD_NAME
-                .. "] WARNING: internal perk modules loaded count is zero; default/test skill trees will not appear"
+                .. "] WARNING: internal perk modules loaded count is zero; expected module path pattern is 'scripts/SkillPerkSystem/perks/<skill>/<module>.lua'; default/test skill trees will not appear"
         )
     end
 end
@@ -441,17 +476,38 @@ local function buildStartupSummary()
         effectCount = effectCount + 1
     end
 
+    local totalPerks = #registryState.getPerkIDs()
+    local totalNodes = 0
+    for _ in pairs(registryState.getTreeNodes()) do
+        totalNodes = totalNodes + 1
+    end
+
     print(
         "["
             .. settings.MOD_NAME
             .. "] startup registry summary: skills="
             .. tostring(#skillSummaries)
+            .. " perks="
+            .. tostring(totalPerks)
+            .. " nodes="
+            .. tostring(totalNodes)
             .. " effects="
             .. tostring(effectCount)
             .. " details=["
             .. table.concat(skillSummaries, ", ")
             .. "]"
     )
+
+    if totalPerks == 0 then
+        print(
+            "["
+                .. settings.MOD_NAME
+                .. "] startup registry summary: registry_empty=true perks=0 nodes="
+                .. tostring(totalNodes)
+                .. " effects="
+                .. tostring(effectCount)
+        )
+    end
 end
 
 validateMergedTreeGraph()

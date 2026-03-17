@@ -578,9 +578,22 @@ local function loadInstalledPacks(pluginAPI)
 
     local report = {
         totalPacksDetected = #externalPacks,
+        totalPacksDiscovered = #externalPacks + 1,
+        externalPacksDetected = #externalPacks,
+        internalPacksDetected = 1,
         internalPackName = INTERNAL_PACK_NAME,
         internalIndexPresent = internalIndex ~= nil,
         internalIndexModules = #internalModuleEntries,
+        internalStatus = {
+            discovered = 1,
+            loaded = 0,
+            failedOrSkipped = 0,
+        },
+        externalStatus = {
+            discovered = #externalPacks,
+            loaded = 0,
+            failedOrSkipped = 0,
+        },
         packs = {},
     }
     lastReport = report
@@ -625,6 +638,25 @@ local function loadInstalledPacks(pluginAPI)
             )
         end
     end
+
+    for _, packReport in ipairs(report.packs) do
+        if packReport.discoveryKind == "internal" then
+            if packReport.status == "loaded" then
+                report.internalStatus.loaded = report.internalStatus.loaded + 1
+            else
+                report.internalStatus.failedOrSkipped = report.internalStatus.failedOrSkipped + 1
+            end
+        else
+            if packReport.status == "loaded" then
+                report.externalStatus.loaded = report.externalStatus.loaded + 1
+            else
+                report.externalStatus.failedOrSkipped = report.externalStatus.failedOrSkipped + 1
+            end
+        end
+    end
+
+    report.internalStatus.loaded = math.min(report.internalStatus.loaded, report.internalStatus.discovered)
+    report.externalStatus.loaded = math.min(report.externalStatus.loaded, report.externalStatus.discovered)
 
     return report
 end
@@ -696,6 +728,12 @@ local function preloadPerkModules(pluginAPI)
         externalModulesDiscovered = 0,
         externalModulesLoaded = 0,
         externalModulesFailed = 0,
+        internalRegisteredPerks = 0,
+        internalRegisteredNodes = 0,
+        externalRegisteredPerks = 0,
+        externalRegisteredNodes = 0,
+        registeredPerks = 0,
+        registeredNodes = 0,
         perSkill = {},
         durationMs = 0,
     }
@@ -788,6 +826,14 @@ local function preloadPerkModules(pluginAPI)
 
             skillSummary.perks = skillSummary.perks + (registrationResult.perks or 0)
             skillSummary.nodes = skillSummary.nodes + (registrationResult.nodes or 0)
+
+            if isInternalPack then
+                report.internalRegisteredPerks = report.internalRegisteredPerks + (registrationResult.perks or 0)
+                report.internalRegisteredNodes = report.internalRegisteredNodes + (registrationResult.nodes or 0)
+            else
+                report.externalRegisteredPerks = report.externalRegisteredPerks + (registrationResult.perks or 0)
+                report.externalRegisteredNodes = report.externalRegisteredNodes + (registrationResult.nodes or 0)
+            end
         end
 
         local sortedSkillIDs = {}
@@ -832,6 +878,12 @@ local function preloadPerkModules(pluginAPI)
         end
     end
 
+    report.modulesLoaded = math.min(report.modulesLoaded, report.modulesDiscovered)
+    report.internalModulesLoaded = math.min(report.internalModulesLoaded, report.internalModulesDiscovered)
+    report.externalModulesLoaded = math.min(report.externalModulesLoaded, report.externalModulesDiscovered)
+    report.registeredPerks = report.internalRegisteredPerks + report.externalRegisteredPerks
+    report.registeredNodes = report.internalRegisteredNodes + report.externalRegisteredNodes
+
     local summary =
         "preload summary: internal_modules_discovered="
         .. tostring(report.internalModulesDiscovered)
@@ -853,6 +905,10 @@ local function preloadPerkModules(pluginAPI)
         .. tostring(report.modulesLoaded)
         .. " modules_failed_total="
         .. tostring(report.modulesFailed)
+        .. " registered_perks_total="
+        .. tostring(report.registeredPerks)
+        .. " registered_nodes_total="
+        .. tostring(report.registeredNodes)
 
     if startTimeSeconds ~= nil then
         local endTimeSeconds = readLoaderTimeSeconds()

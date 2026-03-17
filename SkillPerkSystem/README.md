@@ -16,18 +16,21 @@ Add this folder to your OpenMW `data=` paths and include:
 
 ```ini
 content=SkillPerkSystem.omwscripts
-content=Vennin's Perks.omwscripts
+content=YourPerkPack.omwscripts
+# or use the bundled sample pack:
+# content=Vennin's Perks.omwscripts
 ```
 
 ### Content files and load order
 
 - `content=SkillPerkSystem.omwscripts` is the framework runtime and must always be enabled.
-- `content=Vennin's Perks.omwscripts` is an optional bundled sample pack (Long Blade + Block).
-- Keep `SkillPerkSystem.omwscripts` above `Vennin's Perks.omwscripts` in your `content=` list so the framework loads first and the sample pack behaves like any other third-party add-on pack.
+- The framework intentionally ships with **no default internal perk trees** (`scripts/SkillPerkSystem/perks/internal_module_index.lua` is empty by design).
+- You must enable at least one external content pack that provides perk modules (for example `content=YourPerkPack.omwscripts` or the bundled sample `content=Vennin's Perks.omwscripts`).
+- Keep `SkillPerkSystem.omwscripts` above all perk-pack `content=` entries so the framework loads before external packs.
 
-If you do not want bundled sample perks, disable `content=Vennin's Perks.omwscripts` (or keep it enabled and set `ENABLE_SAMPLE_PACK = false` in `scripts/SkillPerkSystem/settings.lua`).
+Strict modular policy is enabled by default in `scripts/SkillPerkSystem/settings.lua` via `REQUIRE_EXTERNAL_PERK_PACKS = true`. If no external perk modules load, startup emits a high-visibility remediation message and aborts to prevent silent `registry_empty=true` runs.
 
-The framework supports zero internal perk modules by design. In that mode, startup logs an informational message and expects perk trees to come from external pack modules.
+If framework-only startup is intentional, set `REQUIRE_EXTERNAL_PERK_PACKS = false`.
 
 ## Console commands
 
@@ -349,6 +352,6 @@ If you previously relied on the internal demo tree behavior (`scripts/SkillPerkS
 
 This change makes default sample content behave like a normal plugin pack and avoids hidden internal-tree coupling.
 
-The base framework can run with an intentionally empty internal module index (`scripts/SkillPerkSystem/perks/internal_module_index.lua` has `modules = {}`), which is treated as a valid external-pack-only setup.
+The base framework keeps an intentionally empty internal module index (`scripts/SkillPerkSystem/perks/internal_module_index.lua` has `modules = {}`) as an architectural rule: perk trees are delivered by external packs, not bundled framework internals.
 
 If internal modules are indexed (non-empty `modules`) but none load, startup treats that as a strict mismatch and fails fast so true configuration/load errors are not hidden.

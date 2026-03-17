@@ -2,6 +2,8 @@
 
 This folder is a ready-to-copy scaffold for creating a new SkillPerkSystem plugin using the recommended **one-skill-file** layout.
 
+For advanced/large packs, folder-split skill modules are also supported, but one-file-per-skill should remain your default.
+
 ## Starter structure
 
 ```text

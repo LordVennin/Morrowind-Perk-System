@@ -131,7 +131,7 @@ Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua`
 
 ## Create your own plugin
 
-Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). Recommended pack layout is now **one file per skill**:
+Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). Recommended pack layout is **one file per skill** (default for new modders):
 
 ```text
 scripts/<PackName>/
@@ -142,14 +142,43 @@ scripts/<PackName>/
     <effectId>.lua
 ```
 
-### Loader behavior (primary + fallback)
+### Loader behavior (default + advanced + compatibility)
 
-Plugin discovery now treats `scripts.<PackName>.perks.<skillId>` as the primary skill module path.
+Plugin discovery treats `scripts.<PackName>.perks.<skillId>` as the default skill module path.
 
 - If this module exists and returns a valid skill schema (`perks` and/or `nodes`), it is used as the canonical source for that skill.
-- If that primary module is missing or does not provide a skill schema, the loader falls back to nested modules under `scripts.<PackName>.perks.<skillId>.*` for backward compatibility.
+- For advanced/large packs, you can optionally split one skill into a folder module set using `scripts/<PackName>/perks/<skillId>/modules.lua` plus listed files.
+- If both variants exist for the same skill, **single-file wins** when it provides a valid schema; the folder module set is ignored and startup logs print this precedence.
+- If the single-file module is missing (or present but not a valid skill schema), and a folder module set exists, the folder module set is loaded.
+- If neither default nor folder-module-set variants are available, the loader still falls back to discovered nested modules under `scripts.<PackName>.perks.<skillId>.*` for backward compatibility.
 
-This keeps one-skill-file packs simple while preserving compatibility for older folder-split packs.
+This keeps one-skill-file packs simple while preserving compatibility for advanced/large packs and older folder-split packs.
+
+### Advanced/large pack pattern: folder module sets
+
+Use this only when one skill's perk data is too large for a single file.
+
+```text
+scripts/<PackName>/
+  perks/
+    <skillId>/
+      modules.lua              <-- ordered list of module suffixes
+      01_core.lua
+      10_branch.lua
+      20_finishers.lua
+```
+
+`modules.lua` should return an ordered list of suffixes (without `.lua`):
+
+```lua
+return {
+  "01_core",
+  "10_branch",
+  "20_finishers",
+}
+```
+
+Startup logs now include `variant='<single-file|folder-module-set|legacy-nested|none>'` per skill so you can quickly confirm which loader path was used.
 
 ### Deterministic merge behavior across packs (same skill)
 

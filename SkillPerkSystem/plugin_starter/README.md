@@ -53,3 +53,13 @@ return {
   },
 }
 ```
+
+## OpenMW content entries and ordering
+
+When you ship your pack, users should enable your own `.omwscripts` content entry **after**:
+
+1. `content=SkillPerkSystem.omwscripts` (framework)
+2. `content=Vennin's Perks.omwscripts` (optional bundled sample pack)
+3. `content=<YourPack>.omwscripts` (your plugin)
+
+That order keeps framework initialization first and makes all packs (including the bundled sample pack) follow the same third-party plugin loading expectations.

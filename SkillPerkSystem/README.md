@@ -16,7 +16,16 @@ Add this folder to your OpenMW `data=` paths and include:
 
 ```ini
 content=SkillPerkSystem.omwscripts
+content=Vennin's Perks.omwscripts
 ```
+
+### Content files and load order
+
+- `content=SkillPerkSystem.omwscripts` is the framework runtime and must always be enabled.
+- `content=Vennin's Perks.omwscripts` is an optional bundled sample pack (Long Blade + Block).
+- Keep `SkillPerkSystem.omwscripts` above `Vennin's Perks.omwscripts` in your `content=` list so the framework loads first and the sample pack behaves like any other third-party add-on pack.
+
+If you do not want bundled sample perks, disable `content=Vennin's Perks.omwscripts` (or keep it enabled and set `ENABLE_SAMPLE_PACK = false` in `scripts/SkillPerkSystem/settings.lua`).
 
 ## Console commands
 
@@ -317,14 +326,25 @@ The framework uses a perks-only schema where each perk module can include both p
 - Register modules with `api.registerPerkModule(require(moduleName), "<skillId>")`.
 - See `scripts/SkillPerkSystem/perks/README.md` for schema details.
 
-### Built-in content layout (Long Blade + Block)
+### Bundled sample pack layout (Long Blade + Block)
 
-Shipped built-in content is organized under `scripts/SkillPerkSystem/perks/` and registered from unified perk modules.
+Long Blade and Block sample perks now ship as a separate content pack in `scripts/VenninsPerks/` and are loaded from `Vennin's Perks.omwscripts`.
+
+This intentionally mirrors third-party author workflow: the bundled sample pack is discovered, validated, and merged through the same manifest/module path conventions used by external packs.
 
 ### Demo tree content toggle
 
-`settings.lua` now includes `ENABLE_SAMPLE_PACK` (default `true`) to control migrated sample/demo perk content (currently Long Blade + Block in `scripts/VenninsPerks`). Set it to `false` to disable the sample pack without removing the framework.
+`settings.lua` includes `ENABLE_SAMPLE_PACK` (default `true`) to control migrated sample/demo perk content (currently Long Blade + Block in `scripts/VenninsPerks`). Set it to `false` to disable the sample pack without removing the framework.
 
 Backward compatibility: `ENABLE_DEMO_TREE_PERKS` is still honored as a legacy alias, but `ENABLE_SAMPLE_PACK` takes precedence when both are present.
 
-Built-in perk modules are organized under `scripts/SkillPerkSystem/perks/<skillId>/` and loaded in deterministic alphabetical order (`01_core.lua`, `10_branch.lua`, ...).
+### Migration note for existing users
+
+If you previously relied on the internal demo tree behavior (`scripts/SkillPerkSystem/perks/...` loading as part of the base framework), switch to explicit sample-pack handling:
+
+1. Add `content=Vennin's Perks.omwscripts` after `content=SkillPerkSystem.omwscripts` to keep Long Blade/Block sample perks.
+2. Or omit/disable `Vennin's Perks.omwscripts` if you want framework-only behavior with no demo/sample tree content.
+
+This change makes default sample content behave like a normal plugin pack and avoids hidden internal-tree coupling.
+
+Framework-owned internal perk modules remain under `scripts/SkillPerkSystem/perks/<skillId>/` and are loaded in deterministic alphabetical order (`01_core.lua`, `10_branch.lua`, ...).

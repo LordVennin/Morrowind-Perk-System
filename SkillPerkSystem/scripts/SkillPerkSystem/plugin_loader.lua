@@ -5,6 +5,7 @@ local settings = require("scripts.SkillPerkSystem.settings")
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
+local INTERNAL_PACK_NAME = "SkillPerkSystem"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -375,6 +376,7 @@ end
 local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     local report = {
         packName = packName,
+        discoveryKind = "external",
         manifest = {
             path = "scripts." .. packName .. ".skillperk_manifest",
             found = false,
@@ -447,6 +449,19 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     return report
 end
 
+local function getExternalPackNames()
+    local externalPacks = {}
+    local seen = {}
+
+    for _, packName in ipairs(getDetectedPackNames()) do
+        if packName ~= INTERNAL_PACK_NAME then
+            pushUnique(externalPacks, seen, packName)
+        end
+    end
+
+    return externalPacks
+end
+
 local hasLoaded = false
 local lastReport = nil
 local hasPreloadedSkillModules = false
@@ -458,26 +473,32 @@ local function loadInstalledPacks(pluginAPI)
     end
     hasLoaded = true
 
-    local packs = getDetectedPackNames()
-    local report = {
-        totalPacksDetected = #packs,
-        packs = {},
-    }
-    lastReport = report
-
-    if #packs == 0 then
-        log("no content files detected; skipping plugin discovery")
-        return report
-    end
-
+    local externalPacks = getExternalPackNames()
     local skillIDs = getRecordIDs(core.stats and core.stats.Skill and core.stats.Skill.records)
     local effectIDs = getRecordIDs(
         (core.magic and core.magic.Effect and core.magic.Effect.records)
             or (core.magic and core.magic.MagicEffect and core.magic.MagicEffect.records)
     )
 
-    for _, packName in ipairs(packs) do
-        table.insert(report.packs, loadPack(packName, skillIDs, effectIDs, pluginAPI))
+    local report = {
+        totalPacksDetected = #externalPacks,
+        internalPackName = INTERNAL_PACK_NAME,
+        packs = {},
+    }
+    lastReport = report
+
+    local internalReport = loadPack(INTERNAL_PACK_NAME, skillIDs, effectIDs, pluginAPI)
+    internalReport.discoveryKind = "internal"
+    table.insert(report.packs, internalReport)
+
+    if #externalPacks == 0 then
+        log("no external content packs detected; skipping external plugin discovery")
+    else
+        for _, packName in ipairs(externalPacks) do
+            local packReport = loadPack(packName, skillIDs, effectIDs, pluginAPI)
+            packReport.discoveryKind = "external"
+            table.insert(report.packs, packReport)
+        end
     end
 
     if settings.PLUGIN_VALIDATION_VERBOSE then
@@ -567,13 +588,19 @@ local function preloadPerkModules(pluginAPI)
         modulesDiscovered = 0,
         modulesLoaded = 0,
         modulesFailed = 0,
+        internalModulesDiscovered = 0,
+        internalModulesLoaded = 0,
+        internalModulesFailed = 0,
         perSkill = {},
         durationMs = 0,
     }
     preloadReport = report
 
     for _, packReport in ipairs(validationReport.packs or {}) do
-        report.packsScanned = report.packsScanned + 1
+        local isInternalPack = packReport.discoveryKind == "internal"
+        if not isInternalPack then
+            report.packsScanned = report.packsScanned + 1
+        end
         local seen = {}
         local discoveredModules = {}
 
@@ -607,6 +634,9 @@ local function preloadPerkModules(pluginAPI)
             local skillSummary = perSkillSummaries[moduleInfo.skillID]
             skillSummary.discovered = skillSummary.discovered + 1
             report.modulesDiscovered = report.modulesDiscovered + 1
+            if isInternalPack then
+                report.internalModulesDiscovered = report.internalModulesDiscovered + 1
+            end
 
             local registrationResult = {
                 registered = false,
@@ -634,9 +664,15 @@ local function preloadPerkModules(pluginAPI)
             if registrationResult.registered or registrationResult.skipped then
                 report.modulesLoaded = report.modulesLoaded + 1
                 skillSummary.loaded = skillSummary.loaded + 1
+                if isInternalPack then
+                    report.internalModulesLoaded = report.internalModulesLoaded + 1
+                end
             else
                 report.modulesFailed = report.modulesFailed + 1
                 skillSummary.failed = skillSummary.failed + 1
+                if isInternalPack then
+                    report.internalModulesFailed = report.internalModulesFailed + 1
+                end
             end
 
             skillSummary.perks = skillSummary.perks + (registrationResult.perks or 0)
@@ -694,6 +730,12 @@ local function preloadPerkModules(pluginAPI)
         .. tostring(report.modulesLoaded)
         .. " modules_failed="
         .. tostring(report.modulesFailed)
+        .. " internal_modules_discovered="
+        .. tostring(report.internalModulesDiscovered)
+        .. " internal_modules_loaded="
+        .. tostring(report.internalModulesLoaded)
+        .. " internal_modules_failed="
+        .. tostring(report.internalModulesFailed)
 
     if startTimeSeconds ~= nil then
         local endTimeSeconds = readLoaderTimeSeconds()

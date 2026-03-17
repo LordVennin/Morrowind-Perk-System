@@ -189,12 +189,22 @@ local function discoverSkillPerkModules(packName, skillID)
             local relativeFile = normalizedPath:match("^" .. folderPath:gsub("%-", "%%-") .. "([^/]+)%.lua$")
             if type(relativeFile) == "string" and relativeFile ~= "" and not seen[relativeFile] then
                 seen[relativeFile] = true
-                table.insert(modules, "scripts." .. tostring(packName) .. ".perks." .. tostring(skillID) .. "." .. tostring(relativeFile))
+                table.insert(modules, {
+                    moduleName = "scripts." .. tostring(packName) .. ".perks." .. tostring(skillID) .. "." .. tostring(relativeFile),
+                    moduleFile = tostring(relativeFile),
+                    source = folderPath .. tostring(relativeFile) .. ".lua",
+                })
             end
         end
     end
 
-    sortStringsStable(modules)
+    table.sort(modules, function(left, right)
+        if left.moduleFile ~= right.moduleFile then
+            return left.moduleFile < right.moduleFile
+        end
+        return left.moduleName < right.moduleName
+    end)
+
     return folderPath, modules
 end
 
@@ -377,8 +387,8 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
             variant = #discoveredModules > 0 and "multi-file" or "none",
         }
 
-        for _, moduleName in ipairs(discoveredModules) do
-            local loadedModule = tryRequire(packName, moduleName, report)
+        for _, discoveredModule in ipairs(discoveredModules) do
+            local loadedModule = tryRequire(packName, discoveredModule.moduleName, report)
             if loadedModule then
                 skillModuleStats.loaded = skillModuleStats.loaded + 1
             else
@@ -491,7 +501,7 @@ local function extractSkillModuleName(packName, moduleName)
         return nil, nil
     end
 
-    local moduleFile = suffix:match("^[^.]+%.([^.]+)$")
+    local moduleFile = suffix:match("^[^.]+%.(.+)$")
     if type(moduleFile) ~= "string" or moduleFile == "" then
         return nil, nil
     end
@@ -579,12 +589,13 @@ local function preloadPerkModules(pluginAPI)
                 local ok, moduleData = pcall(require, moduleInfo.moduleName)
                 local skillFolderPath =
                     "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)
+                local moduleSource = skillFolderPath .. "/" .. tostring(moduleInfo.moduleFile) .. ".lua"
                 registered = ok and tryRegisterSkillModule(
                     pluginAPI,
                     packReport,
                     moduleInfo.skillID,
                     skillFolderPath,
-                    moduleInfo.moduleName,
+                    moduleSource,
                     moduleData
                 )
             end

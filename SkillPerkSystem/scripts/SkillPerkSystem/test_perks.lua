@@ -28,7 +28,7 @@ local function buildRequirement(parentID)
     }
 end
 
-local function registerDemoPerks(registerPerk)
+local function registerDemoPerks(registerPerk, source)
     if registered or not settings.ENABLE_DEMO_TREE_PERKS then
         return
     end
@@ -45,7 +45,7 @@ local function registerDemoPerks(registerPerk)
             requirements = requirements,
             cost = record.cost,
             effectId = "demo_noop",
-        })
+        }, source)
     end
 
     registered = true

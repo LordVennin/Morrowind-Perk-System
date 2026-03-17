@@ -78,13 +78,31 @@ local function tryRequire(packName, moduleName)
     return false, nil
 end
 
-local function runManifest(packName, manifestModule, pluginAPI)
+local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
+    return {
+        PLUGIN_API_VERSION = pluginAPI.PLUGIN_API_VERSION,
+        assertCompatibleApiVersion = pluginAPI.assertCompatibleApiVersion,
+        registerPerk = function(data)
+            return pluginAPI.registerPerk(data, sourceName)
+        end,
+        registerTreeNode = function(data)
+            return pluginAPI.registerTreeNode(data, sourceName)
+        end,
+        registerEffect = function(data)
+            return pluginAPI.registerEffect(data, sourceName)
+        end,
+        registerPointSource = pluginAPI.registerPointSource,
+    }
+end
+
+local function runManifest(packName, manifestModule, pluginAPI, manifestPath)
     if type(manifestModule) ~= "table" then
         return
     end
 
     if type(manifestModule.register) == "function" then
-        local ok, err = pcall(manifestModule.register, pluginAPI)
+        local sourceAwareAPI = buildSourceAwarePluginAPI(pluginAPI, manifestPath)
+        local ok, err = pcall(manifestModule.register, sourceAwareAPI)
         if ok then
             log("executed manifest register() for pack='" .. packName .. "'")
         else
@@ -105,7 +123,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     local manifestPath = "scripts." .. packName .. ".skillperk_manifest"
     local loadedManifest, manifestModule = tryRequire(packName, manifestPath)
     if loadedManifest then
-        runManifest(packName, manifestModule, pluginAPI)
+        runManifest(packName, manifestModule, pluginAPI, manifestPath)
     end
 
     for _, skillID in ipairs(skillIDs) do

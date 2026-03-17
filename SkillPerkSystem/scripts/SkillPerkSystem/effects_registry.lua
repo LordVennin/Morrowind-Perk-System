@@ -9,11 +9,22 @@ local effectsByID = {
     },
 }
 
+local effectSourceByID = {
+    demo_noop = "core:demo_builtin",
+}
+
 local function warn(message)
     print("[" .. MOD_NAME .. "][effects] WARNING: " .. tostring(message))
 end
 
-local function registerEffect(effectID, callbacks)
+local function duplicatePolicyLabel()
+    if settings.ALLOW_DUPLICATE_REGISTRATION_OVERRIDE then
+        return "override(last-write-wins)"
+    end
+    return "strict(error)"
+end
+
+local function registerEffect(effectID, callbacks, source)
     if type(effectID) ~= "string" or effectID == "" then
         error("registerEffect() requires a non-empty string effectID", 2)
     end
@@ -21,7 +32,24 @@ local function registerEffect(effectID, callbacks)
         error("registerEffect(" .. effectID .. ") requires a callbacks table", 2)
     end
 
+    local sourceName = (type(source) == "string" and source ~= "") and source or "unknown"
+    local previousSource = effectSourceByID[effectID]
+    if previousSource ~= nil and not settings.ALLOW_DUPLICATE_REGISTRATION_OVERRIDE then
+        error(
+            "registerEffect() duplicate effect id '"
+                .. tostring(effectID)
+                .. "' from source='"
+                .. tostring(sourceName)
+                .. "' conflicts with source='"
+                .. tostring(previousSource)
+                .. "' policy="
+                .. duplicatePolicyLabel(),
+            2
+        )
+    end
+
     effectsByID[effectID] = callbacks
+    effectSourceByID[effectID] = sourceName
 end
 
 local function invoke(effectID, callbackName, context)
@@ -49,8 +77,18 @@ local function onRemove(effectID, context)
     return invoke(effectID, "onRemove", context)
 end
 
+local function getEffects()
+    return effectsByID
+end
+
+local function getEffectSource(effectID)
+    return effectSourceByID[effectID]
+end
+
 return {
     registerEffect = registerEffect,
     onAcquire = onAcquire,
     onRemove = onRemove,
+    getEffects = getEffects,
+    getEffectSource = getEffectSource,
 }

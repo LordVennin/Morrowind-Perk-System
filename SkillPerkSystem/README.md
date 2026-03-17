@@ -132,33 +132,40 @@ Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua`
 
 ## Create your own plugin
 
-Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). Recommended pack layout is **one file per skill** (default for new modders):
+Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). Recommended pack layout is **one folder per skill with drop-in modules**:
 
 ```text
 scripts/<PackName>/
   skillperk_manifest.lua
   perks/
-    <skillId>.lua              <-- primary convention (single file per skill)
+    <skillId>/
+      <module>.lua             <-- independent drop-in modules merged into one registry
   effects/                     <-- optional
     <effectId>.lua
 ```
 
 ### Loader behavior (strict by design)
 
-Plugin discovery now supports **only** one skill module path per skill:
+Plugin discovery supports unified modules under the canonical path:
 
-- `scripts.<PackName>.perks.<skillId>`
+- `scripts.<PackName>.perks.<skillId>.<module>`
 
 Strict rules:
 
 - The module must return a table with `schema = "skillperks.vNext"`.
 - The module must provide `perks` and/or `nodes`.
-- Old flat-tree module data, old split module-set patterns (`modules.lua` + numbered files), and legacy nested module discovery are unsupported.
+- Old flat-tree module data and pre-schema legacy formats are unsupported.
 - Missing required schema is treated as a strict validation failure and surfaced prominently in startup output.
+
+Deterministic merge order for modules in the same skill folder is alphabetical by `<module>` filename. Use numeric prefixes to control order, for example:
+
+- `01_core.lua`
+- `20_finishers.lua`
+- `90_experimental.lua`
 
 ### Migration notes (required)
 
-If your plugin still uses older layouts, migrate to one module per skill (`scripts/<PackName>/perks/<skillId>.lua`) and add `schema = "skillperks.vNext"` at the module root.
+If your plugin still uses older layouts, migrate to `scripts/<PackName>/perks/<skillId>/<module>.lua` modules and add `schema = "skillperks.vNext"` at each module root.
 
 Example:
 
@@ -192,14 +199,15 @@ Uniqueness policy is controlled by `ALLOW_DUPLICATE_REGISTRATION_OVERRIDE` in `s
 
 Recommended practice: keep perk IDs globally unique (for example `<pack>_<skill>_<name>`) to avoid accidental overrides.
 
-### Copy/paste examples (one-skill-file packs)
+### Copy/paste examples (folder-based skill modules)
 
 Manifest module list:
 
 ```lua
 local PERK_MODULES = {
-  "scripts.MyPack.perks.longblade",
-  "scripts.MyPack.perks.block",
+  "scripts.MyPack.perks.longblade.01_core",
+  "scripts.MyPack.perks.longblade.20_finishers",
+  "scripts.MyPack.perks.block.01_core",
 }
 
 for _, moduleName in ipairs(PERK_MODULES) do
@@ -210,10 +218,10 @@ for _, moduleName in ipairs(PERK_MODULES) do
 end
 ```
 
-Single skill file:
+Single module file:
 
 ```lua
--- scripts/MyPack/perks/longblade.lua
+-- scripts/MyPack/perks/longblade/01_core.lua
 return {
   schema = "skillperks.vNext",
   perks = {

@@ -144,6 +144,15 @@ scripts/<PackName>/
     <effectId>.lua
 ```
 
+Concrete multi-file example for one skill tree:
+
+```text
+scripts/<PackName>/perks/block/VenninBlock.lua
+scripts/<PackName>/perks/block/JohnsBlock.lua
+```
+
+All files inside `scripts/<PackName>/perks/<skillId>/` are merged into that one skill's perk tree UI.
+
 ### Loader behavior (strict by design)
 
 Plugin discovery supports unified modules under the canonical path:
@@ -162,6 +171,40 @@ Deterministic merge order for modules in the same skill folder is alphabetical b
 - `01_core.lua`
 - `20_finishers.lua`
 - `90_experimental.lua`
+
+For readability in larger teams, author prefixes are also a good option (for example `vennin_core.lua`, `john_finishers.lua`) and can be combined with numeric ordering (for example `10_vennin_core.lua`, `20_john_finishers.lua`).
+
+Node coordinate (`x`, `y`) overlap across files is allowed. The loader intentionally does not resolve layout collisions for you; pack authors are responsible for arranging nodes so the final merged tree is readable.
+
+Minimal two-file contribution example (same `block` skill tree):
+
+```lua
+-- scripts/MyPack/perks/block/VenninBlock.lua
+return {
+  schema = "skillperks.vNext",
+  nodes = {
+    { id = "mypack_block_start", x = 0, y = 0, perkId = "mypack_block_guard" },
+  },
+  perks = {
+    { id = "mypack_block_guard", skill = "block", effectId = "mypack_guard", requirements = {}, cost = 1 },
+  },
+}
+```
+
+```lua
+-- scripts/MyPack/perks/block/JohnsBlock.lua
+return {
+  schema = "skillperks.vNext",
+  nodes = {
+    { id = "mypack_block_followup", x = 1, y = 0, perkId = "mypack_block_counter", requires = { "mypack_block_start" } },
+  },
+  perks = {
+    { id = "mypack_block_counter", skill = "block", effectId = "mypack_counter", requirements = { "mypack_block_guard" }, cost = 1 },
+  },
+}
+```
+
+Both files contribute entries to the same merged `block` tree at runtime.
 
 ### Migration notes (required)
 

@@ -120,11 +120,14 @@ Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua`
 
 ## Create your own plugin
 
-Start from the modder-facing starter template:
+Use the starter pack at [`plugin_starter/`](plugin_starter/README.md).
 
-- `SkillPerkSystem/plugin_starter/README.md`
+It includes:
 
-It includes a ready-to-copy manifest, example `scripts/<PackName>/...` layout matching plugin auto-discovery, and a first-run validation checklist.
+- a ready-to-copy `scripts/YourPackName/skillperk_manifest.lua` scaffold,
+- optional `scripts/YourPackName/perks/` and `scripts/YourPackName/effects/` folders,
+- an example `register(api)` flow (`assertCompatibleApiVersion`, `registerPerk`, optional `registerTreeNode`),
+- OpenMW install + activation checklist.
 
 ## Notes
 

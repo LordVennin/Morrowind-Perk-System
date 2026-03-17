@@ -48,6 +48,7 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 local selectedTreeNodeID = nil
 local treePanBySkill = {}
+local treePanInitializedBySkill = {}
 local isDraggingTree = false
 local lastMousePos = nil
 
@@ -119,6 +120,32 @@ local function getTreePan(skillID)
         treePanBySkill[skillID] = state
     end
     return state
+end
+
+local function ensureTreePanInitialized(skillID, treeNodes)
+    if skillID == nil or treePanInitializedBySkill[skillID] then
+        return
+    end
+    if treeNodes == nil or #treeNodes == 0 then
+        return
+    end
+
+    local minX, maxX = treeNodes[1].x, treeNodes[1].x
+    local minY, maxY = treeNodes[1].y, treeNodes[1].y
+    for i = 2, #treeNodes do
+        local node = treeNodes[i]
+        minX = math.min(minX, node.x)
+        maxX = math.max(maxX, node.x)
+        minY = math.min(minY, node.y)
+        maxY = math.max(maxY, node.y)
+    end
+
+    local pan = getTreePan(skillID)
+    pan.x = math.floor((minX + maxX) / 2)
+    pan.y = -math.floor((minY + maxY) / 2)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
+    treePanInitializedBySkill[skillID] = true
 end
 
 local function clampTreePan(pan)
@@ -461,11 +488,14 @@ local function buildPerkPane()
         or {}
 
     if #treeNodes > 0 then
+        ensureTreePanInitialized(selectedSkillID, treeNodes)
         local pan = getTreePan(selectedSkillID)
         local viewportSize = util.vector2(520, 468)
         local nodeHeight = 28
         local lineThickness = 2
-        local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), viewportSize.y - 56)
+        local horizontalLineTexture = ui.texture { path = "textures/menu_thin_border_top.dds" }
+        local verticalLineTexture = ui.texture { path = "textures/menu_thin_border_left.dds" }
+        local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), math.floor(viewportSize.y / 2))
         local nodeByID = {}
 
         for _, node in ipairs(treeNodes) do
@@ -507,13 +537,18 @@ local function buildPerkPane()
             if w <= 0 or h <= 0 then
                 return
             end
+
+            local width = math.max(lineThickness, math.floor(w))
+            local height = math.max(lineThickness, math.floor(h))
+            local horizontal = width >= height
+
             table.insert(treeCanvasContent, {
-                type = ui.TYPE.Container,
-                template = interfaces.MWUI.templates.boxTransparent,
+                type = ui.TYPE.Image,
                 props = {
                     autoSize = false,
                     position = util.vector2(math.floor(x), math.floor(y)),
-                    size = util.vector2(math.max(lineThickness, math.floor(w)), math.max(lineThickness, math.floor(h))),
+                    size = util.vector2(width, height),
+                    resource = horizontal and horizontalLineTexture or verticalLineTexture,
                 },
                 userData = {
                     drawLayer = 0,
@@ -560,6 +595,14 @@ local function buildPerkPane()
             local buttonSize = util.vector2(isSelected and 196 or 184, 26)
             local nodePos = toCanvasPos(node)
 
+            local nodeButton = createBoxedButton(nodeLabel, function()
+                selectedTreeNodeID = node.id
+                selectedPerkIndex = perkIndex
+                menu.layout = buildLayout()
+                menu:update()
+            end, buttonSize, 1)
+            nodeButton.template = interfaces.MWUI.templates.boxSolidThick
+
             table.insert(treeCanvasContent, {
                 type = ui.TYPE.Container,
                 props = {
@@ -573,20 +616,12 @@ local function buildPerkPane()
                 userData = {
                     drawLayer = 1,
                 },
-                content = ui.content {
-                    createBoxedButton(nodeLabel, function()
-                        selectedTreeNodeID = node.id
-                        selectedPerkIndex = perkIndex
-                        menu.layout = buildLayout()
-                        menu:update()
-                    end, buttonSize, 1),
-                },
+                content = ui.content { nodeButton },
             })
         end
 
         table.insert(perksCol, {
             type = ui.TYPE.Container,
-            template = interfaces.MWUI.templates.boxTransparent,
             props = {
                 autoSize = false,
                 size = viewportSize,
@@ -682,7 +717,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
+                        template = interfaces.MWUI.templates.boxSolidThick,
                         props = {
                             autoSize = false,
                             size = util.vector2(230, 28),

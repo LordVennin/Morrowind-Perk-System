@@ -48,6 +48,7 @@ local skillIDs = {}
 local filteredPerkIDs = {}
 local selectedTreeNodeID = nil
 local treePanBySkill = {}
+local treePanInitializedBySkill = {}
 local isDraggingTree = false
 local lastMousePos = nil
 
@@ -119,6 +120,32 @@ local function getTreePan(skillID)
         treePanBySkill[skillID] = state
     end
     return state
+end
+
+local function ensureTreePanInitialized(skillID, treeNodes)
+    if skillID == nil or treePanInitializedBySkill[skillID] then
+        return
+    end
+    if treeNodes == nil or #treeNodes == 0 then
+        return
+    end
+
+    local minX, maxX = treeNodes[1].x, treeNodes[1].x
+    local minY, maxY = treeNodes[1].y, treeNodes[1].y
+    for i = 2, #treeNodes do
+        local node = treeNodes[i]
+        minX = math.min(minX, node.x)
+        maxX = math.max(maxX, node.x)
+        minY = math.min(minY, node.y)
+        maxY = math.max(maxY, node.y)
+    end
+
+    local pan = getTreePan(skillID)
+    pan.x = math.floor((minX + maxX) / 2)
+    pan.y = -math.floor((minY + maxY) / 2)
+    pan.x = math.max(-600, math.min(600, pan.x))
+    pan.y = math.max(-600, math.min(600, pan.y))
+    treePanInitializedBySkill[skillID] = true
 end
 
 local function clampTreePan(pan)
@@ -461,11 +488,12 @@ local function buildPerkPane()
         or {}
 
     if #treeNodes > 0 then
+        ensureTreePanInitialized(selectedSkillID, treeNodes)
         local pan = getTreePan(selectedSkillID)
         local viewportSize = util.vector2(520, 468)
         local nodeHeight = 28
         local lineThickness = 2
-        local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), viewportSize.y - 56)
+        local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), math.floor(viewportSize.y / 2))
         local nodeByID = {}
 
         for _, node in ipairs(treeNodes) do
@@ -509,7 +537,7 @@ local function buildPerkPane()
             end
             table.insert(treeCanvasContent, {
                 type = ui.TYPE.Container,
-                template = interfaces.MWUI.templates.boxTransparent,
+                template = interfaces.MWUI.templates.boxSolid,
                 props = {
                     autoSize = false,
                     position = util.vector2(math.floor(x), math.floor(y)),

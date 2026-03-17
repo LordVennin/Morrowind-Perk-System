@@ -1,6 +1,6 @@
 # SkillPerkSystem plugin starter pack
 
-This folder is a ready-to-copy scaffold for creating a new SkillPerkSystem plugin.
+This folder is a ready-to-copy scaffold for creating a new SkillPerkSystem plugin using the recommended folder-based layout.
 
 ## Starter structure
 
@@ -9,76 +9,48 @@ SkillPerkSystem/plugin_starter/
   README.md
   scripts/
     YourPackName/
-      skillperk_manifest.lua        <-- required
-      perks/                        <-- optional
-        longblade.lua               <-- example module
-      effects/                      <-- optional
-        example_bonus_damage.lua    <-- example module
+      skillperk_manifest.lua
+      perks/
+        longblade/
+          01_core.lua
+          10_bleed.lua
+      effects/
+        10_bonus_damage.lua
+      trees/                     <-- optional
+        longblade/
+          10_starter.lua
 ```
 
 Copy `scripts/YourPackName/` into your mod, then rename `YourPackName` and all sample IDs.
 
-## Module paths expected by `plugin_loader.lua`
+## Manifest-first loading
 
-`scripts/SkillPerkSystem/plugin_loader.lua` auto-discovers pack names from enabled content files and then attempts to `require(...)` these module paths:
+`skillperk_manifest.lua` should be your source of truth for load order. Keep file names prefixed with sortable numbers so intent is obvious:
 
-- `scripts.<PackName>.skillperk_manifest` (required for manifest-based registration)
-- `scripts.<PackName>.perks.<skillId>` (optional; attempted for every OpenMW skill ID)
-- `scripts.<PackName>.effects.<effectId>` (optional; attempted for every OpenMW magic effect ID)
+- `01_core.lua` for base perks
+- `10_bleed.lua` for follow-up perks
+- `20_finisher.lua` for later chain entries
 
-Practical implication: keep exact path/case for your pack folder and manifest file:
+The starter manifest demonstrates ordered module lists for effects, perks, and optional tree nodes.
 
-- `scripts/<PackName>/skillperk_manifest.lua`
+## Recommended module conventions
 
-## Example `register(api)` implementation
+- Perks: `scripts.<PackName>.perks.<skillId>.<module>`
+- Effects: `scripts.<PackName>.effects.<module>`
+- Trees (optional): `scripts.<PackName>.trees.<skillId>.<module>`
 
-The included manifest demonstrates the typical registration flow:
+## Migration from old flat layout
 
-1. `api.assertCompatibleApiVersion(1)`
-2. `api.registerEffect(...)` (if needed)
-3. `api.registerPerk(...)`
-4. `api.registerTreeNode(...)` (optional)
+If your pack currently uses flat modules like `scripts.<PackName>.perks.longblade`:
 
-Open `scripts/YourPackName/skillperk_manifest.lua` and replace module paths/IDs.
-
-## Required perk fields validated in `plugin_api.lua`
-
-When you call `api.registerPerk(data)`, `scripts/SkillPerkSystem/plugin_api.lua` validates:
-
-- `data` must be a table.
-- `id` is required and must be a string.
-- `skill` is required, must be a string, and must match a valid OpenMW skill record ID.
-- `effectId` is required and must be a non-empty string.
-- `requirements` defaults to `{}` if omitted, and must be a table if provided.
-- `cost` defaults to `1` if omitted, and must be a positive integer if provided.
-
-## Naming and ID conventions (collision avoidance)
-
-Use a mod-unique prefix for every identifier, such as `yourmod_` or `myguild_`.
-
-- Perk IDs: `yourmod_longblade_bonus_damage`
-- Effect IDs: `yourmod_bonus_damage_effect`
-- Tree node IDs: `yourmod_longblade_bonus_damage_node`
-- Point source IDs (if used): `yourmod_quest_rewards`
-
-Recommendations:
-
-- Keep IDs lowercase with underscores.
-- Never reuse vanilla IDs.
-- Keep pack folder, content filename, and ID prefix logically aligned.
+1. Move it to `scripts/<PackName>/perks/longblade/01_core.lua` (or similar).
+2. Split large files into focused modules (`10_bleed.lua`, `20_crit.lua`, etc.).
+3. Update `skillperk_manifest.lua` to require the new paths in order.
+4. Keep perk/effect IDs unchanged unless you intentionally want a breaking save migration.
 
 ## Minimal install + activation checklist (OpenMW)
 
-1. Copy your finished plugin scripts so the manifest is at:
-   - `scripts/<PackName>/skillperk_manifest.lua`
+1. Copy your finished plugin scripts so the manifest is at `scripts/<PackName>/skillperk_manifest.lua`.
 2. Install/enable `SkillPerkSystem` in OpenMW.
 3. Add and enable your plugin content file in `openmw.cfg` (Launcher can do this).
 4. Launch the game and check logs for successful load lines from plugin loader.
-5. Use perk UI/console to confirm your perk appears and can be applied.
-
-If registration fails, check:
-
-- folder/name casing mismatches in `scripts/<PackName>/...`
-- invalid `skill` ID in `registerPerk`
-- missing/empty `effectId`
-- duplicate IDs already used by another plugin

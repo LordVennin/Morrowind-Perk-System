@@ -6,12 +6,7 @@ local EFFECT_MODULES = {
 }
 
 local PERK_MODULES = {
-    "scripts.YourPackName.perks.longblade.01_core",
-    "scripts.YourPackName.perks.longblade.10_bleed",
-}
-
-local TREE_MODULES = {
-    "scripts.YourPackName.trees.longblade.10_starter",
+    "scripts.YourPackName.perks.longblade",
 }
 
 local function extend(into, values)
@@ -28,18 +23,27 @@ local function register(api)
     end
 
     for _, moduleName in ipairs(PERK_MODULES) do
-        api.registerPerk(require(moduleName))
-    end
-
-    for _, moduleName in ipairs(TREE_MODULES) do
-        api.registerTreeNode(require(moduleName))
+        local moduleData = require(moduleName)
+        for _, perk in ipairs(moduleData.perks or {}) do
+            api.registerPerk(perk)
+            if type(perk.x) == "number" and type(perk.y) == "number" then
+                api.registerTreeNode({
+                    id = perk.id,
+                    skill = perk.skill,
+                    x = perk.x,
+                    y = perk.y,
+                    requires = perk.requires,
+                    title = perk.title,
+                    description = perk.description,
+                })
+            end
+        end
     end
 end
 
 local modules = {}
 extend(modules, EFFECT_MODULES)
 extend(modules, PERK_MODULES)
-extend(modules, TREE_MODULES)
 
 return {
     register = register,

@@ -1,6 +1,8 @@
-# Skill tree node files
+# Skill tree node files (legacy compatibility)
 
-Tree nodes are loaded per skill using a folder-first layout.
+Preferred model: co-locate tree-node layout in `perks/<skillId>.lua` skill modules.
+
+The `trees/` folder loader remains as a migration fallback.
 
 For a skill such as `block`, create files under `trees/block/`:
 
@@ -44,10 +46,10 @@ Current shipped demo content is organized as:
 
 ## Migration note for older flat files
 
-Legacy flat modules (`trees/<skillId>.lua`) are still supported as a fallback.
+Legacy flat modules (`trees/<skillId>.lua`) are still supported as a fallback with a deprecation warning.
 
 Load behavior is:
 1. Try folder modules via `trees/<skillId>/modules.lua`.
 2. If none are found, fall back to legacy `trees/<skillId>.lua`.
 
-Modders should prefer folder modules for new work and migrate flat files over time.
+Modders should prefer co-located nodes in `perks/<skillId>.lua` for new work and migrate old tree files over time.

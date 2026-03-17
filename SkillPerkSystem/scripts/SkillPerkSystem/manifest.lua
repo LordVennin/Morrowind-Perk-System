@@ -348,6 +348,12 @@ end
 
 local function buildStartupSummary()
     local mergeStats = collectMergeStatsBySkill(pluginValidationReport)
+    local mergeStatsBySkill = {}
+    for _, skillMerge in ipairs(mergeStats) do
+        mergeStatsBySkill[skillMerge.skillID] = skillMerge
+    end
+
+    local preloadedBySkill = type(preloadReport) == "table" and type(preloadReport.perSkill) == "table" and preloadReport.perSkill or {}
     local skillSummaries = {}
     local allSkills = core.stats and core.stats.Skill and core.stats.Skill.records
 
@@ -363,26 +369,33 @@ local function buildStartupSummary()
                     end
                 end
 
-                local nodes = treeRegistry.getTreeNodesForSkill(skillID)
-                local nodeCount = #nodes
+                local nodeCount = #treeRegistry.getTreeNodesForSkill(skillID)
                 local mergeCount = 0
                 local validationStatus = "ok"
-
-                for _, skillMerge in ipairs(mergeStats) do
-                    if skillMerge.skillID == skillID then
-                        mergeCount = skillMerge.mergedFiles
-                        validationStatus = skillMerge.validationStatus
-                        break
-                    end
+                local mergeSkillStats = mergeStatsBySkill[skillID]
+                if type(mergeSkillStats) == "table" then
+                    mergeCount = mergeSkillStats.mergedFiles or 0
+                    validationStatus = mergeSkillStats.validationStatus or "ok"
                 end
+
+                local preloadSkillStats = preloadedBySkill[skillID] or {}
+                local moduleCount = preloadSkillStats.modulesLoaded or mergeCount
+                local registeredPerks = preloadSkillStats.registeredPerks or perkCount
+                local registeredNodes = preloadSkillStats.registeredNodes or nodeCount
 
                 if perkCount > 0 or nodeCount > 0 or mergeCount > 0 then
                     table.insert(
                         skillSummaries,
                         skillID
-                            .. "{perks="
+                            .. "{modules="
+                            .. tostring(moduleCount)
+                            .. ",registered_perks="
+                            .. tostring(registeredPerks)
+                            .. ",registered_nodes="
+                            .. tostring(registeredNodes)
+                            .. ",total_perks="
                             .. tostring(perkCount)
-                            .. ",nodes="
+                            .. ",total_nodes="
                             .. tostring(nodeCount)
                             .. ",merged_files="
                             .. tostring(mergeCount)

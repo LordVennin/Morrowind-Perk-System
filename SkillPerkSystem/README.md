@@ -92,6 +92,14 @@ interfaces.SkillPerkSystem.registerPerk({
 
 Registration validation note: `registerPerk` requires `skill` to match a valid `openmw.core.stats.Skill.records` ID and raises an error that includes both the perk ID and invalid skill ID when it does not. The optional `cost` field must be a positive integer.
 
+## Create your own plugin
+
+Start from the modder-facing starter template:
+
+- `SkillPerkSystem/plugin_starter/README.md`
+
+It includes a ready-to-copy manifest, example `scripts/<PackName>/...` layout matching plugin auto-discovery, and a first-run validation checklist.
+
 ## Notes
 
 - Built-in rewards are retroactive because sources are evaluated on load and tracked with one-time claims in save data.

@@ -51,6 +51,7 @@ local treePanBySkill = {}
 local treePanInitializedBySkill = {}
 local isDraggingTree = false
 local lastMousePos = nil
+local apiUnavailableWarned = false
 
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
@@ -116,6 +117,15 @@ local function getShortSkillLabel(skillID)
     return label:sub(1, 5) .. "..."
 end
 
+local function getModApi()
+    local modApi = interfaces[MOD_NAME]
+    if modApi == nil and not apiUnavailableWarned then
+        apiUnavailableWarned = true
+        print("[" .. MOD_NAME .. "] SkillPerkSystem API unavailable")
+    end
+    return modApi
+end
+
 local function hasPerk(perkID)
     return interfaces[MOD_NAME .. "Player"].hasPerk(perkID)
 end
@@ -177,6 +187,17 @@ local function findPerkIndexByID(perkID)
 end
 
 local function updateFilteredPerks()
+    local modApi = interfaces[MOD_NAME]
+    if modApi == nil then
+        if not apiUnavailableWarned then
+            apiUnavailableWarned = true
+            print("[" .. MOD_NAME .. "] SkillPerkSystem API unavailable")
+        end
+        filteredPerkIDs = {}
+        selectedTreeNodeID = nil
+        return
+    end
+
     local selectedSkillID = getSelectedSkillID()
     if selectedSkillID == nil then
         filteredPerkIDs = {}
@@ -184,7 +205,11 @@ local function updateFilteredPerks()
         return
     end
 
-    filteredPerkIDs = interfaces[MOD_NAME].getPerkIDsForSkill(selectedSkillID)
+    if type(modApi.getPerkIDsForSkill) == "function" then
+        filteredPerkIDs = modApi.getPerkIDsForSkill(selectedSkillID) or {}
+    else
+        filteredPerkIDs = {}
+    end
     table.sort(filteredPerkIDs)
     if selectedPerkIndex > #filteredPerkIDs then
         selectedPerkIndex = #filteredPerkIDs
@@ -193,8 +218,8 @@ local function updateFilteredPerks()
         selectedPerkIndex = 0
     end
 
-    if selectedTreeNodeID ~= nil and type(interfaces[MOD_NAME].getTreeNode) == "function" then
-        local node = interfaces[MOD_NAME].getTreeNode(selectedTreeNodeID)
+    if selectedTreeNodeID ~= nil and type(modApi.getTreeNode) == "function" then
+        local node = modApi.getTreeNode(selectedTreeNodeID)
         if node == nil or node.skill ~= selectedSkillID then
             selectedTreeNodeID = nil
         end
@@ -211,11 +236,12 @@ local function requirementSatisfied(perk)
 end
 
 local function getMissingParentPerks(perkID)
-    if type(interfaces[MOD_NAME].getTreeNode) ~= "function" then
+    local modApi = getModApi()
+    if modApi == nil or type(modApi.getTreeNode) ~= "function" then
         return {}
     end
 
-    local node = interfaces[MOD_NAME].getTreeNode(perkID)
+    local node = modApi.getTreeNode(perkID)
     if node == nil then
         return {}
     end
@@ -230,7 +256,9 @@ local function getMissingParentPerks(perkID)
 end
 
 local function canPurchasePerk(perkID)
-    local perk = interfaces[MOD_NAME].getPerks()[perkID]
+    local modApi = getModApi()
+    local perks = modApi ~= nil and type(modApi.getPerks) == "function" and modApi.getPerks() or {}
+    local perk = perks[perkID]
     if perk == nil or hasPerk(perkID) then
         return false
     end
@@ -497,8 +525,10 @@ local function buildPerkPane()
     local perksCol = {}
     local treeViewportContent = nil
     local selectedSkillID = getSelectedSkillID()
-    local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
-        and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
+    local modApi = getModApi()
+    local perks = modApi ~= nil and type(modApi.getPerks) == "function" and modApi.getPerks() or {}
+    local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForSkill) == "function"
+        and modApi.getTreeNodesForSkill(selectedSkillID)
         or {}
 
     if #treeNodes > 0 then
@@ -659,24 +689,26 @@ local function buildPerkPane()
         activeTreeCanvasLayout = nil
         activeTreeCanvasSkillID = nil
         for i, perkID in ipairs(filteredPerkIDs) do
-            local perk = interfaces[MOD_NAME].getPerks()[perkID]
+            local perk = perks[perkID]
             local owned = hasPerk(perkID) and " [owned]" or ""
             local isSelected = i == selectedPerkIndex
-            table.insert(perksCol, {
-                type = ui.TYPE.Text,
-                template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
-                events = {
-                    mouseClick = async:callback(function()
-                        selectedTreeNodeID = nil
-                        selectedPerkIndex = i
-                        menu.layout = buildLayout()
-                        menu:update()
-                    end),
-                },
-                props = {
-                    text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
-                }
-            })
+            if perk ~= nil then
+                table.insert(perksCol, {
+                    type = ui.TYPE.Text,
+                    template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                    events = {
+                        mouseClick = async:callback(function()
+                            selectedTreeNodeID = nil
+                            selectedPerkIndex = i
+                            menu.layout = buildLayout()
+                            menu:update()
+                        end),
+                    },
+                    props = {
+                        text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
+                    }
+                })
+            end
         end
     end
 
@@ -804,7 +836,7 @@ local function buildPerkPane()
             content = ui.content(detailRows),
         }
     else
-        local selectedPerk = interfaces[MOD_NAME].getPerks()[selectedPerkID]
+        local selectedPerk = perks[selectedPerkID]
         if selectedPerk ~= nil then
             local owned = hasPerk(selectedPerkID)
             local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
@@ -818,7 +850,7 @@ local function buildPerkPane()
                 },
             }
         else
-            local node = type(interfaces[MOD_NAME].getTreeNode) == "function" and interfaces[MOD_NAME].getTreeNode(selectedPerkID) or nil
+            local node = modApi ~= nil and type(modApi.getTreeNode) == "function" and modApi.getTreeNode(selectedPerkID) or nil
             local nodeReqs = (node ~= nil and #node.requires > 0) and table.concat(node.requires, ", ") or "None"
             local nodeTitle = (node ~= nil and node.title) or selectedPerkID
             local nodeDescription = (node ~= nil and node.description) or "Tree node defined but no registered perk found yet."
@@ -1159,9 +1191,10 @@ end
 
 local function onFrame(dt)
     if menu ~= nil then
+        local modApi = getModApi()
         local selectedSkillID = getSelectedSkillID()
-        local treeNodes = type(interfaces[MOD_NAME].getTreeNodesForSkill) == "function"
-            and interfaces[MOD_NAME].getTreeNodesForSkill(selectedSkillID)
+        local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForSkill) == "function"
+            and modApi.getTreeNodesForSkill(selectedSkillID)
             or {}
 
         if #treeNodes > 0 then

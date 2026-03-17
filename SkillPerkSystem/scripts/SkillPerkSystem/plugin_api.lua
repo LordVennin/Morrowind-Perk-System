@@ -1,5 +1,6 @@
 local core = require("openmw.core")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
+local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
 
 local PLUGIN_API_VERSION = 1
 
@@ -50,11 +51,8 @@ local function registerPerk(data)
             2
         )
     end
-    if type(data.onAdd) ~= "function" then
-        error("registerPerk(" .. tostring(data.id) .. ") missing function field 'onAdd'", 2)
-    end
-    if type(data.onRemove) ~= "function" then
-        error("registerPerk(" .. tostring(data.id) .. ") missing function field 'onRemove'", 2)
+    if type(data.effectId) ~= "string" or data.effectId == "" then
+        error("registerPerk(" .. tostring(data.id) .. ") missing non-empty string field 'effectId'", 2)
     end
 
     if data.requirements == nil then
@@ -120,7 +118,7 @@ local function registerEffect(data)
     if type(data) ~= "table" or type(data.id) ~= "string" or data.id == "" then
         error("registerEffect() requires a table with non-empty string field 'id'", 2)
     end
-    registryState.registerEffect(data)
+    effectsRegistry.registerEffect(data.id, data)
 end
 
 local function registerPointSource(data)

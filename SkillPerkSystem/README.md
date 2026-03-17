@@ -16,22 +16,14 @@ Add this folder to your OpenMW `data=` paths and include:
 
 ```ini
 content=SkillPerkSystem.omwscripts
-content=YourPerkPack.omwscripts
-# or use the bundled sample pack:
-# content=VenninsPerks.omwscripts
 ```
 
 ### Content files and load order
 
-- `content=SkillPerkSystem.omwscripts` is the framework runtime and must always be enabled.
-- The framework intentionally ships with **no default internal perk trees** (`scripts/SkillPerkSystem/perks/internal_module_index.lua` is empty by design).
-- You must enable at least one external content pack that provides perk modules (for example `content=YourPerkPack.omwscripts` or the bundled sample `content=VenninsPerks.omwscripts`).
-- Keep `SkillPerkSystem.omwscripts` above all perk-pack `content=` entries so the framework loads before external packs.
-- Canonical sample-pack filename is `VenninsPerks.omwscripts`; legacy `Vennin's Perks.omwscripts` is kept as a compatibility alias.
-
-Strict modular policy is enabled by default in `scripts/SkillPerkSystem/settings.lua` via `REQUIRE_EXTERNAL_PERK_PACKS = true`. If no external perk modules load, startup emits a high-visibility remediation message and aborts to prevent silent `registry_empty=true` runs.
-
-If framework-only startup is intentional, set `REQUIRE_EXTERNAL_PERK_PACKS = false`.
+- `content=SkillPerkSystem.omwscripts` is the framework runtime and should be the only required content entry.
+- Default perk modules are loaded from the internal module index at `scripts/SkillPerkSystem/perks/internal_module_index.lua`.
+- The bundled Long Blade and Block trees are indexed from `scripts/SkillPerkSystem/perks/<skillId>/...`.
+- External packs are optional and can still be loaded after the framework when desired.
 
 ## Console commands
 
@@ -332,27 +324,17 @@ The framework uses a perks-only schema where each perk module can include both p
 - Register modules with `api.registerPerkModule(require(moduleName), "<skillId>")`.
 - See `scripts/SkillPerkSystem/perks/README.md` for schema details.
 
-### Bundled sample pack layout (Long Blade + Block)
+### Bundled demo perk layout (Long Blade + Block)
 
-Long Blade and Block sample perks now ship as a separate content pack in `scripts/VenninsPerks/` and are loaded from `VenninsPerks.omwscripts`.
+Long Blade and Block demo perks are bundled in the base framework and loaded from:
 
-This intentionally mirrors third-party author workflow: the bundled sample pack is discovered, validated, and merged through the same manifest/module path conventions used by external packs.
+- `scripts/SkillPerkSystem/perks/longblade/longblade.lua`
+- `scripts/SkillPerkSystem/perks/block/block.lua`
+
+`internal_module_index.lua` is the authoritative index for these bundled perk modules.
 
 ### Demo tree content toggle
 
-`settings.lua` includes `ENABLE_SAMPLE_PACK` (default `true`) to control migrated sample/demo perk content (currently Long Blade + Block in `scripts/VenninsPerks`). Set it to `false` to disable the sample pack without removing the framework.
+`settings.lua` includes `ENABLE_SAMPLE_PACK` (default `true`) to control bundled demo perk content.
 
 Backward compatibility: `ENABLE_DEMO_TREE_PERKS` is still honored as a legacy alias, but `ENABLE_SAMPLE_PACK` takes precedence when both are present.
-
-### Migration note for existing users
-
-If you previously relied on the internal demo tree behavior (`scripts/SkillPerkSystem/perks/...` loading as part of the base framework), switch to explicit sample-pack handling:
-
-1. Add `content=VenninsPerks.omwscripts` after `content=SkillPerkSystem.omwscripts` to keep Long Blade/Block sample perks.
-2. Or omit/disable `VenninsPerks.omwscripts` if you want framework-only behavior with no demo/sample tree content.
-
-This change makes default sample content behave like a normal plugin pack and avoids hidden internal-tree coupling.
-
-The base framework keeps an intentionally empty internal module index (`scripts/SkillPerkSystem/perks/internal_module_index.lua` has `modules = {}`) as an architectural rule: perk trees are delivered by external packs, not bundled framework internals.
-
-If internal modules are indexed (non-empty `modules`) but none load, startup treats that as a strict mismatch and fails fast so true configuration/load errors are not hidden.

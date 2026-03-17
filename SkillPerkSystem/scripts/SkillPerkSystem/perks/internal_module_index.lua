@@ -1,9 +1,15 @@
--- Intentionally empty.
---
--- Architecture policy: the base SkillPerkSystem framework ships without bundled perk trees.
--- Perk content must come from external content packs discovered at startup.
 return {
     -- Deterministic internal module list loaded unconditionally at startup.
-    -- Keep this empty unless you are explicitly building an internal-only development fork.
-    modules = {},
+    modules = {
+        {
+            skillID = "block",
+            moduleName = "scripts.SkillPerkSystem.perks.block.block",
+            source = "scripts/SkillPerkSystem/perks/block/block.lua",
+        },
+        {
+            skillID = "longblade",
+            moduleName = "scripts.SkillPerkSystem.perks.longblade.longblade",
+            source = "scripts/SkillPerkSystem/perks/longblade/longblade.lua",
+        },
+    },
 }

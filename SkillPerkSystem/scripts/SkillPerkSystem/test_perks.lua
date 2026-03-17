@@ -1,5 +1,5 @@
 local settings = require("scripts.SkillPerkSystem.settings")
-local longbladeSkillModule = require("scripts.SkillPerkSystem.perks.longblade")
+local longbladeSkillModule = require("scripts.SkillPerkSystem.perks.longblade.longblade")
 
 local registered = false
 

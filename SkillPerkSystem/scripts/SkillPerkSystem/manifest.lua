@@ -381,12 +381,23 @@ local function buildPreloadSummary(report)
             .. tostring(report.durationMs or 0)
     )
 
-    if (report.internalModulesLoaded or 0) == 0 then
-        print(
-            "["
-                .. settings.MOD_NAME
-                .. "] WARNING: internal perk modules loaded count is zero; expected module path pattern is 'scripts/SkillPerkSystem/perks/<skill>/<module>.lua'; default/test skill trees will not appear"
-        )
+    local internalLoaded = report.internalModulesLoaded or 0
+    local internalExpected = report.internalDemoContentExpected == true
+    local internalIndexModules = report.internalModuleIndexModules or 0
+    if internalLoaded == 0 then
+        if internalExpected then
+            print(
+                "["
+                    .. settings.MOD_NAME
+                    .. "] WARNING: internal perk modules loaded count is zero while internal demo content is expected; expected module path pattern is 'scripts/SkillPerkSystem/perks/<skill>/<module>.lua'; default/test skill trees will not appear"
+            )
+        elseif internalIndexModules == 0 then
+            print(
+                "["
+                    .. settings.MOD_NAME
+                    .. "] INFO: internal demo modules disabled; expecting external packs"
+            )
+        end
     end
 end
 

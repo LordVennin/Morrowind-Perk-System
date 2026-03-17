@@ -600,6 +600,7 @@ local function loadInstalledPacks(pluginAPI)
         internalPackName = INTERNAL_PACK_NAME,
         internalIndexPresent = internalIndex ~= nil,
         internalIndexModules = #internalModuleEntries,
+        internalDemoContentExpected = #internalModuleEntries > 0,
         internalStatus = {
             discovered = 1,
             loaded = 0,
@@ -750,10 +751,17 @@ local function preloadPerkModules(pluginAPI)
         externalRegisteredNodes = 0,
         registeredPerks = 0,
         registeredNodes = 0,
+        internalDemoContentExpected = false,
+        internalModuleIndexModules = 0,
         perSkill = {},
         durationMs = 0,
     }
     preloadReport = report
+
+    if type(validationReport) == "table" then
+        report.internalDemoContentExpected = validationReport.internalDemoContentExpected == true
+        report.internalModuleIndexModules = tonumber(validationReport.internalIndexModules) or 0
+    end
 
     for _, packReport in ipairs(validationReport.packs or {}) do
         local isInternalPack = packReport.discoveryKind == "internal"
@@ -925,6 +933,10 @@ local function preloadPerkModules(pluginAPI)
         .. tostring(report.registeredPerks)
         .. " registered_nodes_total="
         .. tostring(report.registeredNodes)
+        .. " internal_demo_expected="
+        .. tostring(report.internalDemoContentExpected)
+        .. " internal_module_index_modules="
+        .. tostring(report.internalModuleIndexModules)
 
     if startTimeSeconds ~= nil then
         local endTimeSeconds = readLoaderTimeSeconds()

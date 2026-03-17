@@ -98,6 +98,22 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 - Claimed milestone/quest rewards are persistent and are not granted twice.
 - Save reconciliation runs on load: active perks missing from the currently registered perk list are dropped with a warning, and spent totals are recomputed from remaining perks.
 
+## Reference-only folders (policy)
+
+For **SkillPerkSystem feature work**, the following folders are reference-only and must not be edited as part of implementation:
+
+- `example_Mod/`
+- `Advanced world map mod example/`
+
+Required work location:
+
+- All active feature implementation, refactors, and bug fixes for SkillPerkSystem must be made under `SkillPerkSystem/`.
+
+PR/task confirmation requirement:
+
+- Every SkillPerkSystem PR or task handoff must explicitly confirm that no files were added, edited, or removed under either reference-only folder above.
+- Use `SkillPerkSystem/TASK_TEMPLATE.md` for planning/new tasks so this policy is inherited by default.
+
 ## Experimental tree layout data (modder-facing)
 
 The framework now includes an experimental, data-driven tree-node registry for future map-style perk UIs.

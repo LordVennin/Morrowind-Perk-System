@@ -1,4 +1,5 @@
 local core = require("openmw.core")
+local vfs = require("openmw.vfs")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
@@ -165,6 +166,36 @@ local function tryRequireOptional(packName, moduleName, packReport)
     appendFailure(packReport, moduleName, resultOrErr)
     logVerbose("failed pack='" .. packName .. "' module='" .. moduleName .. "' error='" .. tostring(resultOrErr) .. "'")
     return false, nil
+end
+
+local function sortStringsStable(values)
+    table.sort(values, function(left, right)
+        return left < right
+    end)
+end
+
+local function discoverSkillPerkModules(packName, skillID)
+    local folderPath = "scripts/" .. tostring(packName) .. "/perks/" .. tostring(skillID) .. "/"
+    local modules = {}
+    local seen = {}
+
+    if type(vfs) ~= "table" or type(vfs.pathsWithPrefix) ~= "function" then
+        return folderPath, modules
+    end
+
+    for path in vfs.pathsWithPrefix(folderPath) do
+        if type(path) == "string" then
+            local normalizedPath = path:gsub("\\", "/")
+            local relativeFile = normalizedPath:match("^" .. folderPath:gsub("%-", "%%-") .. "([^/]+)%.lua$")
+            if type(relativeFile) == "string" and relativeFile ~= "" and not seen[relativeFile] then
+                seen[relativeFile] = true
+                table.insert(modules, "scripts." .. tostring(packName) .. ".perks." .. tostring(skillID) .. "." .. tostring(relativeFile))
+            end
+        end
+    end
+
+    sortStringsStable(modules)
+    return folderPath, modules
 end
 
 local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
@@ -336,26 +367,26 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     end
 
     for _, skillID in ipairs(skillIDs) do
+        local skillFolderPath, discoveredModules = discoverSkillPerkModules(packName, skillID)
         local skillModuleStats = {
             skillID = skillID,
-            attempted = 0,
+            discovered = #discoveredModules,
+            attempted = #discoveredModules,
             loaded = 0,
-            variant = "none",
+            failed = 0,
+            variant = #discoveredModules > 0 and "multi-file" or "none",
         }
 
-        local basePerkModule = "scripts." .. packName .. ".perks." .. skillID
-        local skillFolderPath = "scripts/" .. packName .. "/perks/" .. skillID
-        local loadedBase, baseModuleData = tryRequireOptional(packName, basePerkModule, report)
-        skillModuleStats.attempted = skillModuleStats.attempted + 1
-
-        if loadedBase then
-            skillModuleStats.loaded = skillModuleStats.loaded + 1
-            if tryRegisterSkillModule(pluginAPI, report, skillID, skillFolderPath, basePerkModule, baseModuleData) then
-                skillModuleStats.variant = "single-file"
+        for _, moduleName in ipairs(discoveredModules) do
+            local loadedModule = tryRequire(packName, moduleName, report)
+            if loadedModule then
+                skillModuleStats.loaded = skillModuleStats.loaded + 1
+            else
+                skillModuleStats.failed = skillModuleStats.failed + 1
             end
         end
 
-        if skillModuleStats.attempted > 0 and skillModuleStats.loaded > 0 then
+        if skillModuleStats.discovered > 0 then
             table.insert(report.perkSkillModules, skillModuleStats)
         end
 
@@ -366,8 +397,12 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
                 .. tostring(skillID)
                 .. "' variant='"
                 .. tostring(skillModuleStats.variant)
-                .. "' perk_modules_loaded="
+                .. "' perk_modules_discovered="
+                .. tostring(skillModuleStats.discovered)
+                .. " perk_modules_loaded="
                 .. tostring(skillModuleStats.loaded)
+                .. " perk_modules_failed="
+                .. tostring(skillModuleStats.failed)
                 .. " perk_modules_attempted="
                 .. tostring(skillModuleStats.attempted)
         )
@@ -525,27 +560,64 @@ local function preloadPerkModules(pluginAPI)
 
         sortDiscoveredPerkModules(discoveredModules)
 
+        local perSkillSummaries = {}
         for _, moduleInfo in ipairs(discoveredModules) do
+            if perSkillSummaries[moduleInfo.skillID] == nil then
+                perSkillSummaries[moduleInfo.skillID] = {
+                    discovered = 0,
+                    loaded = 0,
+                    failed = 0,
+                }
+            end
+
+            local skillSummary = perSkillSummaries[moduleInfo.skillID]
+            skillSummary.discovered = skillSummary.discovered + 1
             report.modulesDiscovered = report.modulesDiscovered + 1
+
+            local registered = false
             if moduleInfo.attempt.success then
                 local ok, moduleData = pcall(require, moduleInfo.moduleName)
                 local skillFolderPath =
                     "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)
-                if ok and tryRegisterSkillModule(
+                registered = ok and tryRegisterSkillModule(
                     pluginAPI,
                     packReport,
                     moduleInfo.skillID,
                     skillFolderPath,
                     moduleInfo.moduleName,
                     moduleData
-                ) then
-                    report.modulesLoaded = report.modulesLoaded + 1
-                else
-                    report.modulesFailed = report.modulesFailed + 1
-                end
+                )
+            end
+
+            if registered then
+                report.modulesLoaded = report.modulesLoaded + 1
+                skillSummary.loaded = skillSummary.loaded + 1
             else
                 report.modulesFailed = report.modulesFailed + 1
+                skillSummary.failed = skillSummary.failed + 1
             end
+        end
+
+        local sortedSkillIDs = {}
+        for skillID in pairs(perSkillSummaries) do
+            table.insert(sortedSkillIDs, skillID)
+        end
+        sortStringsStable(sortedSkillIDs)
+
+        for _, skillID in ipairs(sortedSkillIDs) do
+            local skillSummary = perSkillSummaries[skillID]
+            log(
+                "pack='"
+                    .. tostring(packReport.packName)
+                    .. "' skill='"
+                    .. tostring(skillID)
+                    .. "' perk_files_discovered="
+                    .. tostring(skillSummary.discovered)
+                    .. " perk_files_loaded="
+                    .. tostring(skillSummary.loaded)
+                    .. " perk_files_failed="
+                    .. tostring(skillSummary.failed)
+            )
         end
     end
 

@@ -18,6 +18,10 @@ return {
     PERK_UI_RIGHT_PANE_WIDTH = 408,
     PERK_UI_SIDE_PADDING = 8,
     PERK_UI_GUTTER_WIDTH = 16,
+    -- Controls loading of bundled sample/demo perk content packs.
+    ENABLE_SAMPLE_PACK = true,
+    -- Backward-compatible alias for older config names.
+    -- If both are present, modules prioritize ENABLE_SAMPLE_PACK.
     ENABLE_DEMO_TREE_PERKS = true,
     POINT_SOURCES = {
         levelUpRewards = {

@@ -27,6 +27,8 @@ content=Vennin's Perks.omwscripts
 
 If you do not want bundled sample perks, disable `content=Vennin's Perks.omwscripts` (or keep it enabled and set `ENABLE_SAMPLE_PACK = false` in `scripts/SkillPerkSystem/settings.lua`).
 
+The framework supports zero internal perk modules by design. In that mode, startup logs an informational message and expects perk trees to come from external pack modules.
+
 ## Console commands
 
 - `skillperks` — prints the full skill perk menu to the console (preferred direct form).
@@ -347,4 +349,6 @@ If you previously relied on the internal demo tree behavior (`scripts/SkillPerkS
 
 This change makes default sample content behave like a normal plugin pack and avoids hidden internal-tree coupling.
 
-Framework-owned internal perk modules remain under `scripts/SkillPerkSystem/perks/<skillId>/` and are loaded in deterministic alphabetical order (`01_core.lua`, `10_branch.lua`, ...).
+The base framework can run with an intentionally empty internal module index (`scripts/SkillPerkSystem/perks/internal_module_index.lua` has `modules = {}`), which is treated as a valid external-pack-only setup.
+
+If internal modules are indexed (non-empty `modules`) but none load, startup treats that as a strict mismatch and fails fast so true configuration/load errors are not hidden.

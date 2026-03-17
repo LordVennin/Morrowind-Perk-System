@@ -1,7 +1,5 @@
 local settings = require("scripts.SkillPerkSystem.settings")
-local builtinPerks = require("scripts.SkillPerkSystem.perks.register_builtin")
-
-local longbladeCompatibilityModules = require("scripts.SkillPerkSystem.perks.longblade")
+local longbladeSkillModule = require("scripts.SkillPerkSystem.perks.longblade")
 
 local registered = false
 
@@ -10,13 +8,11 @@ local function registerDemoPerks(registerPerk, source)
         return
     end
 
-    local api = {
-        registerPerk = function(perk)
-            return registerPerk(perk, source)
-        end,
-    }
-
-    builtinPerks.registerPerkModules(api, longbladeCompatibilityModules)
+    if type(longbladeSkillModule) == "table" and type(longbladeSkillModule.perks) == "table" then
+        for _, perk in ipairs(longbladeSkillModule.perks) do
+            registerPerk(perk, source)
+        end
+    end
 
     registered = true
 end

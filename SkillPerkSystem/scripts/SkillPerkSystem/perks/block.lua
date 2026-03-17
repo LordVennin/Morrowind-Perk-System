@@ -1,8 +1,51 @@
--- Backward-compatibility module for older flat references.
--- Prefer folder modules under perks/block/ with numeric prefixes.
+local settings = require("scripts.SkillPerkSystem.settings")
+
 return {
-    "scripts.SkillPerkSystem.perks.block.01_core",
-    "scripts.SkillPerkSystem.perks.block.10_reactive_guard",
-    "scripts.SkillPerkSystem.perks.block.11_bulwark_stance",
-    "scripts.SkillPerkSystem.perks.block.20_iron_wall",
+    enabled = settings.ENABLE_DEMO_TREE_PERKS,
+    perks = {
+        {
+            id = "block_basic_guard",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = {},
+            cost = 1,
+            x = 0,
+            y = 0,
+            title = "Basic Guard",
+            description = "Foundational shield posture. Increases confidence while blocking.",
+        },
+        {
+            id = "block_reactive_guard",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = { "block_basic_guard" },
+            cost = 1,
+            x = -120,
+            y = 120,
+            title = "Reactive Guard",
+            description = "Faster reaction windows against incoming melee attacks.",
+        },
+        {
+            id = "block_bulwark_stance",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = { "block_basic_guard" },
+            cost = 1,
+            x = 120,
+            y = 120,
+            title = "Bulwark Stance",
+            description = "A steady stance that favors sustained defense.",
+        },
+        {
+            id = "block_iron_wall",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = { "block_reactive_guard", "block_bulwark_stance" },
+            cost = 2,
+            x = 0,
+            y = 260,
+            title = "Iron Wall",
+            description = "Late-chain defensive mastery that branches from both lines.",
+        },
+    },
 }

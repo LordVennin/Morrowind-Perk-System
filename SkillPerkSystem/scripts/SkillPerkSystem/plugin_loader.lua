@@ -1,4 +1,5 @@
 local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
@@ -196,6 +197,228 @@ local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
     }
 end
 
+local function buildRequirement(parentID)
+    return {
+        check = function()
+            local playerInterface = interfaces[settings.MOD_NAME .. "Player"]
+            return playerInterface ~= nil and playerInterface.hasPerk(parentID)
+        end,
+    }
+end
+
+local function normalizePerkDefinition(perk)
+    local normalized = {
+        id = perk.id,
+        skill = perk.skill,
+        effectId = perk.effectId,
+        cost = perk.cost,
+        requirements = perk.requirements,
+    }
+
+    if normalized.requirements == nil then
+        normalized.requirements = {}
+        for _, parentID in ipairs(perk.requires or {}) do
+            table.insert(normalized.requirements, buildRequirement(parentID))
+        end
+    end
+
+    return normalized
+end
+
+local function deriveNodeFromPerk(perk, sourceName)
+    local hasEmbeddedNode = type(perk.node) == "table"
+    local hasInlineNodeFields = type(perk.x) == "number" or type(perk.y) == "number" or perk.title ~= nil or perk.description ~= nil
+
+    if not hasEmbeddedNode and not hasInlineNodeFields then
+        return nil
+    end
+
+    if hasEmbeddedNode and hasInlineNodeFields then
+        error(
+            VALIDATION_ERROR_TAG
+                .. ": skill module '"
+                .. tostring(sourceName)
+                .. "' perk '"
+                .. tostring(perk.id)
+                .. "' cannot define both node table and inline node fields"
+        )
+    end
+
+    local nodeData = hasEmbeddedNode and perk.node or perk
+    local nodeID = nodeData.id or nodeData.nodeId or nodeData.nodeID or perk.nodeId or perk.nodeID or perk.id
+    return {
+        id = nodeID,
+        skill = nodeData.skill or perk.skill,
+        x = nodeData.x,
+        y = nodeData.y,
+        requires = nodeData.requires,
+        title = nodeData.title,
+        description = nodeData.description,
+    }, nodeData.perkId or nodeData.perkID or perk.perkId or perk.perkID or perk.id
+end
+
+local function registerSkillModule(pluginAPI, skillID, moduleName, moduleData)
+    if type(moduleData) ~= "table" then
+        return false
+    end
+
+    if moduleData.enabled ~= nil then
+        local enabled = moduleData.enabled
+        if type(enabled) == "function" then
+            enabled = enabled()
+        end
+        if not enabled then
+            logVerbose("skipped disabled skill module schema skill='" .. tostring(skillID) .. "' module='" .. tostring(moduleName) .. "'")
+            return true
+        end
+    end
+
+    local perks = moduleData.perks
+    local nodes = moduleData.nodes
+    if type(perks) ~= "table" and type(nodes) ~= "table" then
+        return false
+    end
+
+    local sourceAwareAPI = buildSourceAwarePluginAPI(pluginAPI, moduleName)
+    local perkIds = {}
+    local hasPerkEntries = false
+
+    if type(perks) == "table" then
+        for i, perk in ipairs(perks) do
+            if type(perk) ~= "table" then
+                error(
+                    VALIDATION_ERROR_TAG
+                        .. ": skill module '"
+                        .. tostring(moduleName)
+                        .. "' perks["
+                        .. tostring(i)
+                        .. "] must be a table"
+                )
+            end
+            if type(perk.skill) == "string" and perk.skill ~= "" and perk.skill ~= skillID then
+                error(
+                    VALIDATION_ERROR_TAG
+                        .. ": skill module '"
+                        .. tostring(moduleName)
+                        .. "' perk '"
+                        .. tostring(perk.id)
+                        .. "' declares skill '"
+                        .. tostring(perk.skill)
+                        .. "' but module was loaded for skill '"
+                        .. tostring(skillID)
+                        .. "'"
+                )
+            end
+            sourceAwareAPI.registerPerk(normalizePerkDefinition(perk))
+            perkIds[perk.id] = true
+            hasPerkEntries = true
+
+            local derivedNode, mappedPerkID = deriveNodeFromPerk(perk, moduleName)
+            if derivedNode ~= nil then
+                if mappedPerkID ~= nil and mappedPerkID ~= "" and mappedPerkID ~= perk.id then
+                    error(
+                        VALIDATION_ERROR_TAG
+                            .. ": skill module '"
+                            .. tostring(moduleName)
+                            .. "' perk '"
+                            .. tostring(perk.id)
+                            .. "' derived node mapped to unexpected perk id '"
+                            .. tostring(mappedPerkID)
+                            .. "'"
+                    )
+                end
+                sourceAwareAPI.registerTreeNode(derivedNode)
+            end
+        end
+    end
+
+    if type(nodes) == "table" then
+        for i, node in ipairs(nodes) do
+            if type(node) ~= "table" then
+                error(
+                    VALIDATION_ERROR_TAG
+                        .. ": skill module '"
+                        .. tostring(moduleName)
+                        .. "' nodes["
+                        .. tostring(i)
+                        .. "] must be a table"
+                )
+            end
+            if type(node.skill) == "string" and node.skill ~= "" and node.skill ~= skillID then
+                error(
+                    VALIDATION_ERROR_TAG
+                        .. ": skill module '"
+                        .. tostring(moduleName)
+                        .. "' node '"
+                        .. tostring(node.id)
+                        .. "' declares skill '"
+                        .. tostring(node.skill)
+                        .. "' but module was loaded for skill '"
+                        .. tostring(skillID)
+                        .. "'"
+                )
+            end
+
+            local mappedPerkID = node.perkId or node.perkID or node.id
+            if hasPerkEntries and mappedPerkID ~= nil and mappedPerkID ~= "" and not perkIds[mappedPerkID] then
+                error(
+                    VALIDATION_ERROR_TAG
+                        .. ": skill module '"
+                        .. tostring(moduleName)
+                        .. "' node '"
+                        .. tostring(node.id)
+                        .. "' maps to missing perk id '"
+                        .. tostring(mappedPerkID)
+                        .. "'"
+                )
+            end
+
+            sourceAwareAPI.registerTreeNode(node)
+        end
+    end
+
+    if type(perks) == "table" and type(nodes) == "table" then
+        for _, node in ipairs(nodes) do
+            local mappedPerkID = node.perkId or node.perkID or node.id
+            if mappedPerkID ~= nil and mappedPerkID ~= "" and mappedPerkID ~= node.id then
+                log(
+                    "warning: skill module='"
+                        .. tostring(moduleName)
+                        .. "' node id='"
+                        .. tostring(node.id)
+                        .. "' mapped to perk id='"
+                        .. tostring(mappedPerkID)
+                        .. "'"
+                )
+            end
+        end
+    end
+
+    log("registered skill module schema for skill='" .. tostring(skillID) .. "' module='" .. tostring(moduleName) .. "'")
+    return true
+end
+
+local function tryRegisterSkillModule(pluginAPI, packReport, skillID, moduleName, moduleData)
+    local ok, usedSchemaOrErr = pcall(registerSkillModule, pluginAPI, skillID, moduleName, moduleData)
+    if not ok then
+        appendFailure(packReport, moduleName, usedSchemaOrErr)
+        logVerbose(
+            "skill module schema failed pack='"
+                .. tostring(packReport.packName)
+                .. "' skill='"
+                .. tostring(skillID)
+                .. "' module='"
+                .. tostring(moduleName)
+                .. "' error='"
+                .. tostring(usedSchemaOrErr)
+                .. "'"
+        )
+        return false
+    end
+
+    return usedSchemaOrErr == true
+end
+
 local function runManifest(packName, manifestModule, pluginAPI, manifestPath, packReport)
     if type(manifestModule) ~= "table" then
         return
@@ -282,18 +505,20 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         }
 
         local basePerkModule = "scripts." .. packName .. ".perks." .. skillID
-        local loadedBase = tryRequireOptional(packName, basePerkModule, report)
+        local loadedBase, baseModuleData = tryRequireOptional(packName, basePerkModule, report)
         skillModuleStats.attempted = skillModuleStats.attempted + 1
         if loadedBase then
             skillModuleStats.loaded = skillModuleStats.loaded + 1
+            tryRegisterSkillModule(pluginAPI, report, skillID, basePerkModule, baseModuleData)
         end
 
         local namespacedModules = discoverSubmodules(basePerkModule .. ".")
         for _, moduleName in ipairs(namespacedModules) do
-            local loadedNested = tryRequire(packName, moduleName, report)
+            local loadedNested, nestedModuleData = tryRequire(packName, moduleName, report)
             skillModuleStats.attempted = skillModuleStats.attempted + 1
             if loadedNested then
                 skillModuleStats.loaded = skillModuleStats.loaded + 1
+                tryRegisterSkillModule(pluginAPI, report, skillID, moduleName, nestedModuleData)
             end
         end
 

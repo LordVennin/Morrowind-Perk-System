@@ -2,6 +2,7 @@ local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 
 local loadedSkills = {}
+local warnedLegacySkills = {}
 
 local function registerTreeNode(node, source)
     pluginAPI.registerTreeNode(node, source)
@@ -81,6 +82,13 @@ local function loadSkillTree(skillID)
     if loadedSkills[skillID] then
         return
     end
+
+    local alreadyRegisteredNodes = registryState.getTreeNodesForSkill(skillID)
+    if type(alreadyRegisteredNodes) == "table" and #alreadyRegisteredNodes > 0 then
+        loadedSkills[skillID] = true
+        return
+    end
+
     loadedSkills[skillID] = true
 
     local skillString = tostring(skillID)
@@ -106,6 +114,16 @@ local function loadSkillTree(skillID)
                 local legacyModulesLoaded, legacyNodesLoaded = loadLegacyTreeModule(baseModule)
                 modulesLoaded = modulesLoaded + legacyModulesLoaded
                 nodesLoaded = nodesLoaded + legacyNodesLoaded
+                if legacyModulesLoaded > 0 and not warnedLegacySkills[skillString] then
+                    warnedLegacySkills[skillString] = true
+                    print(
+                        "[SkillPerkSystem] DEPRECATION: legacy flat tree module used for skill '"
+                            .. skillString
+                            .. "' at "
+                            .. baseModule
+                            .. ". Prefer co-located node data in perks/<skillId>.lua."
+                    )
+                end
             end
 
             if modulesLoaded > 0 then

@@ -152,6 +152,69 @@ local function tryRequireOptional(packName, moduleName, packReport)
     return false, nil
 end
 
+local function loadSkillFolderModuleSet(packName, pluginAPI, packReport, skillID, basePerkModule, skillModuleStats)
+    local listModule = basePerkModule .. ".modules"
+    local listFound, listModuleData = tryRequireOptional(packName, listModule, packReport)
+    skillModuleStats.attempted = skillModuleStats.attempted + 1
+    if not listFound then
+        return {
+            found = false,
+            loaded = 0,
+            registered = 0,
+        }
+    end
+
+    if type(listModuleData) ~= "table" then
+        appendFailure(
+            packReport,
+            listModule,
+            VALIDATION_ERROR_TAG
+                .. ": skill folder module list must return a table for skill '"
+                .. tostring(skillID)
+                .. "'"
+        )
+        return {
+            found = true,
+            loaded = 0,
+            registered = 0,
+        }
+    end
+
+    local loaded = 0
+    local registered = 0
+    for i, moduleSuffix in ipairs(listModuleData) do
+        if type(moduleSuffix) ~= "string" or moduleSuffix == "" then
+            appendFailure(
+                packReport,
+                listModule,
+                VALIDATION_ERROR_TAG
+                    .. ": skill folder module list entry #"
+                    .. tostring(i)
+                    .. " must be a non-empty string for skill '"
+                    .. tostring(skillID)
+                    .. "'"
+            )
+        else
+            local moduleName = basePerkModule .. "." .. moduleSuffix
+            local loadedNested, nestedModuleData = tryRequire(packName, moduleName, packReport)
+            skillModuleStats.attempted = skillModuleStats.attempted + 1
+            if loadedNested then
+                loaded = loaded + 1
+                skillModuleStats.loaded = skillModuleStats.loaded + 1
+                if tryRegisterSkillModule(pluginAPI, packReport, skillID, moduleName, nestedModuleData) then
+                    registered = registered + 1
+                end
+            end
+        end
+    end
+
+    return {
+        found = true,
+        loaded = loaded,
+        registered = registered,
+    }
+end
+
 local function discoverSubmodules(modulePrefix)
     local out = {}
     local seen = {}
@@ -502,6 +565,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
             skillID = skillID,
             attempted = 0,
             loaded = 0,
+            variant = "none",
         }
 
         -- Primary convention: one module per skill at scripts.<PackName>.perks.<skillId>
@@ -509,31 +573,49 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         local loadedBase, baseModuleData = tryRequireOptional(packName, basePerkModule, report)
         skillModuleStats.attempted = skillModuleStats.attempted + 1
         local usedPrimarySkillModule = false
+        local folderModuleSetResult = loadSkillFolderModuleSet(packName, pluginAPI, report, skillID, basePerkModule, skillModuleStats)
         if loadedBase then
             skillModuleStats.loaded = skillModuleStats.loaded + 1
             usedPrimarySkillModule = tryRegisterSkillModule(pluginAPI, report, skillID, basePerkModule, baseModuleData)
         end
 
-        if not usedPrimarySkillModule then
+        if usedPrimarySkillModule then
+            skillModuleStats.variant = "single-file"
+            if folderModuleSetResult.found then
+                log(
+                    "pack='"
+                        .. packName
+                        .. "' skill='"
+                        .. tostring(skillID)
+                        .. "' found both skill module variants (single-file + folder-module-set); precedence=single-file"
+                )
+            end
+        elseif folderModuleSetResult.found then
+            if loadedBase then
+                log(
+                    "pack='"
+                        .. packName
+                        .. "' skill='"
+                        .. tostring(skillID)
+                        .. "' found both skill module variants (single-file + folder-module-set); single-file missing schema so folder-module-set used"
+                )
+            end
+
+            if folderModuleSetResult.loaded > 0 then
+                skillModuleStats.variant = "folder-module-set"
+            end
+        else
             local namespacedModules = discoverSubmodules(basePerkModule .. ".")
             for _, moduleName in ipairs(namespacedModules) do
                 local loadedNested, nestedModuleData = tryRequire(packName, moduleName, report)
                 skillModuleStats.attempted = skillModuleStats.attempted + 1
                 if loadedNested then
                     skillModuleStats.loaded = skillModuleStats.loaded + 1
-                    tryRegisterSkillModule(pluginAPI, report, skillID, moduleName, nestedModuleData)
+                    if tryRegisterSkillModule(pluginAPI, report, skillID, moduleName, nestedModuleData) then
+                        skillModuleStats.variant = "legacy-nested"
+                    end
                 end
             end
-        else
-            logVerbose(
-                "pack='"
-                    .. packName
-                    .. "' skill='"
-                    .. tostring(skillID)
-                    .. "' using primary skill module '"
-                    .. basePerkModule
-                    .. "'; nested fallback modules skipped"
-            )
         end
 
         if skillModuleStats.attempted > 0 and skillModuleStats.loaded > 0 then
@@ -545,6 +627,8 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
                 .. packName
                 .. "' skill='"
                 .. tostring(skillID)
+                .. "' variant='"
+                .. tostring(skillModuleStats.variant)
                 .. "' perk_modules_loaded="
                 .. tostring(skillModuleStats.loaded)
                 .. " perk_modules_attempted="

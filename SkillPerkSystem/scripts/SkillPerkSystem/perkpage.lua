@@ -593,6 +593,8 @@ local function buildPerkPane()
             end
 
             local buttonSize = util.vector2(isSelected and 196 or 184, 26)
+            local borderPadding = 2
+            local outerSize = util.vector2(buttonSize.x + borderPadding * 2, buttonSize.y + borderPadding * 2)
             local nodePos = toCanvasPos(node)
 
             local nodeButton = createBoxedButton(nodeLabel, function()
@@ -605,13 +607,14 @@ local function buildPerkPane()
 
             table.insert(treeCanvasContent, {
                 type = ui.TYPE.Container,
+                template = interfaces.MWUI.templates.borders,
                 props = {
                     autoSize = false,
                     position = util.vector2(
-                        math.floor(nodePos.x - buttonSize.x / 2),
-                        math.floor(nodePos.y - buttonSize.y / 2)
+                        math.floor(nodePos.x - outerSize.x / 2),
+                        math.floor(nodePos.y - outerSize.y / 2)
                     ),
-                    size = buttonSize,
+                    size = outerSize,
                 },
                 userData = {
                     drawLayer = 1,

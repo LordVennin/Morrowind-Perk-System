@@ -1,30 +1,47 @@
 -- Copy this folder as: scripts/<YourPackName>/
 -- Keep this file path exactly: scripts/<YourPackName>/skillperk_manifest.lua
 
-local PERK_MODULE = "scripts.YourPackName.perks.longblade"
-local EFFECT_MODULE = "scripts.YourPackName.effects.example_bonus_damage"
+local EFFECT_MODULES = {
+    "scripts.YourPackName.effects.10_bonus_damage",
+}
+
+local PERK_MODULES = {
+    "scripts.YourPackName.perks.longblade.01_core",
+    "scripts.YourPackName.perks.longblade.10_bleed",
+}
+
+local TREE_MODULES = {
+    "scripts.YourPackName.trees.longblade.10_starter",
+}
+
+local function extend(into, values)
+    for _, value in ipairs(values) do
+        table.insert(into, value)
+    end
+end
 
 local function register(api)
     api.assertCompatibleApiVersion(1)
 
-    local effectDef = require(EFFECT_MODULE)
-    api.registerEffect(effectDef)
+    for _, moduleName in ipairs(EFFECT_MODULES) do
+        api.registerEffect(require(moduleName))
+    end
 
-    local perkDef = require(PERK_MODULE)
-    api.registerPerk(perkDef)
+    for _, moduleName in ipairs(PERK_MODULES) do
+        api.registerPerk(require(moduleName))
+    end
 
-    -- Optional for tree/map-style UIs.
-    api.registerTreeNode({
-        id = "yourpack_longblade_bonus_damage",
-        skill = "longblade",
-        x = 0,
-        y = 0,
-        requires = {},
-        title = "Example: Long Blade Bonus Damage",
-        description = "Starter node. Rename IDs/title/position for your mod.",
-    })
+    for _, moduleName in ipairs(TREE_MODULES) do
+        api.registerTreeNode(require(moduleName))
+    end
 end
+
+local modules = {}
+extend(modules, EFFECT_MODULES)
+extend(modules, PERK_MODULES)
+extend(modules, TREE_MODULES)
 
 return {
     register = register,
+    modules = modules,
 }

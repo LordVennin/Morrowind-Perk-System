@@ -131,14 +131,61 @@ Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua`
 
 ## Create your own plugin
 
-Use the starter pack at [`plugin_starter/`](plugin_starter/README.md).
+Use the starter pack at [`plugin_starter/`](plugin_starter/README.md). It now follows the recommended folder-based plugin layout:
 
-It includes:
+```text
+scripts/<PackName>/
+  skillperk_manifest.lua
+  perks/
+    <skillId>/
+      <module>.lua
+  effects/
+    <module>.lua
+  trees/                   <-- optional
+    <skillId>/
+      <module>.lua
+```
 
-- a ready-to-copy `scripts/YourPackName/skillperk_manifest.lua` scaffold,
-- optional `scripts/YourPackName/perks/` and `scripts/YourPackName/effects/` folders,
-- an example `register(api)` flow (`assertCompatibleApiVersion`, `registerPerk`, optional `registerTreeNode`),
-- OpenMW install + activation checklist.
+### Naming convention for obvious load order
+
+Use numeric prefixes in module names and keep the manifest list ordered to match gameplay progression:
+
+- `01_core.lua` (foundation/base unlock)
+- `10_bleed.lua` (mid-chain upgrade)
+- `20_execute.lua` (later specialization)
+
+This makes both filesystem browsing and manifest review immediately clear.
+
+### Recommended manifest pattern
+
+Treat `skillperk_manifest.lua` as the pack entrypoint and explicit loader:
+
+- declare ordered module lists for effects/perks/trees,
+- `require(...)` each list in order,
+- register definitions via `api.registerEffect`, `api.registerPerk`, and optional `api.registerTreeNode`.
+
+### Migration note (flat -> folder-based)
+
+Older packs often used flat files such as:
+
+- `scripts/<PackName>/perks/longblade.lua`
+- `scripts/<PackName>/effects/example_bonus_damage.lua`
+
+Recommended migration:
+
+1. Move each flat skill file into `perks/<skillId>/` and split it into focused modules (`01_core.lua`, `10_bleed.lua`, etc.).
+2. Move effect handlers to `effects/<module>.lua` with the same numeric convention where ordering matters.
+3. Add `trees/<skillId>/<module>.lua` only if you provide tree node data.
+4. Update `skillperk_manifest.lua` with the new module paths and explicit ordering.
+5. Keep existing perk/effect IDs stable to avoid save-game migration breakage.
+
+### Included starter example pack
+
+`SkillPerkSystem/plugin_starter/` now includes:
+
+- one skill (`longblade`) with 2 perk modules (`01_core.lua` + `10_bleed.lua`),
+- one effect module (`10_bonus_damage.lua`),
+- one optional tree node module (`trees/longblade/10_starter.lua`).
 
 ## Notes
 

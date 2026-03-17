@@ -1,7 +1,7 @@
 return {
-    id = "yourpack_example_bonus_damage",
-    name = "Example Bonus Damage",
-    description = "Starter effect definition. Replace with your gameplay logic.",
+    id = "yourpack_bonus_damage",
+    name = "Starter Bonus Damage",
+    description = "Example passive used by starter longblade perks.",
     onAdd = function(_player)
         -- Apply your custom effect here.
     end,

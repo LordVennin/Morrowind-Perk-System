@@ -4,6 +4,7 @@ return {
     MOD_NAME = MOD_NAME,
     MILESTONE_STEP = 25,
     DEBUG_LOGS = false,
+    PLUGIN_VALIDATION_VERBOSE = false,
     -- Duplicate registration policy:
     -- false (default) = hard-error on duplicate ids
     -- true            = last-write-wins (development convenience)

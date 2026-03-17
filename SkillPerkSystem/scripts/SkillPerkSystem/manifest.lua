@@ -1,81 +1,23 @@
 local settings = require("scripts.SkillPerkSystem.settings")
-local core = require("openmw.core")
 local treeRegistry = require("scripts.SkillPerkSystem.tree_registry")
+local pluginAPI = require("scripts.SkillPerkSystem.plugin_api")
+local registryState = require("scripts.SkillPerkSystem.registry_state")
 local demoPerks = require("scripts.SkillPerkSystem.test_perks")
 
-local perkTable = {}
-
-local function hasSkillRecord(skillID)
-    if core.stats.Skill.records[skillID] ~= nil then
-        return true
-    end
-    for _, record in ipairs(core.stats.Skill.records) do
-        if record.id == skillID then
-            return true
-        end
-    end
-    return false
-end
-
-local perkIDs = {}
-
-local function registerPerk(data)
-    if type(data) ~= "table" then
-        error("registerPerk() expects a table", 2)
-    end
-    if type(data.id) ~= "string" then
-        error("registerPerk() missing string field 'id'", 2)
-    end
-    if type(data.skill) ~= "string" then
-        error("registerPerk(" .. tostring(data.id) .. ") missing string field 'skill'", 2)
-    end
-    if not hasSkillRecord(data.skill) then
-        error(
-            "registerPerk(" .. tostring(data.id) .. ") has invalid skill id '" .. tostring(data.skill) .. "'",
-            2
-        )
-    end
-    if type(data.onAdd) ~= "function" then
-        error("registerPerk(" .. tostring(data.id) .. ") missing function field 'onAdd'", 2)
-    end
-    if type(data.onRemove) ~= "function" then
-        error("registerPerk(" .. tostring(data.id) .. ") missing function field 'onRemove'", 2)
-    end
-
-    if data.requirements == nil then
-        data.requirements = {}
-    end
-    if type(data.requirements) ~= "table" then
-        error("registerPerk(" .. tostring(data.id) .. ") field 'requirements' must be a table", 2)
-    end
-
-    if data.cost == nil then
-        data.cost = 1
-    end
-    if type(data.cost) ~= "number" or data.cost < 1 or data.cost ~= math.floor(data.cost) then
-        error("registerPerk(" .. tostring(data.id) .. ") field 'cost' must be a positive integer", 2)
-    end
-
-    if perkTable[data.id] == nil then
-        table.insert(perkIDs, data.id)
-    end
-    perkTable[data.id] = data
-end
-
-demoPerks.registerDemoPerks(registerPerk)
+demoPerks.registerDemoPerks(pluginAPI.registerPerk)
 
 local function getPerks()
-    return perkTable
+    return registryState.getPerks()
 end
 
 local function getPerkIDs()
-    return perkIDs
+    return registryState.getPerkIDs()
 end
 
 local function getPerkIDsForSkill(skillID)
     local out = {}
-    for _, id in ipairs(perkIDs) do
-        if perkTable[id].skill == skillID then
+    for _, id in ipairs(registryState.getPerkIDs()) do
+        if registryState.getPerks()[id].skill == skillID then
             table.insert(out, id)
         end
     end
@@ -85,11 +27,15 @@ end
 return {
     interfaceName = settings.MOD_NAME,
     interface = {
-        registerPerk = registerPerk,
+        PLUGIN_API_VERSION = pluginAPI.PLUGIN_API_VERSION,
+        assertCompatibleApiVersion = pluginAPI.assertCompatibleApiVersion,
+        registerPerk = pluginAPI.registerPerk,
+        registerTreeNode = pluginAPI.registerTreeNode,
+        registerEffect = pluginAPI.registerEffect,
+        registerPointSource = pluginAPI.registerPointSource,
         getPerks = getPerks,
         getPerkIDs = getPerkIDs,
         getPerkIDsForSkill = getPerkIDsForSkill,
-        registerTreeNode = treeRegistry.registerTreeNode,
         registerTreeNodes = treeRegistry.registerTreeNodes,
         getTreeNode = treeRegistry.getTreeNode,
         getTreeNodesForSkill = treeRegistry.getTreeNodesForSkill,

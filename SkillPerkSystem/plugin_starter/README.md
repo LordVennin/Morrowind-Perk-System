@@ -1,6 +1,6 @@
 # SkillPerkSystem plugin starter pack
 
-This folder is a ready-to-copy scaffold for creating a new SkillPerkSystem plugin using the recommended folder-based layout.
+This folder is a ready-to-copy scaffold for creating a new SkillPerkSystem plugin using the recommended **one-skill-file** layout.
 
 ## Starter structure
 
@@ -11,42 +11,65 @@ SkillPerkSystem/plugin_starter/
     YourPackName/
       skillperk_manifest.lua
       perks/
-        longblade/
-          01_core.lua
-          10_bleed.lua
-      effects/
+        longblade.lua           <-- one file for all longblade perks
+      effects/                  <-- optional
         10_bonus_damage.lua
-      trees/                     <-- optional
+      trees/                    <-- optional
         longblade/
           10_starter.lua
 ```
 
 Copy `scripts/YourPackName/` into your mod, then rename `YourPackName` and all sample IDs.
 
-## Manifest-first loading
+## Copy/paste manifest pattern
 
-`skillperk_manifest.lua` should be your source of truth for load order. Keep file names prefixed with sortable numbers so intent is obvious:
+```lua
+local PERK_MODULES = {
+  "scripts.YourPackName.perks.longblade",
+  "scripts.YourPackName.perks.block",
+}
 
-- `01_core.lua` for base perks
-- `10_bleed.lua` for follow-up perks
-- `20_finisher.lua` for later chain entries
+for _, moduleName in ipairs(PERK_MODULES) do
+  local moduleData = require(moduleName)
+  for _, perk in ipairs(moduleData.perks or {}) do
+    api.registerPerk(perk)
+  end
+end
+```
 
-The starter manifest demonstrates ordered module lists for effects, perks, and optional tree nodes.
+Each skill module should return one table with a `perks` list.
 
-## Recommended module conventions
+## Copy/paste one-skill-file pattern
 
-- Perks: `scripts.<PackName>.perks.<skillId>.<module>`
-- Effects: `scripts.<PackName>.effects.<module>`
-- Trees (optional): `scripts.<PackName>.trees.<skillId>.<module>`
-
-## Migration from old flat layout
-
-If your pack currently uses flat modules like `scripts.<PackName>.perks.longblade`:
-
-1. Move it to `scripts/<PackName>/perks/longblade/01_core.lua` (or similar).
-2. Split large files into focused modules (`10_bleed.lua`, `20_crit.lua`, etc.).
-3. Update `skillperk_manifest.lua` to require the new paths in order.
-4. Keep perk/effect IDs unchanged unless you intentionally want a breaking save migration.
+```lua
+-- scripts/YourPackName/perks/longblade.lua
+return {
+  perks = {
+    {
+      id = "yourpack_longblade_core_training",
+      skill = "longblade",
+      effectId = "yourpack_bonus_damage",
+      requirements = {},
+      cost = 1,
+      x = 0,
+      y = 0,
+      title = "Core Training",
+      description = "Starter tree node example co-located with perk data.",
+    },
+    {
+      id = "yourpack_longblade_bleed_strikes",
+      skill = "longblade",
+      effectId = "yourpack_bonus_damage",
+      requires = { "yourpack_longblade_core_training" },
+      cost = 1,
+      x = 120,
+      y = 120,
+      title = "Bleed Strikes",
+      description = "Branch example with node fields embedded directly in perk.",
+    },
+  },
+}
+```
 
 ## Minimal install + activation checklist (OpenMW)
 

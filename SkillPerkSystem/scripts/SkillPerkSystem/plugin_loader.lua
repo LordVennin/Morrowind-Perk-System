@@ -504,22 +504,36 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
             loaded = 0,
         }
 
+        -- Primary convention: one module per skill at scripts.<PackName>.perks.<skillId>
         local basePerkModule = "scripts." .. packName .. ".perks." .. skillID
         local loadedBase, baseModuleData = tryRequireOptional(packName, basePerkModule, report)
         skillModuleStats.attempted = skillModuleStats.attempted + 1
+        local usedPrimarySkillModule = false
         if loadedBase then
             skillModuleStats.loaded = skillModuleStats.loaded + 1
-            tryRegisterSkillModule(pluginAPI, report, skillID, basePerkModule, baseModuleData)
+            usedPrimarySkillModule = tryRegisterSkillModule(pluginAPI, report, skillID, basePerkModule, baseModuleData)
         end
 
-        local namespacedModules = discoverSubmodules(basePerkModule .. ".")
-        for _, moduleName in ipairs(namespacedModules) do
-            local loadedNested, nestedModuleData = tryRequire(packName, moduleName, report)
-            skillModuleStats.attempted = skillModuleStats.attempted + 1
-            if loadedNested then
-                skillModuleStats.loaded = skillModuleStats.loaded + 1
-                tryRegisterSkillModule(pluginAPI, report, skillID, moduleName, nestedModuleData)
+        if not usedPrimarySkillModule then
+            local namespacedModules = discoverSubmodules(basePerkModule .. ".")
+            for _, moduleName in ipairs(namespacedModules) do
+                local loadedNested, nestedModuleData = tryRequire(packName, moduleName, report)
+                skillModuleStats.attempted = skillModuleStats.attempted + 1
+                if loadedNested then
+                    skillModuleStats.loaded = skillModuleStats.loaded + 1
+                    tryRegisterSkillModule(pluginAPI, report, skillID, moduleName, nestedModuleData)
+                end
             end
+        else
+            logVerbose(
+                "pack='"
+                    .. packName
+                    .. "' skill='"
+                    .. tostring(skillID)
+                    .. "' using primary skill module '"
+                    .. basePerkModule
+                    .. "'; nested fallback modules skipped"
+            )
         end
 
         if skillModuleStats.attempted > 0 and skillModuleStats.loaded > 0 then

@@ -1,6 +1,6 @@
 # Skill tree node files
 
-Tree nodes are loaded per skill using folder modules.
+Tree nodes are loaded per skill using a folder-first layout.
 
 For a skill such as `block`, create files under `trees/block/`:
 
@@ -34,10 +34,20 @@ Notes:
 - `id` should match a registered perk ID when you want the node to be purchasable.
 - `x`/`y` are stored now and reserved for map-style panning/tree-canvas rendering.
 - `requires` defines chain/branch relationships.
-- Legacy flat modules (`trees/<skillId>.lua`) remain supported as a fallback.
 
-Demo folders included:
-- `block/`
-- `longblade/`
+## Built-in folder layout
 
-Use Long Blade in-game to quickly validate the scaffolded tree/panning behavior.
+Current shipped demo content is organized as:
+
+- `trees/block/`
+- `trees/longblade/`
+
+## Migration note for older flat files
+
+Legacy flat modules (`trees/<skillId>.lua`) are still supported as a fallback.
+
+Load behavior is:
+1. Try folder modules via `trees/<skillId>/modules.lua`.
+2. If none are found, fall back to legacy `trees/<skillId>.lua`.
+
+Modders should prefer folder modules for new work and migrate flat files over time.

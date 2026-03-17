@@ -213,11 +213,29 @@ PR/task confirmation requirement:
 
 The framework now includes an experimental, data-driven tree-node registry for future map-style perk UIs.
 
-- Put per-skill node files in `scripts/SkillPerkSystem/trees/<skillId>.lua`
+- Put per-skill node files in `scripts/SkillPerkSystem/trees/<skillId>/`
+- Add a `modules.lua` file that returns ordered module suffixes to load
+- Put node lists in files referenced by `modules.lua` (for example: `nodes_core.lua`, `nodes_finishers.lua`)
 - See `scripts/SkillPerkSystem/trees/README.md` for schema
-- Example included: `scripts/SkillPerkSystem/trees/block.lua`
+- Examples included: `scripts/SkillPerkSystem/trees/block/` and `scripts/SkillPerkSystem/trees/longblade/`
 
 Node files support `id`, `skill`, `x`, `y`, and `requires` so chains/branches can be authored in script files without editing core UI code.
+
+### Built-in content migration status (Long Blade + Block)
+
+Shipped built-in content now follows a folder-first layout:
+
+- Perks: `scripts/SkillPerkSystem/perks/longblade/` and `scripts/SkillPerkSystem/perks/block/`
+- Tree nodes: `scripts/SkillPerkSystem/trees/longblade/` and `scripts/SkillPerkSystem/trees/block/`
+
+#### Migration note for modders with older flat files
+
+If your mod still uses flat files (`perks/<skillId>.lua` or `trees/<skillId>.lua`), migrate to folder modules when possible.
+
+- **Perks fallback:** `scripts.SkillPerkSystem.perks.longblade` and `scripts.SkillPerkSystem.perks.block` remain as compatibility shims that return ordered module lists.
+- **Trees fallback:** if `trees/<skillId>/modules.lua` is missing, tree loading falls back to legacy `trees/<skillId>.lua` automatically.
+
+This fallback is intended to keep existing content loading while you migrate; folder modules are the recommended long-term convention.
 
 ### Demo tree content toggle
 

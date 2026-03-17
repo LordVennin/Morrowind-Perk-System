@@ -163,11 +163,16 @@ local function registerEffect(data, source)
     effectsRegistry.registerEffect(data.id, data, sourceName)
 end
 
-local function registerPointSource(data)
-    if type(data) ~= "table" or type(data.id) ~= "string" or data.id == "" then
-        error("registerPointSource() requires a table with non-empty string field 'id'", 2)
+local function registerPointSource(sourceId, handlers, source)
+    if type(sourceId) ~= "string" or sourceId == "" then
+        error("registerPointSource() requires non-empty string sourceId", 2)
     end
-    registryState.registerPointSource(data)
+    if type(handlers) ~= "table" then
+        error("registerPointSource(" .. tostring(sourceId) .. ") requires handlers table", 2)
+    end
+
+    local sourceName = normalizeSource(source)
+    registryState.registerPointSource(sourceId, handlers, sourceName)
 end
 
 return {

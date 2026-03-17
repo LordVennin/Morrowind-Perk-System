@@ -603,7 +603,7 @@ local function buildPerkPane()
                 menu.layout = buildLayout()
                 menu:update()
             end, buttonSize, 1)
-            nodeButton.props.position = util.vector2(borderPadding, borderPadding)
+            nodeButton.template = interfaces.MWUI.templates.boxSolidThick
 
             table.insert(treeCanvasContent, {
                 type = ui.TYPE.Container,

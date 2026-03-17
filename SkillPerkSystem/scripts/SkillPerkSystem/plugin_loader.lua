@@ -15,6 +15,20 @@ local function logVerbose(message)
     end
 end
 
+local function readLoaderTimeSeconds()
+    local getSimulationTime = type(core) == "table" and core.getSimulationTime or nil
+    if type(getSimulationTime) ~= "function" then
+        return nil
+    end
+
+    local ok, timeSeconds = pcall(getSimulationTime)
+    if not ok or type(timeSeconds) ~= "number" then
+        return nil
+    end
+
+    return timeSeconds
+end
+
 local function pushUnique(list, seen, value)
     if type(value) == "string" and value ~= "" and not seen[value] then
         seen[value] = true
@@ -468,7 +482,19 @@ local function preloadPerkModules(pluginAPI)
     end
     hasPreloadedSkillModules = true
 
-    local start = os.clock()
+    local timingUnavailableLogged = false
+    local function logTimingUnavailableOnce()
+        if not timingUnavailableLogged then
+            timingUnavailableLogged = true
+            log("timing unavailable in this runtime")
+        end
+    end
+
+    local startTimeSeconds = readLoaderTimeSeconds()
+    if startTimeSeconds == nil then
+        logTimingUnavailableOnce()
+    end
+
     local validationReport = loadInstalledPacks(pluginAPI)
     local report = {
         packsScanned = 0,
@@ -523,19 +549,27 @@ local function preloadPerkModules(pluginAPI)
         end
     end
 
-    report.durationMs = math.floor((os.clock() - start) * 1000 + 0.5)
-    log(
+    local summary =
         "preload summary: packs_scanned="
-            .. tostring(report.packsScanned)
-            .. " modules_discovered="
-            .. tostring(report.modulesDiscovered)
-            .. " modules_loaded="
-            .. tostring(report.modulesLoaded)
-            .. " modules_failed="
-            .. tostring(report.modulesFailed)
-            .. " duration_ms="
-            .. tostring(report.durationMs)
-    )
+        .. tostring(report.packsScanned)
+        .. " modules_discovered="
+        .. tostring(report.modulesDiscovered)
+        .. " modules_loaded="
+        .. tostring(report.modulesLoaded)
+        .. " modules_failed="
+        .. tostring(report.modulesFailed)
+
+    if startTimeSeconds ~= nil then
+        local endTimeSeconds = readLoaderTimeSeconds()
+        if endTimeSeconds ~= nil then
+            report.durationMs = math.floor((endTimeSeconds - startTimeSeconds) * 1000 + 0.5)
+            summary = summary .. " duration_ms=" .. tostring(report.durationMs)
+        else
+            logTimingUnavailableOnce()
+        end
+    end
+
+    log(summary)
 
     return report
 end

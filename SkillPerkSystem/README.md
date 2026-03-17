@@ -109,13 +109,14 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 At startup, plugin discovery now emits a compact validator summary:
 
 ```
-[SkillPerkSystem] plugin validation summary: packs=<detected> registered=<success> with_errors=<failures>
-[SkillPerkSystem] plugin error: pack='<PackName>' module='<module.path>' reason='<first error>'
+[SkillPerkSystem] plugin validation summary: packs=<detected> loaded=<success> failed_or_skipped=<failures> strict_validation_failures=<validation errors>
+[SkillPerkSystem] !!! STRICT SCHEMA VALIDATION FAILURES DETECTED !!!
+[SkillPerkSystem] STRICT validation failure: pack='<PackName>' module='<module.path>' reason='<validation detail>'
 ```
 
 - `packs` counts all detected content-file name variants scanned for plugins.
-- `registered` counts packs with no module/manifest errors during discovery.
-- `with_errors` counts packs with at least one manifest or module failure.
+- `loaded` counts packs with no module/manifest errors during discovery.
+- `failed_or_skipped` counts packs with at least one manifest/module failure or missing manifest.
 - For each failing pack, the first error line includes the failing source module path for quick triage.
 
 ### Verbose diagnostics (optional)
@@ -124,7 +125,7 @@ Set `PLUGIN_VALIDATION_VERBOSE = true` in `scripts/SkillPerkSystem/settings.lua`
 
 ### Troubleshooting tips
 
-- Errors prefixed with `VALIDATION_ERROR:` indicate plugin API contract issues (missing/invalid fields, duplicate IDs under strict mode, incompatible API declaration).
+- Errors prefixed with `VALIDATION_ERROR:` indicate plugin API contract issues. Missing `schema = "skillperks.vNext"` in perk modules is now a hard failure by design.
 - Runtime errors usually indicate require path issues, script syntax errors, or exceptions inside plugin code.
 - If `manifest_found=false` in verbose output, verify your pack exposes `scripts/<PackName>/skillperk_manifest.lua` and that content file naming matches your scripts folder.
 - Keep module names in `skillperk_manifest.modules` fully-qualified Lua require paths.
@@ -142,43 +143,39 @@ scripts/<PackName>/
     <effectId>.lua
 ```
 
-### Loader behavior (default + advanced + compatibility)
+### Loader behavior (strict by design)
 
-Plugin discovery treats `scripts.<PackName>.perks.<skillId>` as the default skill module path.
+Plugin discovery now supports **only** one skill module path per skill:
 
-- If this module exists and returns a valid skill schema (`perks` and/or `nodes`), it is used as the canonical source for that skill.
-- For advanced/large packs, you can optionally split one skill into a folder module set using `scripts/<PackName>/perks/<skillId>/modules.lua` plus listed files.
-- If both variants exist for the same skill, **single-file wins** when it provides a valid schema; the folder module set is ignored and startup logs print this precedence.
-- If the single-file module is missing (or present but not a valid skill schema), and a folder module set exists, the folder module set is loaded.
-- If neither default nor folder-module-set variants are available, the loader still falls back to discovered nested modules under `scripts.<PackName>.perks.<skillId>.*` for backward compatibility.
+- `scripts.<PackName>.perks.<skillId>`
 
-This keeps one-skill-file packs simple while preserving compatibility for advanced/large packs and older folder-split packs.
+Strict rules:
 
-### Advanced/large pack pattern: folder module sets
+- The module must return a table with `schema = "skillperks.vNext"`.
+- The module must provide `perks` and/or `nodes`.
+- Old flat-tree module data, old split module-set patterns (`modules.lua` + numbered files), and legacy nested module discovery are unsupported.
+- Missing required schema is treated as a strict validation failure and surfaced prominently in startup output.
 
-Use this only when one skill's perk data is too large for a single file.
+### Migration notes (required)
 
-```text
-scripts/<PackName>/
-  perks/
-    <skillId>/
-      modules.lua              <-- ordered list of module suffixes
-      01_core.lua
-      10_branch.lua
-      20_finishers.lua
-```
+If your plugin still uses older layouts, migrate to one module per skill (`scripts/<PackName>/perks/<skillId>.lua`) and add `schema = "skillperks.vNext"` at the module root.
 
-`modules.lua` should return an ordered list of suffixes (without `.lua`):
+Example:
 
 ```lua
 return {
-  "01_core",
-  "10_branch",
-  "20_finishers",
+  schema = "skillperks.vNext",
+  perks = {
+    {
+      id = "mypack_longblade_core",
+      skill = "longblade",
+      effectId = "mypack_bonus_damage",
+      requires = {},
+      cost = 1,
+    },
+  },
 }
 ```
-
-Startup logs now include `variant='<single-file|folder-module-set|legacy-nested|none>'` per skill so you can quickly confirm which loader path was used.
 
 ### Deterministic merge behavior across packs (same skill)
 
@@ -218,6 +215,7 @@ Single skill file:
 ```lua
 -- scripts/MyPack/perks/longblade.lua
 return {
+  schema = "skillperks.vNext",
   perks = {
     {
       id = "mypack_longblade_core",

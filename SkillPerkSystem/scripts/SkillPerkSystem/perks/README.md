@@ -2,10 +2,11 @@
 
 Canonical location: `scripts/<PackName>/perks/<skillId>/<file>.lua`.
 
-Each module returns **one table that contains both perk behavior and tree layout metadata**:
+Each module returns **one table that contains both perk behavior and tree layout metadata** and must include `schema = "skillperks.vNext"`:
 
 ```lua
 return {
+  schema = "skillperks.vNext",
   id = "myperk_root",
   skill = "longblade",
   effectId = "my_effect",
@@ -24,6 +25,7 @@ Optional explicit node object is also supported:
 
 ```lua
 return {
+  schema = "skillperks.vNext",
   id = "myperk_root",
   skill = "longblade",
   effectId = "my_effect",

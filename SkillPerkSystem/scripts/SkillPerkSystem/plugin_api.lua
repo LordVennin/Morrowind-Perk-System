@@ -6,6 +6,7 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local PLUGIN_API_VERSION = 1
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
+local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
 
 local function validationError(message, level)
     error(VALIDATION_ERROR_TAG .. ": " .. tostring(message), level or 2)
@@ -229,6 +230,17 @@ local function registerPerkModule(data, source, expectedSkill)
         validationError("registerPerkModule() expects a table", 2)
     end
 
+    if data.schema ~= REQUIRED_PERK_MODULE_SCHEMA then
+        validationError(
+            "registerPerkModule() requires schema='"
+                .. REQUIRED_PERK_MODULE_SCHEMA
+                .. "' (source='"
+                .. tostring(source)
+                .. "')",
+            2
+        )
+    end
+
     local enabled = data.enabled
     if type(enabled) == "function" then
         enabled = enabled()
@@ -239,9 +251,6 @@ local function registerPerkModule(data, source, expectedSkill)
 
     local perks = data.perks
     local nodes = data.nodes
-    if type(perks) ~= "table" and type(nodes) ~= "table" and type(data.id) == "string" then
-        perks = { data }
-    end
 
     if type(perks) ~= "table" and type(nodes) ~= "table" then
         validationError("registerPerkModule() requires a module with perks and/or nodes", 2)

@@ -720,7 +720,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
+                        template = interfaces.MWUI.templates.boxSolidThick,
                         props = {
                             autoSize = false,
                             size = util.vector2(230, 28),

@@ -175,8 +175,19 @@ local function sortStringsStable(values)
     end)
 end
 
+local function normalizeSkillIdForDiscovery(skillID)
+    local normalized = tostring(skillID or "")
+    normalized = normalized:lower()
+    normalized = normalized:gsub("[%s%-]+", "_")
+    normalized = normalized:gsub("_+", "_")
+    normalized = normalized:gsub("^_+", "")
+    normalized = normalized:gsub("_+$", "")
+    return normalized
+end
+
 local function discoverSkillPerkModules(packName, skillID)
-    local folderPath = "scripts/" .. tostring(packName) .. "/perks/" .. tostring(skillID) .. "/"
+    local normalizedSkillID = normalizeSkillIdForDiscovery(skillID)
+    local folderPath = "scripts/" .. tostring(packName) .. "/perks/" .. tostring(normalizedSkillID) .. "/"
     local modules = {}
     local seen = {}
 
@@ -191,7 +202,12 @@ local function discoverSkillPerkModules(packName, skillID)
             if type(relativeFile) == "string" and relativeFile ~= "" and not seen[relativeFile] then
                 seen[relativeFile] = true
                 table.insert(modules, {
-                    moduleName = "scripts." .. tostring(packName) .. ".perks." .. tostring(skillID) .. "." .. tostring(relativeFile),
+                    moduleName = "scripts."
+                        .. tostring(packName)
+                        .. ".perks."
+                        .. tostring(normalizedSkillID)
+                        .. "."
+                        .. tostring(relativeFile),
                     moduleFile = tostring(relativeFile),
                     source = folderPath .. tostring(relativeFile) .. ".lua",
                 })
@@ -401,8 +417,9 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
 
     for _, skillID in ipairs(skillIDs) do
         local skillFolderPath, discoveredModules = discoverSkillPerkModules(packName, skillID)
+        local normalizedSkillID = normalizeSkillIdForDiscovery(skillID)
         local skillModuleStats = {
-            skillID = skillID,
+            skillID = normalizedSkillID,
             discovered = #discoveredModules,
             attempted = #discoveredModules,
             loaded = 0,
@@ -411,6 +428,10 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         }
 
         for _, discoveredModule in ipairs(discoveredModules) do
+            if packName == INTERNAL_PACK_NAME then
+                logVerbose("internal discovery attempt module='" .. tostring(discoveredModule.moduleName) .. "' source='" .. tostring(discoveredModule.source) .. "'")
+            end
+
             local loadedModule = tryRequire(packName, discoveredModule.moduleName, report)
             if loadedModule then
                 skillModuleStats.loaded = skillModuleStats.loaded + 1
@@ -427,7 +448,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
             "pack='"
                 .. packName
                 .. "' skill='"
-                .. tostring(skillID)
+                .. tostring(normalizedSkillID)
                 .. "' variant='"
                 .. tostring(skillModuleStats.variant)
                 .. "' perk_modules_discovered="
@@ -548,7 +569,7 @@ local function extractSkillModuleName(packName, moduleName)
         return nil, nil
     end
 
-    return skillID, moduleFile
+    return normalizeSkillIdForDiscovery(skillID), moduleFile
 end
 
 local function sortDiscoveredPerkModules(modules)

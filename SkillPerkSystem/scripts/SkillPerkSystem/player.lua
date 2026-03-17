@@ -3,6 +3,7 @@ local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 local types = require("openmw.types")
+local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
 
 local MOD_NAME = settings.MOD_NAME
 local MILESTONE_STEP = settings.MILESTONE_STEP
@@ -185,7 +186,7 @@ local function addPerk(data)
 
     table.insert(activePerks, data.perkID)
     spentPointsBySkill[perk.skill] = spentPoints(perk.skill) + perk.cost
-    perk.onAdd()
+    effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
 end
 
 local function removePerk(data)
@@ -202,7 +203,7 @@ local function removePerk(data)
         if id == data.perkID then
             table.remove(activePerks, i)
             spentPointsBySkill[perk.skill] = math.max(0, spentPoints(perk.skill) - perk.cost)
-            perk.onRemove()
+            effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
             return
         end
     end
@@ -239,7 +240,7 @@ local function respecAllPerks()
         local perk = perks[perkID]
         if perk ~= nil then
             refundsBySkill[perk.skill] = (refundsBySkill[perk.skill] or 0) + perk.cost
-            perk.onRemove()
+            effectsRegistry.onRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself })
             removedCount = removedCount + 1
         else
             print("[" .. MOD_NAME .. "] Skipping unknown active perk during respec: " .. tostring(perkID))

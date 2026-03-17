@@ -44,8 +44,7 @@ local function registerDemoPerks(registerPerk)
             skill = record.skill,
             requirements = requirements,
             cost = record.cost,
-            onAdd = function() end,
-            onRemove = function() end,
+            effectId = "demo_noop",
         })
     end
 

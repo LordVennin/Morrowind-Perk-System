@@ -1,5 +1,6 @@
 local settings = require("scripts.SkillPerkSystem.settings")
 
+-- Canonical built-in block perk source (only file for this skill).
 return {
     schema = "skillperks.vNext",
     enabled = settings.ENABLE_DEMO_TREE_PERKS,

@@ -342,6 +342,39 @@ local function buildPluginValidationSummary(report)
     end
 end
 
+local function enforceExternalPackRequirement(report, totalPerks, totalNodes, effectCount)
+    if settings.REQUIRE_EXTERNAL_PERK_PACKS ~= true then
+        return
+    end
+
+    local externalModulesLoaded = type(report) == "table" and (report.externalModulesLoaded or 0) or 0
+    if externalModulesLoaded > 0 then
+        return
+    end
+
+    local remediation =
+        "REMEDIATION: enable at least one external content pack that provides 'scripts/<PackName>/skillperk_manifest.lua' "
+        .. "and 'scripts/<PackName>/perks/<skillId>/<module>.lua', then add its content file after 'SkillPerkSystem.omwscripts' "
+        .. "in openmw.cfg (for example: content=YourPerkPack.omwscripts). If framework-only startup is intentional, set "
+        .. "REQUIRE_EXTERNAL_PERK_PACKS = false in scripts/SkillPerkSystem/settings.lua."
+
+    print("[" .. settings.MOD_NAME .. "] !!! EXTERNAL PERK PACKS REQUIRED BUT NONE WERE LOADED !!!")
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] startup registry summary: registry_empty="
+            .. tostring((totalPerks or 0) == 0)
+            .. " perks="
+            .. tostring(totalPerks or 0)
+            .. " nodes="
+            .. tostring(totalNodes or 0)
+            .. " effects="
+            .. tostring(effectCount or 0)
+    )
+    print("[" .. settings.MOD_NAME .. "] " .. remediation)
+    error("[" .. settings.MOD_NAME .. "] external perk pack requirement failed. " .. remediation, 2)
+end
+
 local function buildPreloadSummary(report)
     if type(report) ~= "table" then
         return
@@ -384,6 +417,17 @@ local function buildPreloadSummary(report)
     local internalLoaded = report.internalModulesLoaded or 0
     local internalExpected = report.internalDemoContentExpected == true
     local internalIndexModules = report.internalModuleIndexModules or 0
+    local externalLoaded = report.externalModulesLoaded or 0
+    if settings.REQUIRE_EXTERNAL_PERK_PACKS == true and externalLoaded == 0 then
+        print(
+            "["
+                .. settings.MOD_NAME
+                .. "] WARNING: REQUIRE_EXTERNAL_PERK_PACKS=true and external_modules_loaded=0. "
+                .. "Add a content pack with scripts/<PackName>/skillperk_manifest.lua and scripts/<PackName>/perks/<skillId>/<module>.lua, "
+                .. "then enable its content file after SkillPerkSystem.omwscripts (example: content=YourPerkPack.omwscripts)."
+        )
+    end
+
     if internalLoaded == 0 then
         if internalExpected then
             print(
@@ -519,6 +563,8 @@ local function buildStartupSummary()
                 .. tostring(effectCount)
         )
     end
+
+    enforceExternalPackRequirement(preloadReport, totalPerks, totalNodes, effectCount)
 end
 
 validateMergedTreeGraph()

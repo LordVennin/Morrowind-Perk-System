@@ -71,6 +71,9 @@ return {
         return state.perkSourceByID[perkID]
     end,
     registerTreeNode = registerTreeNode,
+    getTreeNodes = function()
+        return state.treeNodeByID
+    end,
     getTreeNode = function(nodeID)
         return state.treeNodeByID[nodeID]
     end,

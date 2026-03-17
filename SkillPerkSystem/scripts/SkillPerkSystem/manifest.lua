@@ -24,6 +24,7 @@ local function registerEffect(data)
 end
 
 local pluginValidationReport = pluginLoader.loadInstalledPacks(pluginAPI)
+local preloadReport = pluginLoader.preloadPerkModules(pluginAPI)
 
 
 local function buildPluginValidationSummary(report)
@@ -138,6 +139,28 @@ local function buildPluginValidationSummary(report)
     end
 end
 
+
+local function buildPreloadSummary(report)
+    if type(report) ~= "table" then
+        return
+    end
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] perk preload summary: packs_scanned="
+            .. tostring(report.packsScanned or 0)
+            .. " modules_discovered="
+            .. tostring(report.modulesDiscovered or 0)
+            .. " modules_loaded="
+            .. tostring(report.modulesLoaded or 0)
+            .. " modules_failed="
+            .. tostring(report.modulesFailed or 0)
+            .. " duration_ms="
+            .. tostring(report.durationMs or 0)
+    )
+end
+
 local function getPerks()
     return registryState.getPerks()
 end
@@ -206,6 +229,7 @@ end
 
 buildStartupSummary()
 buildPluginValidationSummary(pluginValidationReport)
+buildPreloadSummary(preloadReport)
 
 return {
     interfaceName = settings.MOD_NAME,

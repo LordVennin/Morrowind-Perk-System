@@ -369,6 +369,8 @@ end
 
 local hasLoaded = false
 local lastReport = nil
+local hasPreloadedSkillModules = false
+local preloadReport = nil
 
 local function loadInstalledPacks(pluginAPI)
     if hasLoaded then
@@ -424,6 +426,84 @@ local function loadInstalledPacks(pluginAPI)
     return report
 end
 
+local function extractSkillModuleName(packName, moduleName)
+    local prefix = "scripts." .. packName .. ".perks."
+    if type(moduleName) ~= "string" or moduleName:sub(1, #prefix) ~= prefix then
+        return nil
+    end
+
+    local suffix = moduleName:sub(#prefix + 1)
+    if suffix == "" then
+        return nil
+    end
+
+    local skillID = suffix:match("^([^.]+)%..+")
+    if type(skillID) ~= "string" or skillID == "" then
+        return nil
+    end
+
+    return skillID
+end
+
+local function preloadPerkModules(pluginAPI)
+    if hasPreloadedSkillModules then
+        return preloadReport
+    end
+    hasPreloadedSkillModules = true
+
+    local start = os.clock()
+    local validationReport = loadInstalledPacks(pluginAPI)
+    local report = {
+        packsScanned = 0,
+        modulesDiscovered = 0,
+        modulesLoaded = 0,
+        modulesFailed = 0,
+        durationMs = 0,
+    }
+    preloadReport = report
+
+    for _, packReport in ipairs(validationReport.packs or {}) do
+        report.packsScanned = report.packsScanned + 1
+        local seen = {}
+        for _, moduleAttempt in ipairs(packReport.moduleAttempts or {}) do
+            local skillID = extractSkillModuleName(packReport.packName, moduleAttempt.module)
+            if skillID ~= nil and not seen[moduleAttempt.module] then
+                seen[moduleAttempt.module] = true
+                report.modulesDiscovered = report.modulesDiscovered + 1
+
+                if moduleAttempt.success then
+                    local ok, moduleData = pcall(require, moduleAttempt.module)
+                    local skillFolderPath = "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(skillID)
+                    if ok and tryRegisterSkillModule(pluginAPI, packReport, skillID, skillFolderPath, moduleAttempt.module, moduleData) then
+                        report.modulesLoaded = report.modulesLoaded + 1
+                    else
+                        report.modulesFailed = report.modulesFailed + 1
+                    end
+                else
+                    report.modulesFailed = report.modulesFailed + 1
+                end
+            end
+        end
+    end
+
+    report.durationMs = math.floor((os.clock() - start) * 1000 + 0.5)
+    log(
+        "preload summary: packs_scanned="
+            .. tostring(report.packsScanned)
+            .. " modules_discovered="
+            .. tostring(report.modulesDiscovered)
+            .. " modules_loaded="
+            .. tostring(report.modulesLoaded)
+            .. " modules_failed="
+            .. tostring(report.modulesFailed)
+            .. " duration_ms="
+            .. tostring(report.durationMs)
+    )
+
+    return report
+end
+
 return {
     loadInstalledPacks = loadInstalledPacks,
+    preloadPerkModules = preloadPerkModules,
 }

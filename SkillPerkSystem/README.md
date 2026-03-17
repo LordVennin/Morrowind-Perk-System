@@ -323,6 +323,8 @@ Shipped built-in content is organized under `scripts/SkillPerkSystem/perks/` and
 
 ### Demo tree content toggle
 
-`settings.lua` now includes `ENABLE_DEMO_TREE_PERKS` (default `true`) which registers no-effect built-in demo perks (currently Long Blade + Block) through `scripts/SkillPerkSystem/skillperk_manifest.lua`.
+`settings.lua` now includes `ENABLE_SAMPLE_PACK` (default `true`) to control migrated sample/demo perk content (currently Long Blade + Block in `scripts/VenninsPerks`). Set it to `false` to disable the sample pack without removing the framework.
 
-Built-in perk modules are organized under `scripts/SkillPerkSystem/perks/<skillId>/` and loaded in deterministic alphabetical order (`01_core.lua`, `10_branch.lua`, ...). Set the toggle to `false` to disable demo perk registration.
+Backward compatibility: `ENABLE_DEMO_TREE_PERKS` is still honored as a legacy alias, but `ENABLE_SAMPLE_PACK` takes precedence when both are present.
+
+Built-in perk modules are organized under `scripts/SkillPerkSystem/perks/<skillId>/` and loaded in deterministic alphabetical order (`01_core.lua`, `10_branch.lua`, ...).

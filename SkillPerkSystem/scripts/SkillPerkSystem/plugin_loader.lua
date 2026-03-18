@@ -427,6 +427,11 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
     end
 end
 
+local function manifestOwnsRegistration(packReport)
+    local manifest = type(packReport) == "table" and packReport.manifest or nil
+    return type(manifest) == "table" and manifest.registerAttempted == true and manifest.registerSuccess == true
+end
+
 local function finalizePackStatus(packReport)
     if not packReport.manifest.found then
         packReport.status = "skipped"
@@ -849,7 +854,21 @@ local function preloadPerkModules(pluginAPI)
                 perks = 0,
                 nodes = 0,
             }
-            if moduleInfo.attempt.success then
+            if moduleInfo.attempt.success and manifestOwnsRegistration(packReport) then
+                registrationResult = {
+                    registered = true,
+                    skipped = false,
+                    perks = 0,
+                    nodes = 0,
+                }
+                logVerbose(
+                    "preload registration skipped (manifest.register already executed) pack='"
+                        .. tostring(packReport.packName)
+                        .. "' module='"
+                        .. tostring(moduleInfo.moduleName)
+                        .. "'"
+                )
+            elseif moduleInfo.attempt.success then
                 local ok, moduleData = pcall(require, moduleInfo.moduleName)
                 local skillFolderPath =
                     "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)

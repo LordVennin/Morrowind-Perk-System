@@ -1,15 +1,6 @@
 return {
-    -- Deterministic internal module list loaded unconditionally at startup.
-    modules = {
-        {
-            skillID = "block",
-            moduleName = "scripts.SkillPerkSystem.perks.block.block",
-            source = "scripts/SkillPerkSystem/perks/block/block.lua",
-        },
-        {
-            skillID = "longblade",
-            moduleName = "scripts.SkillPerkSystem.perks.longblade.longblade",
-            source = "scripts/SkillPerkSystem/perks/longblade/longblade.lua",
-        },
-    },
+    -- Core runtime no longer auto-loads bundled perk content.
+    -- Keep this list empty so SkillPerkSystem_BasePack (and future addon packs)
+    -- are loaded through the same external content-pack discovery flow.
+    modules = {},
 }

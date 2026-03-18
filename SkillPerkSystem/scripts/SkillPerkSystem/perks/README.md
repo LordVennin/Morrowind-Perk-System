@@ -2,6 +2,19 @@
 
 Canonical location: `scripts/<PackName>/perks/<skillId>/<file>.lua`.
 
+## Add-on pack contract
+
+Pack layout:
+
+```text
+scripts/<PackName>/
+  skillperk_manifest.lua
+  perks/
+    <skillId>/
+      <module>.lua
+  effects/                  <-- optional
+```
+
 Each module returns **one table that contains both perk behavior and tree layout metadata** and must include `schema = "skillperks.vNext"`:
 
 ```lua
@@ -38,4 +51,9 @@ return {
 }
 ```
 
-Pack manifests can call `api.registerPerkModule(require(moduleName), "longblade")` to register both perk and node data from the same module.
+Pack manifests call `api.registerPerkModule(require(moduleName), "<skillId>")` to register both perk and node data from the same module.
+
+Duplicate registration policy is controlled by `ALLOW_DUPLICATE_REGISTRATION_OVERRIDE` in `scripts/SkillPerkSystem/settings.lua`:
+
+- `false` (default): duplicate IDs are strict validation failures.
+- `true`: duplicate IDs use last-write-wins override semantics.

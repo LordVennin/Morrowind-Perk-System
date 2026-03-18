@@ -600,6 +600,34 @@ buildStartupSummary()
 buildPluginValidationSummary(pluginValidationReport)
 buildPreloadSummary(preloadReport)
 
+local loggedRuntimeRegistrySummary = false
+local function onUpdate()
+    if loggedRuntimeRegistrySummary then
+        return
+    end
+
+    local totalPerks = #registryState.getPerkIDs()
+    if totalPerks == 0 then
+        return
+    end
+
+    loggedRuntimeRegistrySummary = true
+
+    local totalNodes = 0
+    for _ in pairs(registryState.getTreeNodes()) do
+        totalNodes = totalNodes + 1
+    end
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] runtime registry summary (post-bootstrap): perks="
+            .. tostring(totalPerks)
+            .. " nodes="
+            .. tostring(totalNodes)
+    )
+end
+
 return {
     interfaceName = settings.MOD_NAME,
     interface = {
@@ -617,5 +645,8 @@ return {
         getTreeNode = treeRegistry.getTreeNode,
         getTreeNodesForSkill = treeRegistry.getTreeNodesForSkill,
         loadSkillTree = treeRegistry.loadSkillTree,
-    }
+    },
+    engineHandlers = {
+        onUpdate = onUpdate,
+    },
 }

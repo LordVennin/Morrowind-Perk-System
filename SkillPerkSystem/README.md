@@ -21,8 +21,7 @@ content=SkillPerkSystem.omwscripts
 ### Content files and load order
 
 - `content=SkillPerkSystem.omwscripts` is the framework runtime (required).
-- `content=SkillPerkSystem_BasePack.omwscripts` is the bundled default perk pack and should be enabled after the framework.
-- External add-on packs each ship their own content file: `content=<PackName>.omwscripts`. Load these after the framework and after the base pack.
+- Perk packs should each ship their own content file: `content=<PackName>.omwscripts`. Load these after the framework.
 - The framework no longer auto-loads internal demo trees; official perk content now comes from content packs via `scripts/<PackName>/skillperk_manifest.lua`.
 
 ## Console commands
@@ -115,8 +114,8 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 ### Core vs content-pack boundary
 
 - `SkillPerkSystem` (core framework) provides runtime systems, validation, registry state, and content-pack discovery/registration behavior.
-- `SkillPerkSystem_BasePack` (bundled content pack) provides the default perk trees and follows the same content-pack contract as third-party addons.
-- Addon packs should mirror the base-pack structure and must not require edits to core files or shared indexes.
+- Addon packs should be self-contained and must not require edits to core files or shared indexes.
+- **Project rule:** the `SkillPerkSystem/` core directory must never hardcode references to any specific perk pack name, folder, or module path.
 
 ### Migration note
 
@@ -191,7 +190,7 @@ Manifest expectations:
 - Keep `scripts/<PackName>/skillperk_manifest.lua` present so the pack is detectable.
 - Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`; they are discovered automatically and merged deterministically by filename.
 - If your runtime/content setup does not expose the pack via loader discovery, register modules from `skillperk_manifest.lua` via `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)` (see `plugin_starter` template).
-- Load order matters: enable `SkillPerkSystem.omwscripts` first, then `SkillPerkSystem_BasePack.omwscripts`, then your add-on pack `.omwscripts`.
+- Load order matters: enable `SkillPerkSystem.omwscripts` first, then add-on pack `.omwscripts` entries.
 
 Concrete explicit-bootstrap addon example:
 
@@ -374,17 +373,7 @@ The framework uses a perks-only schema where each perk module can include both p
 - Register modules by placing them under `scripts/<PackName>/perks/<skillId>/`; loader discovery handles registration automatically.
 - See `scripts/SkillPerkSystem/perks/README.md` for schema details.
 
-### Bundled base pack layout (Long Blade + Block)
-
-Bundled default trees now live in the standalone pack:
-
-- `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/longblade/longblade.lua`
-- `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/block/block.lua`
-
-They are loaded by `SkillPerkSystem_BasePack/SkillPerkSystem_BasePack.omwscripts`, which points directly to `scripts/SkillPerkSystem_BasePack/bootstrap.lua`. That bootstrap explicitly registers the base modules with `openmw.interfaces.SkillPerkSystem`.
-
 ## Migration note (modular installation model)
 
 - Core no longer relies on `scripts/SkillPerkSystem/perks/internal_module_index.lua` to ship default perk trees.
-- Enable `content=SkillPerkSystem_BasePack.omwscripts` to get bundled defaults.
 - External packs should ship `scripts/<PackName>/bootstrap.lua` plus `scripts/<PackName>/perks/<skillId>/<module>.lua`, keep `scripts/<PackName>/skillperk_manifest.lua` as loader metadata (`selfManaged = true`), and be enabled via their own `.omwscripts` file.

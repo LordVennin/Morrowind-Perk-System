@@ -13,7 +13,6 @@ local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
 local INTERNAL_PACK_NAME = "SkillPerkSystem"
-local BUNDLED_BASE_PACK_NAME = "SkillPerkSystem_BasePack"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -801,12 +800,12 @@ local function loadInstalledPacks(pluginAPI)
 
     local report = {
         totalPacksDetected = #externalPacks + 1,
-        totalPacksDiscovered = #externalPacks + 2,
+        totalPacksDiscovered = #externalPacks + 1,
         externalPacksDetected = #externalPacks,
         internalPacksDetected = 1,
-        bundledPacksDetected = 1,
+        bundledPacksDetected = 0,
         internalPackName = INTERNAL_PACK_NAME,
-        bundledPackName = BUNDLED_BASE_PACK_NAME,
+        bundledPackName = nil,
         internalIndexPresent = internalIndex ~= nil,
         internalIndexModules = #internalModuleEntries,
         internalDemoContentExpected = #internalModuleEntries > 0,
@@ -821,7 +820,7 @@ local function loadInstalledPacks(pluginAPI)
             failedOrSkipped = 0,
         },
         bundledStatus = {
-            discovered = 1,
+            discovered = 0,
             loaded = 0,
             failedOrSkipped = 0,
         },
@@ -837,11 +836,6 @@ local function loadInstalledPacks(pluginAPI)
     if report.internalIndexPresent and report.internalIndexModules > 0 and internalReport.modulesLoadedCount == 0 then
         error(LOADER_TAG .. "FATAL: internal module index lists " .. tostring(report.internalIndexModules) .. " modules but zero loaded")
     end
-
-    local bundledBasePackReport =
-        loadPack(BUNDLED_BASE_PACK_NAME, skillIDs, effectIDs, pluginAPI, { skipAutoModuleDiscovery = true })
-    bundledBasePackReport.discoveryKind = "bundled"
-    table.insert(report.packs, bundledBasePackReport)
 
     if #externalPacks == 0 then
         log("no third-party external content packs detected; skipping external plugin discovery")

@@ -1,6 +1,5 @@
 local interfaces = require("openmw.interfaces")
-local blockModule = require("scripts.SkillPerkSystem_BasePack.perks.block.block")
-local longbladeModule = require("scripts.SkillPerkSystem_BasePack.perks.longblade.longblade")
+local registry = require("scripts.SkillPerkSystem_BasePack.bootstrap_registry")
 
 local registered = false
 
@@ -18,8 +17,7 @@ local function tryRegisterWithCore()
         api.assertCompatibleApiVersion(1)
     end
 
-    api.registerPerkModule(blockModule, "block")
-    api.registerPerkModule(longbladeModule, "longblade")
+    registry.registerWithCoreInterface(api)
 
     registered = true
     return true

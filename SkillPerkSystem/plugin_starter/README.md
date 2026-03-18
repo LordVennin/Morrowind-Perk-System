@@ -63,13 +63,11 @@ return {
 1. Place your pack folder (`scripts/<YourPackName>/`) in an OpenMW data path.
 2. Place your pack content file (`<YourPackName>.omwscripts`) in an OpenMW data path.
 3. Enable your `.omwscripts` entry **after** the framework.
-4. If your pack depends on base trees/content, enable it **after** the base pack too.
 
 Recommended order:
 
 1. `content=SkillPerkSystem.omwscripts` (framework)
-2. `content=SkillPerkSystem_BasePack.omwscripts` (bundled base trees, optional/recommended)
-3. `content=<YourPackName>.omwscripts` (your self-contained addon pack)
+2. `content=<YourPackName>.omwscripts` (your self-contained addon pack)
 
 That order keeps framework initialization first so addon packs can register after the core runtime.
 

@@ -1,6 +1,13 @@
 -- Bundled default perk pack manifest.
 --
--- Core loader discovers this pack via content file name and this manifest path,
--- then auto-loads modules from scripts/SkillPerkSystem_BasePack/perks/<skillId>/.
+-- Keep an explicit module list so bundled trees load even if VFS folder-prefix
+-- discovery is unavailable or path-case normalization differs across runtimes.
 
-return {}
+local PERK_MODULES = {
+    "scripts.SkillPerkSystem_BasePack.perks.block.block",
+    "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade",
+}
+
+return {
+    modules = PERK_MODULES,
+}

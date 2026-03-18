@@ -1,12 +1,13 @@
 # SkillPerkSystem plugin starter pack
 
-This folder is a ready-to-copy scaffold for creating a new SkillPerkSystem plugin using the unified perks schema.
+This folder is a ready-to-copy scaffold for creating a **self-contained addon pack** for SkillPerkSystem using the unified perks schema.
 
 ## Starter structure
 
 ```text
 SkillPerkSystem/plugin_starter/
   README.md
+  YourPackName.omwscripts
   scripts/
     YourPackName/
       skillperk_manifest.lua
@@ -19,6 +20,12 @@ SkillPerkSystem/plugin_starter/
 ```
 
 Copy `scripts/YourPackName/` into your mod, then rename `YourPackName` and sample IDs.
+
+Also copy `YourPackName.omwscripts`, rename it to your pack name, and keep only:
+
+```text
+PLAYER:scripts/<YourPackName>/skillperk_manifest.lua
+```
 
 ## Manifest registration pattern
 
@@ -41,34 +48,40 @@ return {
   perks = {
     {
       id = "yourpack_longblade_core_training",
-  skill = "longblade",
-  effectId = "yourpack_bonus_damage",
-  requires = {},
-  cost = 1,
-  x = 0,
-  y = 0,
-  title = "Core Training",
-  description = "Starter node data is co-located with perk behavior.",
+      skill = "longblade",
+      effectId = "yourpack_bonus_damage",
+      requires = {},
+      cost = 1,
+      x = 0,
+      y = 0,
+      title = "Core Training",
+      description = "Starter node data is co-located with perk behavior.",
     },
   },
 }
 ```
 
-## OpenMW content entries and ordering
+## Install steps (author-facing)
 
-When you ship your pack, users should enable your own `.omwscripts` content entry **after**:
+1. Place your pack folder (`scripts/<YourPackName>/`) in an OpenMW data path.
+2. Place your pack content file (`<YourPackName>.omwscripts`) in an OpenMW data path.
+3. Enable your `.omwscripts` entry **after** the framework.
+4. If your pack depends on base trees/content, enable it **after** the base pack too.
+
+Recommended order:
 
 1. `content=SkillPerkSystem.omwscripts` (framework)
 2. `content=SkillPerkSystem_BasePack.omwscripts` (bundled base trees, optional/recommended)
-3. `content=<YourPack>.omwscripts` (your add-on pack)
+3. `content=<YourPackName>.omwscripts` (your self-contained addon pack)
 
-That order keeps framework initialization first so add-on packs can register after the core runtime.
+That order keeps framework initialization first so addon packs can register after the core runtime.
 
-## Add-on pack contract (author-facing)
+## Self-contained addon pack contract
 
 Your pack should provide:
 
 ```text
+<YourPackName>.omwscripts
 scripts/<PackName>/
   skillperk_manifest.lua
   perks/
@@ -85,4 +98,8 @@ for _, moduleName in ipairs(PERK_MODULES) do
 end
 ```
 
-`api.registerPerkModule` is the supported registration path for modular perk packs.
+`api.registerPerkModule` is the supported registration path for modular, self-contained addon packs.
+
+## Multiple packs targeting the same skill
+
+Supported. Multiple addon packs can register perk modules for the same skill as long as perk IDs and effect IDs stay globally unique.

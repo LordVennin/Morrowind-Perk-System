@@ -1,7 +1,7 @@
 -- Copy this folder as: scripts/<YourPackName>/
 -- Keep this file path exactly: scripts/<YourPackName>/skillperk_manifest.lua
 --
--- Recommended pack convention:
+-- Recommended self-contained addon pack convention:
 --   scripts/<PackName>/perks/<skillId>/<file>.lua
 
 local EFFECT_MODULES = {

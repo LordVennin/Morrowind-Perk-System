@@ -193,6 +193,34 @@ Manifest expectations:
 - If your runtime/content setup does not expose the pack via loader discovery, register modules from `skillperk_manifest.lua` via `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)` (see `plugin_starter` template).
 - Load order matters: enable `SkillPerkSystem.omwscripts` first, then `SkillPerkSystem_BasePack.omwscripts`, then your add-on pack `.omwscripts`.
 
+Concrete explicit-bootstrap addon example:
+
+```text
+MyPerkPack.omwscripts
+scripts/MyPerkPack/bootstrap.lua
+scripts/MyPerkPack/perks/longblade/01_core.lua
+scripts/MyPerkPack/perks/longblade/10_bleed.lua
+```
+
+`MyPerkPack.omwscripts`:
+
+```text
+PLAYER:scripts/MyPerkPack/bootstrap.lua
+```
+
+`scripts/MyPerkPack/bootstrap.lua`:
+
+```lua
+local interfaces = require("openmw.interfaces")
+local api = interfaces.SkillPerkSystem
+
+if api ~= nil then
+    api.assertCompatibleApiVersion(1)
+    api.registerPerkModule(require("scripts.MyPerkPack.perks.longblade.01_core"), "longblade")
+    api.registerPerkModule(require("scripts.MyPerkPack.perks.longblade.10_bleed"), "longblade")
+end
+```
+
 ### Loader behavior (strict by design)
 
 Plugin discovery supports unified modules under the canonical path:
@@ -353,10 +381,10 @@ Bundled default trees now live in the standalone pack:
 - `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/longblade/longblade.lua`
 - `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/block/block.lua`
 
-They are loaded through `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua`, which follows the same manifest + `perks/<skillId>/` folder model as addon packs.
+They are loaded by `SkillPerkSystem_BasePack/SkillPerkSystem_BasePack.omwscripts`, which points directly to `scripts/SkillPerkSystem_BasePack/bootstrap.lua`. That bootstrap explicitly registers the base modules with `openmw.interfaces.SkillPerkSystem`.
 
 ## Migration note (modular installation model)
 
 - Core no longer relies on `scripts/SkillPerkSystem/perks/internal_module_index.lua` to ship default perk trees.
 - Enable `content=SkillPerkSystem_BasePack.omwscripts` to get bundled defaults.
-- External packs should ship `scripts/<PackName>/skillperk_manifest.lua` plus `scripts/<PackName>/perks/<skillId>/<module>.lua` and be enabled via their own `.omwscripts` file.
+- External packs should ship `scripts/<PackName>/bootstrap.lua` plus `scripts/<PackName>/perks/<skillId>/<module>.lua`, keep `scripts/<PackName>/skillperk_manifest.lua` as loader metadata (`selfManaged = true`), and be enabled via their own `.omwscripts` file.

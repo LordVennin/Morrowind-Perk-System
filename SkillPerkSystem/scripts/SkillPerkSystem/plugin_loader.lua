@@ -567,6 +567,12 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
     end
 
     local skillModulePlans = {}
+    if options.skipAutoModuleDiscovery == true then
+        logVerbose("pack='" .. tostring(packName) .. "' marked to skip auto module discovery (self-managed bootstrap path)")
+        finalizePackStatus(report)
+        return report
+    end
+
     if type(options.internalModuleEntries) == "table" then
         report.internalIndexPresent = true
         report.internalIndexModules = #options.internalModuleEntries
@@ -613,6 +619,28 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
                 }
             end
             table.insert(plansBySkill[skillID].modules, discoveredModule)
+        end
+
+        if #discoveredModules == 0 then
+            for _, skillID in ipairs(skillIDs) do
+                local skillFolderPath, modulesBySkill = discoverSkillPerkModules(packName, skillID)
+                local normalizedSkillID = normalizeSkillIdForDiscovery(skillID)
+                table.insert(skillModulePlans, {
+                    skillID = normalizedSkillID,
+                    folderPath = skillFolderPath,
+                    modules = modulesBySkill,
+                })
+            end
+        else
+            local sortedSkillIDs = {}
+            for skillID in pairs(plansBySkill) do
+                table.insert(sortedSkillIDs, skillID)
+            end
+            sortStringsStable(sortedSkillIDs)
+
+            for _, skillID in ipairs(sortedSkillIDs) do
+                table.insert(skillModulePlans, plansBySkill[skillID])
+            end
         end
 
         if #discoveredModules == 0 then
@@ -832,7 +860,8 @@ local function loadInstalledPacks(pluginAPI)
         error(LOADER_TAG .. "FATAL: internal module index lists " .. tostring(report.internalIndexModules) .. " modules but zero loaded")
     end
 
-    local bundledBasePackReport = loadPack(BUNDLED_BASE_PACK_NAME, skillIDs, effectIDs, pluginAPI)
+    local bundledBasePackReport =
+        loadPack(BUNDLED_BASE_PACK_NAME, skillIDs, effectIDs, pluginAPI, { skipAutoModuleDiscovery = true })
     bundledBasePackReport.discoveryKind = "bundled"
     table.insert(report.packs, bundledBasePackReport)
 

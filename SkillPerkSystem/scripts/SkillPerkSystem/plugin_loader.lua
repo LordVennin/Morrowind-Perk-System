@@ -636,6 +636,36 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
                 table.insert(skillModulePlans, plansBySkill[skillID])
             end
         end
+
+        if #discoveredModules == 0 then
+            for _, skillID in ipairs(skillIDs) do
+                local skillFolderPath, modulesBySkill = discoverSkillPerkModules(packName, skillID)
+                local normalizedSkillID = normalizeSkillIdForDiscovery(skillID)
+                table.insert(skillModulePlans, {
+                    skillID = normalizedSkillID,
+                    folderPath = skillFolderPath,
+                    modules = modulesBySkill,
+                })
+            end
+        else
+            local sortedSkillIDs = {}
+            for skillID in pairs(plansBySkill) do
+                table.insert(sortedSkillIDs, skillID)
+            end
+            sortStringsStable(sortedSkillIDs)
+
+            for _, skillID in ipairs(sortedSkillIDs) do
+                table.insert(skillModulePlans, plansBySkill[skillID])
+            end
+        end
+    end
+
+    if #skillModulePlans == 0 and packName ~= INTERNAL_PACK_NAME then
+        log(
+            "pack='"
+                .. tostring(packName)
+                .. "' exposed no perk modules for folder discovery; ensure skillperk_manifest.lua returns modules={...}"
+        )
     end
 
     for _, skillPlan in ipairs(skillModulePlans) do

@@ -170,7 +170,7 @@ scripts/<PackName>/perks/block/VenninBlock.lua
 scripts/<PackName>/perks/block/JohnsBlock.lua
 ```
 
-All files inside `scripts/<PackName>/perks/<skillId>/` are merged into that one skill's perk tree UI.
+All files listed in `skillperk_manifest.modules` are merged into that one skill's perk tree UI.
 
 ### Add-on pack contract
 

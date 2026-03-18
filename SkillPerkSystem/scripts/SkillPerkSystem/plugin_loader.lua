@@ -107,6 +107,30 @@ local function getDetectedPackNames()
     return packs
 end
 
+local function getPackNamesFromManifestPaths()
+    local packs = {}
+    local seen = {}
+
+    if type(vfs) ~= "table" or type(vfs.pathsWithPrefix) ~= "function" then
+        return packs
+    end
+
+    for path in vfs.pathsWithPrefix("scripts/") do
+        if type(path) == "string" then
+            local normalizedPath = path:gsub("\\", "/")
+            local packName = normalizedPath:match("^scripts/([^/]+)/skillperk_manifest%.lua$")
+            if type(packName) == "string" and packName ~= "" then
+                pushUnique(packs, seen, packName)
+            end
+        end
+    end
+
+    table.sort(packs, function(left, right)
+        return left < right
+    end)
+    return packs
+end
+
 local function getRecordIDs(records)
     local ids = {}
     local seen = {}
@@ -601,9 +625,25 @@ local function getExternalPackNames()
     local externalPacks = {}
     local seen = {}
 
-    for _, packName in ipairs(getDetectedPackNames()) do
+    local detectedPackNames = getDetectedPackNames()
+    for _, packName in ipairs(detectedPackNames) do
         if packName ~= INTERNAL_PACK_NAME then
             pushUnique(externalPacks, seen, packName)
+        end
+    end
+
+    if #externalPacks == 0 then
+        local manifestDetectedPacks = getPackNamesFromManifestPaths()
+        for _, packName in ipairs(manifestDetectedPacks) do
+            if packName ~= INTERNAL_PACK_NAME then
+                pushUnique(externalPacks, seen, packName)
+            end
+        end
+
+        if #externalPacks > 0 then
+            log(
+                "content-file based external discovery found no external packs; falling back to manifest-path discovery"
+            )
         end
     end
 

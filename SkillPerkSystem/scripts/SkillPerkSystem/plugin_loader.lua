@@ -107,6 +107,30 @@ local function getDetectedPackNames()
     return packs
 end
 
+local function getPackNamesFromManifestPaths()
+    local packs = {}
+    local seen = {}
+
+    if type(vfs) ~= "table" or type(vfs.pathsWithPrefix) ~= "function" then
+        return packs
+    end
+
+    for path in vfs.pathsWithPrefix("scripts/") do
+        if type(path) == "string" then
+            local normalizedPath = path:gsub("\\", "/")
+            local packName = normalizedPath:match("^scripts/([^/]+)/skillperk_manifest%.lua$")
+            if type(packName) == "string" and packName ~= "" then
+                pushUnique(packs, seen, packName)
+            end
+        end
+    end
+
+    table.sort(packs, function(left, right)
+        return left < right
+    end)
+    return packs
+end
+
 local function getRecordIDs(records)
     local ids = {}
     local seen = {}
@@ -427,6 +451,11 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
     end
 end
 
+local function manifestOwnsRegistration(packReport)
+    local manifest = type(packReport) == "table" and packReport.manifest or nil
+    return type(manifest) == "table" and manifest.registerAttempted == true and manifest.registerSuccess == true
+end
+
 local function finalizePackStatus(packReport)
     if not packReport.manifest.found then
         packReport.status = "skipped"
@@ -596,9 +625,25 @@ local function getExternalPackNames()
     local externalPacks = {}
     local seen = {}
 
-    for _, packName in ipairs(getDetectedPackNames()) do
+    local detectedPackNames = getDetectedPackNames()
+    for _, packName in ipairs(detectedPackNames) do
         if packName ~= INTERNAL_PACK_NAME then
             pushUnique(externalPacks, seen, packName)
+        end
+    end
+
+    if #externalPacks == 0 then
+        local manifestDetectedPacks = getPackNamesFromManifestPaths()
+        for _, packName in ipairs(manifestDetectedPacks) do
+            if packName ~= INTERNAL_PACK_NAME then
+                pushUnique(externalPacks, seen, packName)
+            end
+        end
+
+        if #externalPacks > 0 then
+            log(
+                "content-file based external discovery found no external packs; falling back to manifest-path discovery"
+            )
         end
     end
 
@@ -849,7 +894,21 @@ local function preloadPerkModules(pluginAPI)
                 perks = 0,
                 nodes = 0,
             }
-            if moduleInfo.attempt.success then
+            if moduleInfo.attempt.success and manifestOwnsRegistration(packReport) then
+                registrationResult = {
+                    registered = true,
+                    skipped = false,
+                    perks = 0,
+                    nodes = 0,
+                }
+                logVerbose(
+                    "preload registration skipped (manifest.register already executed) pack='"
+                        .. tostring(packReport.packName)
+                        .. "' module='"
+                        .. tostring(moduleInfo.moduleName)
+                        .. "'"
+                )
+            elseif moduleInfo.attempt.success then
                 local ok, moduleData = pcall(require, moduleInfo.moduleName)
                 local skillFolderPath =
                     "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)

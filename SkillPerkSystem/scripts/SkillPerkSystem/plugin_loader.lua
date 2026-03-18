@@ -643,6 +643,14 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
         end
     end
 
+    if #skillModulePlans == 0 and packName ~= INTERNAL_PACK_NAME then
+        log(
+            "pack='"
+                .. tostring(packName)
+                .. "' exposed no perk modules for folder discovery; ensure skillperk_manifest.lua returns modules={...}"
+        )
+    end
+
     for _, skillPlan in ipairs(skillModulePlans) do
         local skillModuleStats = {
             skillID = skillPlan.skillID,

@@ -7,6 +7,7 @@ local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
 local INTERNAL_PACK_NAME = "SkillPerkSystem"
+local BUNDLED_BASE_PACK_NAME = "SkillPerkSystem_BasePack"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -686,11 +687,13 @@ local function loadInstalledPacks(pluginAPI)
     local internalIndex, internalModuleEntries = getInternalPerkModuleEntries()
 
     local report = {
-        totalPacksDetected = #externalPacks,
-        totalPacksDiscovered = #externalPacks + 1,
+        totalPacksDetected = #externalPacks + 1,
+        totalPacksDiscovered = #externalPacks + 2,
         externalPacksDetected = #externalPacks,
         internalPacksDetected = 1,
+        bundledPacksDetected = 1,
         internalPackName = INTERNAL_PACK_NAME,
+        bundledPackName = BUNDLED_BASE_PACK_NAME,
         internalIndexPresent = internalIndex ~= nil,
         internalIndexModules = #internalModuleEntries,
         internalDemoContentExpected = #internalModuleEntries > 0,
@@ -701,6 +704,11 @@ local function loadInstalledPacks(pluginAPI)
         },
         externalStatus = {
             discovered = #externalPacks,
+            loaded = 0,
+            failedOrSkipped = 0,
+        },
+        bundledStatus = {
+            discovered = 1,
             loaded = 0,
             failedOrSkipped = 0,
         },
@@ -717,8 +725,12 @@ local function loadInstalledPacks(pluginAPI)
         error(LOADER_TAG .. "FATAL: internal module index lists " .. tostring(report.internalIndexModules) .. " modules but zero loaded")
     end
 
+    local bundledBasePackReport = loadPack(BUNDLED_BASE_PACK_NAME, skillIDs, effectIDs, pluginAPI)
+    bundledBasePackReport.discoveryKind = "bundled"
+    table.insert(report.packs, bundledBasePackReport)
+
     if #externalPacks == 0 then
-        log("no external content packs detected; skipping external plugin discovery")
+        log("no third-party external content packs detected; skipping external plugin discovery")
     else
         for _, packName in ipairs(externalPacks) do
             local packReport = loadPack(packName, skillIDs, effectIDs, pluginAPI)
@@ -757,6 +769,12 @@ local function loadInstalledPacks(pluginAPI)
             else
                 report.internalStatus.failedOrSkipped = report.internalStatus.failedOrSkipped + 1
             end
+        elseif packReport.discoveryKind == "bundled" then
+            if packReport.status == "loaded" then
+                report.bundledStatus.loaded = report.bundledStatus.loaded + 1
+            else
+                report.bundledStatus.failedOrSkipped = report.bundledStatus.failedOrSkipped + 1
+            end
         else
             if packReport.status == "loaded" then
                 report.externalStatus.loaded = report.externalStatus.loaded + 1
@@ -767,6 +785,7 @@ local function loadInstalledPacks(pluginAPI)
     end
 
     report.internalStatus.loaded = math.min(report.internalStatus.loaded, report.internalStatus.discovered)
+    report.bundledStatus.loaded = math.min(report.bundledStatus.loaded, report.bundledStatus.discovered)
     report.externalStatus.loaded = math.min(report.externalStatus.loaded, report.externalStatus.discovered)
 
     return report

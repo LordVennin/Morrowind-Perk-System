@@ -1,8 +1,8 @@
 local interfaces = require("openmw.interfaces")
 
 local PERK_MODULES = {
-    { moduleName = "scripts.SkillPerkSystem_BasePack.perks.block.block", skillID = "block" },
-    { moduleName = "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade", skillID = "longblade" },
+    "scripts.SkillPerkSystem_BasePack.perks.block.block",
+    "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade",
 }
 
 local isRegistered = false

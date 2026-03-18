@@ -32,8 +32,6 @@ end
 tryRegisterWithCore()
 
 return {
-    -- Self-managed: this pack registers from its own omwscript context when enabled.
-    selfManaged = true,
     engineHandlers = {
         onUpdate = function()
             tryRegisterWithCore()

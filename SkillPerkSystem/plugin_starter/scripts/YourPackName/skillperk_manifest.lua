@@ -4,7 +4,7 @@
 -- Official vNext pattern:
 --   - Keep this manifest file present so the pack is detected.
 --   - Put perk modules under scripts/<PackName>/perks/<skillId>/<file>.lua.
---   - List those modules in `modules = { ... }` for sandbox-safe loading.
+--   - The framework discovers perk modules from the perks/ folder.
 
 local function register(api)
     api.assertCompatibleApiVersion(1)

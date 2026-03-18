@@ -1,11 +1,12 @@
 local core = require("openmw.core")
 local vfs = require("openmw.vfs")
 local settings = require("scripts.SkillPerkSystem.settings")
+local internalModuleIndex = require("scripts.SkillPerkSystem.perks.internal_module_index")
 
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
-local FRAMEWORK_PACK_NAME = "SkillPerkSystem"
+local INTERNAL_PACK_NAME = "SkillPerkSystem"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -259,6 +260,32 @@ local function discoverSkillPerkModules(packName, skillID)
     return folderPath, modules
 end
 
+local function getInternalPerkModuleEntries()
+    local index = internalModuleIndex
+    if type(index) ~= "table" or type(index.modules) ~= "table" then
+        return nil, {}
+    end
+
+    local entries = {}
+    for _, entry in ipairs(index.modules) do
+        if
+            type(entry) == "table"
+            and type(entry.skillID) == "string"
+            and entry.skillID ~= ""
+            and type(entry.moduleName) == "string"
+            and entry.moduleName ~= ""
+        then
+            table.insert(entries, {
+                skillID = normalizeSkillIdForDiscovery(entry.skillID),
+                moduleName = entry.moduleName,
+                source = type(entry.source) == "string" and entry.source or entry.moduleName,
+            })
+        end
+    end
+
+    return index, entries
+end
+
 
 local function buildSourceAwarePluginAPI(pluginAPI, sourceName)
     return {
@@ -424,7 +451,8 @@ local function finalizePackStatus(packReport)
     packReport.reason = "ok"
 end
 
-local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
+local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
+    options = type(options) == "table" and options or {}
     local report = {
         packName = packName,
         discoveryKind = "external",
@@ -440,6 +468,8 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         moduleAttempts = {},
         moduleFailures = {},
         perkSkillModules = {},
+        internalIndexPresent = false,
+        internalIndexModules = 0,
         status = "unknown",
         reason = nil,
     }
@@ -451,14 +481,48 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
     end
 
     local skillModulePlans = {}
-    for _, skillID in ipairs(skillIDs) do
-        local skillFolderPath, discoveredModules = discoverSkillPerkModules(packName, skillID)
-        local normalizedSkillID = normalizeSkillIdForDiscovery(skillID)
-        table.insert(skillModulePlans, {
-            skillID = normalizedSkillID,
-            folderPath = skillFolderPath,
-            modules = discoveredModules,
-        })
+    if type(options.internalModuleEntries) == "table" then
+        report.internalIndexPresent = true
+        report.internalIndexModules = #options.internalModuleEntries
+        local planBySkill = {}
+
+        for _, entry in ipairs(options.internalModuleEntries) do
+            local skillID = normalizeSkillIdForDiscovery(entry.skillID)
+            if planBySkill[skillID] == nil then
+                planBySkill[skillID] = {
+                    skillID = skillID,
+                    modules = {},
+                }
+            end
+            table.insert(planBySkill[skillID].modules, {
+                moduleName = entry.moduleName,
+                source = entry.source,
+            })
+        end
+
+        local skillOrder = {}
+        for skillID in pairs(planBySkill) do
+            table.insert(skillOrder, skillID)
+        end
+        sortStringsStable(skillOrder)
+
+        for _, skillID in ipairs(skillOrder) do
+            local skillPlan = planBySkill[skillID]
+            table.sort(skillPlan.modules, function(left, right)
+                return left.moduleName < right.moduleName
+            end)
+            table.insert(skillModulePlans, skillPlan)
+        end
+    else
+        for _, skillID in ipairs(skillIDs) do
+            local skillFolderPath, discoveredModules = discoverSkillPerkModules(packName, skillID)
+            local normalizedSkillID = normalizeSkillIdForDiscovery(skillID)
+            table.insert(skillModulePlans, {
+                skillID = normalizedSkillID,
+                folderPath = skillFolderPath,
+                modules = discoveredModules,
+            })
+        end
     end
 
     for _, skillPlan in ipairs(skillModulePlans) do
@@ -472,13 +536,23 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         }
 
         for _, discoveredModule in ipairs(skillPlan.modules) do
-            logVerbose(
-                "pack manifest/module load attempt module='"
-                    .. tostring(discoveredModule.moduleName)
-                    .. "' source='"
-                    .. tostring(discoveredModule.source)
-                    .. "'"
-            )
+            if packName == INTERNAL_PACK_NAME then
+                logVerbose(
+                    "internal indexed attempt module='"
+                        .. tostring(discoveredModule.moduleName)
+                        .. "' source='"
+                        .. tostring(discoveredModule.source)
+                        .. "'"
+                )
+            else
+                logVerbose(
+                    "pack manifest/module load attempt module='"
+                        .. tostring(discoveredModule.moduleName)
+                        .. "' source='"
+                        .. tostring(discoveredModule.source)
+                        .. "'"
+                )
+            end
 
             local loadedModule = tryRequire(packName, discoveredModule.moduleName, report)
             if loadedModule then
@@ -523,7 +597,7 @@ local function getExternalPackNames()
     local seen = {}
 
     for _, packName in ipairs(getDetectedPackNames()) do
-        if packName ~= FRAMEWORK_PACK_NAME then
+        if packName ~= INTERNAL_PACK_NAME then
             pushUnique(externalPacks, seen, packName)
         end
     end
@@ -558,15 +632,19 @@ local function loadInstalledPacks(pluginAPI)
         (core.magic and core.magic.Effect and core.magic.Effect.records)
             or (core.magic and core.magic.MagicEffect and core.magic.MagicEffect.records)
     )
+    local internalIndex, internalModuleEntries = getInternalPerkModuleEntries()
 
     local report = {
         totalPacksDetected = #externalPacks,
-        totalPacksDiscovered = #externalPacks,
+        totalPacksDiscovered = #externalPacks + 1,
         externalPacksDetected = #externalPacks,
-        internalPacksDetected = 0,
-        internalPackName = nil,
+        internalPacksDetected = 1,
+        internalPackName = INTERNAL_PACK_NAME,
+        internalIndexPresent = internalIndex ~= nil,
+        internalIndexModules = #internalModuleEntries,
+        internalDemoContentExpected = #internalModuleEntries > 0,
         internalStatus = {
-            discovered = 0,
+            discovered = 1,
             loaded = 0,
             failedOrSkipped = 0,
         },
@@ -578,6 +656,15 @@ local function loadInstalledPacks(pluginAPI)
         packs = {},
     }
     lastReport = report
+
+    local internalReport =
+        loadPack(INTERNAL_PACK_NAME, skillIDs, effectIDs, pluginAPI, { internalModuleEntries = internalModuleEntries })
+    internalReport.discoveryKind = "internal"
+    table.insert(report.packs, internalReport)
+
+    if report.internalIndexPresent and report.internalIndexModules > 0 and internalReport.modulesLoadedCount == 0 then
+        error(LOADER_TAG .. "FATAL: internal module index lists " .. tostring(report.internalIndexModules) .. " modules but zero loaded")
+    end
 
     if #externalPacks == 0 then
         log("no external content packs detected; skipping external plugin discovery")

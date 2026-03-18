@@ -428,6 +428,11 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
         return
     end
 
+    if manifestModule.selfManaged == true then
+        packReport.selfManaged = true
+        logVerbose("manifest self-managed registration enabled for pack='" .. tostring(packName) .. "'")
+    end
+
     if type(manifestModule.register) == "function" then
         local sourceAwareAPI = buildSourceAwarePluginAPI(pluginAPI, manifestPath)
         local ok, err = pcall(manifestModule.register, sourceAwareAPI)
@@ -502,6 +507,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
         internalIndexModules = 0,
         status = "unknown",
         reason = nil,
+        selfManaged = false,
     }
 
     local loadedManifest, manifestModule = tryRequire(packName, report.manifest.path, report)
@@ -628,7 +634,7 @@ local function getExternalPackNames()
 
     local detectedPackNames = getDetectedPackNames()
     for _, packName in ipairs(detectedPackNames) do
-        if packName ~= INTERNAL_PACK_NAME and packName ~= BUNDLED_BASE_PACK_NAME then
+        if packName ~= INTERNAL_PACK_NAME then
             pushUnique(externalPacks, seen, packName)
         end
     end
@@ -636,7 +642,7 @@ local function getExternalPackNames()
     if #externalPacks == 0 then
         local manifestDetectedPacks = getPackNamesFromManifestPaths()
         for _, packName in ipairs(manifestDetectedPacks) do
-            if packName ~= INTERNAL_PACK_NAME and packName ~= BUNDLED_BASE_PACK_NAME then
+            if packName ~= INTERNAL_PACK_NAME then
                 pushUnique(externalPacks, seen, packName)
             end
         end
@@ -874,6 +880,12 @@ local function preloadPerkModules(pluginAPI)
         if not isInternalPack and not isBundledPack then
             report.packsScanned = report.packsScanned + 1
         end
+
+        if packReport.selfManaged == true then
+            logVerbose("skipping preload auto-registration for self-managed pack='" .. tostring(packReport.packName) .. "'")
+            goto continue_pack
+        end
+
         local seen = {}
         local discoveredModules = {}
 
@@ -1029,6 +1041,8 @@ local function preloadPerkModules(pluginAPI)
                     .. tostring(skillSummary.nodes)
             )
         end
+
+        ::continue_pack::
     end
 
     report.modulesLoaded = math.min(report.modulesLoaded, report.modulesDiscovered)

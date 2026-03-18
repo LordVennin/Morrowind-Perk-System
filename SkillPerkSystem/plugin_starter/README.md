@@ -59,6 +59,30 @@ return {
 When you ship your pack, users should enable your own `.omwscripts` content entry **after**:
 
 1. `content=SkillPerkSystem.omwscripts` (framework)
-2. `content=<YourPack>.omwscripts` (your plugin, optional)
+2. `content=SkillPerkSystem_BasePack.omwscripts` (bundled base trees, optional/recommended)
+3. `content=<YourPack>.omwscripts` (your add-on pack)
 
-That order keeps framework initialization first so plugin packs can register after the core runtime.
+That order keeps framework initialization first so add-on packs can register after the core runtime.
+
+## Add-on pack contract (author-facing)
+
+Your pack should provide:
+
+```text
+scripts/<PackName>/
+  skillperk_manifest.lua
+  perks/
+    <skillId>/
+      <module>.lua
+  effects/                  <-- optional
+```
+
+Expected manifest call pattern:
+
+```lua
+for _, moduleName in ipairs(PERK_MODULES) do
+  api.registerPerkModule(require(moduleName), "<skillId>")
+end
+```
+
+`api.registerPerkModule` is the supported registration path for modular perk packs.

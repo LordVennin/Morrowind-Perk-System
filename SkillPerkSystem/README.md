@@ -20,9 +20,9 @@ content=SkillPerkSystem.omwscripts
 
 ### Content files and load order
 
-- `content=SkillPerkSystem.omwscripts` is the framework runtime.
-- `content=SkillPerkSystem_BasePack.omwscripts` is the bundled base perk pack (Long Blade + Block) and should be loaded **after** the framework.
-- Additional external packs are optional and can be loaded after the framework/base pack when desired.
+- `content=SkillPerkSystem.omwscripts` is the framework runtime (required).
+- `content=SkillPerkSystem_BasePack.omwscripts` is the bundled base trees pack (Long Blade + Block) and is optional but recommended. Load it **after** the framework.
+- External add-on packs each ship their own content file: `content=<PackName>.omwscripts`. Load these after the framework (and after the base pack if enabled).
 
 ## Console commands
 
@@ -159,6 +159,37 @@ scripts/<PackName>/perks/block/JohnsBlock.lua
 
 All files inside `scripts/<PackName>/perks/<skillId>/` are merged into that one skill's perk tree UI.
 
+### Add-on pack contract
+
+Every external pack should follow this contract:
+
+```text
+scripts/<PackName>/
+  skillperk_manifest.lua                  <-- required
+  perks/
+    <skillId>/
+      <module>.lua                        <-- required per module contribution
+  effects/                                <-- optional
+    <effectId>.lua
+```
+
+Expected manifest call pattern:
+
+```lua
+local api = require("scripts.SkillPerkSystem.plugin_api")
+
+local PERK_MODULES = {
+  "scripts.MyPack.perks.longblade.01_core",
+  "scripts.MyPack.perks.longblade.10_finishers",
+}
+
+for _, moduleName in ipairs(PERK_MODULES) do
+  api.registerPerkModule(require(moduleName), "longblade")
+end
+```
+
+`api.registerPerkModule` is the canonical registration path for merged perk + node modules.
+
 ### Loader behavior (strict by design)
 
 Plugin discovery supports unified modules under the canonical path:
@@ -254,16 +285,13 @@ Manifest module list:
 
 ```lua
 local PERK_MODULES = {
-  "scripts.MyPack.perks.longblade.01_core",
-  "scripts.MyPack.perks.longblade.20_finishers",
-  "scripts.MyPack.perks.block.01_core",
+  { name = "scripts.MyPack.perks.longblade.01_core", skill = "longblade" },
+  { name = "scripts.MyPack.perks.longblade.20_finishers", skill = "longblade" },
+  { name = "scripts.MyPack.perks.block.01_core", skill = "block" },
 }
 
-for _, moduleName in ipairs(PERK_MODULES) do
-  local moduleData = require(moduleName)
-  for _, perk in ipairs(moduleData.perks or {}) do
-    api.registerPerk(perk)
-  end
+for _, module in ipairs(PERK_MODULES) do
+  api.registerPerkModule(require(module.name), module.skill)
 end
 ```
 
@@ -332,8 +360,8 @@ Long Blade and Block demo perks are bundled in a separate base content pack and 
 
 The base pack manifest is `scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua` and registers modules through the same add-on API flow used by external packs.
 
-### Demo tree content toggle
+## Migration note (modular installation model)
 
-`settings.lua` includes `ENABLE_SAMPLE_PACK` (default `true`) to control bundled demo perk content.
-
-Backward compatibility: `ENABLE_DEMO_TREE_PERKS` is still honored as a legacy alias, but `ENABLE_SAMPLE_PACK` takes precedence when both are present.
+- `scripts/SkillPerkSystem/perks/internal_module_index.lua` is deprecated and should no longer be used as a primary/default registration mechanism.
+- Bundled trees are now delivered via `content=SkillPerkSystem_BasePack.omwscripts` (base pack content file), not via internal index wiring.
+- External pack installation is now: copy pack folder under `scripts/<PackName>/` and enable that pack's `.omwscripts` content file.

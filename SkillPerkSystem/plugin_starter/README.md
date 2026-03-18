@@ -27,18 +27,13 @@ Also copy `YourPackName.omwscripts`, rename it to your pack name, and keep only:
 PLAYER:scripts/<YourPackName>/skillperk_manifest.lua
 ```
 
-## Manifest registration pattern
+## Manifest pattern (official)
 
 ```lua
-local PERK_MODULES = {
-  "scripts.YourPackName.perks.longblade.01_core",
-  "scripts.YourPackName.perks.longblade.10_bleed",
-}
-
-for _, moduleName in ipairs(PERK_MODULES) do
-  api.registerPerkModule(require(moduleName), "longblade")
-end
+return {}
 ```
+
+Perk modules are discovered automatically from `scripts/<PackName>/perks/<skillId>/` and loaded in alphabetical filename order.
 
 ## Unified perk module pattern
 
@@ -90,15 +85,11 @@ scripts/<PackName>/
   effects/                  <-- optional
 ```
 
-Expected manifest call pattern:
+Expected loader behavior:
 
-```lua
-for _, moduleName in ipairs(PERK_MODULES) do
-  api.registerPerkModule(require(moduleName), "<skillId>")
-end
-```
-
-`api.registerPerkModule` is the supported registration path for modular, self-contained addon packs.
+- Keep `skillperk_manifest.lua` present so the pack is detected.
+- Place perk modules under `perks/<skillId>/` and the framework registers them automatically.
+- `manifest.register(api)` remains available for legacy/manual registration packs.
 
 ## Multiple packs targeting the same skill
 

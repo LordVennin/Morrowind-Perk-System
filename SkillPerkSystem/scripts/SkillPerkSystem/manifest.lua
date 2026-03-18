@@ -199,13 +199,15 @@ local function buildPluginValidationSummary(report)
     local packs = (type(report) == "table" and type(report.packs) == "table") and report.packs or {}
 
     local internalStatus = (type(report) == "table" and type(report.internalStatus) == "table") and report.internalStatus or {}
+    local bundledStatus = (type(report) == "table" and type(report.bundledStatus) == "table") and report.bundledStatus or {}
     local externalStatus = (type(report) == "table" and type(report.externalStatus) == "table") and report.externalStatus or {}
 
     local internalDiscovered = tonumber(internalStatus.discovered) or 0
+    local bundledDiscovered = tonumber(bundledStatus.discovered) or 0
     local externalDiscovered = tonumber(externalStatus.discovered) or 0
     local totalPacksDiscovered = (type(report) == "table" and type(report.totalPacksDiscovered) == "number")
             and report.totalPacksDiscovered
-        or (internalDiscovered + externalDiscovered)
+        or (internalDiscovered + bundledDiscovered + externalDiscovered)
 
     local loadedSuccessfully = 0
     local failedOrSkipped = 0
@@ -227,8 +229,10 @@ local function buildPluginValidationSummary(report)
 
     loadedSuccessfully = math.min(loadedSuccessfully, totalPacksDiscovered)
     local internalLoaded = math.min(tonumber(internalStatus.loaded) or 0, internalDiscovered)
+    local bundledLoaded = math.min(tonumber(bundledStatus.loaded) or 0, bundledDiscovered)
     local externalLoaded = math.min(tonumber(externalStatus.loaded) or 0, externalDiscovered)
     local internalFailedOrSkipped = tonumber(internalStatus.failedOrSkipped) or (internalDiscovered - internalLoaded)
+    local bundledFailedOrSkipped = tonumber(bundledStatus.failedOrSkipped) or (bundledDiscovered - bundledLoaded)
     local externalFailedOrSkipped = tonumber(externalStatus.failedOrSkipped) or (externalDiscovered - externalLoaded)
 
     print(
@@ -264,6 +268,17 @@ local function buildPluginValidationSummary(report)
             .. tostring(externalLoaded)
             .. " packs_failed_or_skipped="
             .. tostring(externalFailedOrSkipped)
+    )
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] plugin validation summary (bundled): packs_discovered="
+            .. tostring(bundledDiscovered)
+            .. " packs_loaded="
+            .. tostring(bundledLoaded)
+            .. " packs_failed_or_skipped="
+            .. tostring(bundledFailedOrSkipped)
     )
 
     if strictValidationFailures > 0 then
@@ -410,6 +425,19 @@ local function buildPreloadSummary(report)
             .. tostring(report.modulesLoaded or 0)
             .. " modules_failed_total="
             .. tostring(report.modulesFailed or 0)
+            .. " duration_ms="
+            .. tostring(report.durationMs or 0)
+    )
+
+    print(
+        "["
+            .. settings.MOD_NAME
+            .. "] perk preload summary (bundled): modules_discovered="
+            .. tostring(report.bundledModulesDiscovered or 0)
+            .. " bundled_modules_loaded="
+            .. tostring(report.bundledModulesLoaded or 0)
+            .. " bundled_modules_failed="
+            .. tostring(report.bundledModulesFailed or 0)
             .. " duration_ms="
             .. tostring(report.durationMs or 0)
     )

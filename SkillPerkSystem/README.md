@@ -20,10 +20,9 @@ content=SkillPerkSystem.omwscripts
 
 ### Content files and load order
 
-- `content=SkillPerkSystem.omwscripts` is the framework runtime and should be the only required content entry.
-- Default perk modules are loaded from the internal module index at `scripts/SkillPerkSystem/perks/internal_module_index.lua`.
-- The bundled Long Blade and Block trees are indexed from `scripts/SkillPerkSystem/perks/<skillId>/...`.
-- External packs are optional and can still be loaded after the framework when desired.
+- `content=SkillPerkSystem.omwscripts` is the framework runtime.
+- `content=SkillPerkSystem_BasePack.omwscripts` is the bundled base perk pack (Long Blade + Block) and should be loaded **after** the framework.
+- Additional external packs are optional and can be loaded after the framework/base pack when desired.
 
 ## Console commands
 
@@ -324,14 +323,14 @@ The framework uses a perks-only schema where each perk module can include both p
 - Register modules with `api.registerPerkModule(require(moduleName), "<skillId>")`.
 - See `scripts/SkillPerkSystem/perks/README.md` for schema details.
 
-### Bundled demo perk layout (Long Blade + Block)
+### Bundled base pack layout (Long Blade + Block)
 
-Long Blade and Block demo perks are bundled in the base framework and loaded from:
+Long Blade and Block demo perks are bundled in a separate base content pack and loaded from:
 
-- `scripts/SkillPerkSystem/perks/longblade/longblade.lua`
-- `scripts/SkillPerkSystem/perks/block/block.lua`
+- `scripts/SkillPerkSystem_BasePack/perks/longblade/longblade.lua`
+- `scripts/SkillPerkSystem_BasePack/perks/block/block.lua`
 
-`internal_module_index.lua` is the authoritative index for these bundled perk modules.
+The base pack manifest is `scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua` and registers modules through the same add-on API flow used by external packs.
 
 ### Demo tree content toggle
 

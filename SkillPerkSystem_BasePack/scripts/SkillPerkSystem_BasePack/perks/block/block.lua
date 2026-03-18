@@ -1,0 +1,57 @@
+local settings = require("scripts.SkillPerkSystem.settings")
+
+local samplePackEnabled = settings.ENABLE_SAMPLE_PACK
+if samplePackEnabled == nil then
+    samplePackEnabled = settings.ENABLE_DEMO_TREE_PERKS
+end
+
+return {
+    schema = "skillperks.vNext",
+    enabled = samplePackEnabled ~= false,
+    perks = {
+        {
+            id = "block_basic_guard",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = {},
+            cost = 1,
+            x = 0,
+            y = 0,
+            title = "Basic Guard",
+            description = "Foundational shield posture. Increases confidence while blocking.",
+        },
+        {
+            id = "block_reactive_guard",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = { "block_basic_guard" },
+            cost = 1,
+            x = -120,
+            y = 120,
+            title = "Reactive Guard",
+            description = "Faster reaction windows against incoming melee attacks.",
+        },
+        {
+            id = "block_bulwark_stance",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = { "block_basic_guard" },
+            cost = 1,
+            x = 120,
+            y = 120,
+            title = "Bulwark Stance",
+            description = "A steady stance that favors sustained defense.",
+        },
+        {
+            id = "block_iron_wall",
+            skill = "block",
+            effectId = "demo_noop",
+            requires = { "block_reactive_guard", "block_bulwark_stance" },
+            cost = 2,
+            x = 0,
+            y = 260,
+            title = "Iron Wall",
+            description = "Late-chain defensive mastery that branches from both lines.",
+        },
+    },
+}

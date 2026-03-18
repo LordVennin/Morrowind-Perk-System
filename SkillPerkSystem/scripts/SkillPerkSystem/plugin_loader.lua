@@ -5,7 +5,7 @@ local settings = require("scripts.SkillPerkSystem.settings")
 local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 local REQUIRED_PERK_MODULE_SCHEMA = "skillperks.vNext"
-local INTERNAL_PACK_NAME = "SkillPerkSystem"
+local FRAMEWORK_PACK_NAME = "SkillPerkSystem"
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
@@ -472,9 +472,13 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI)
         }
 
         for _, discoveredModule in ipairs(skillPlan.modules) do
-            if packName == INTERNAL_PACK_NAME then
-                logVerbose("pack manifest/module load attempt module='" .. tostring(discoveredModule.moduleName) .. "' source='" .. tostring(discoveredModule.source) .. "'")
-            end
+            logVerbose(
+                "pack manifest/module load attempt module='"
+                    .. tostring(discoveredModule.moduleName)
+                    .. "' source='"
+                    .. tostring(discoveredModule.source)
+                    .. "'"
+            )
 
             local loadedModule = tryRequire(packName, discoveredModule.moduleName, report)
             if loadedModule then
@@ -519,7 +523,7 @@ local function getExternalPackNames()
     local seen = {}
 
     for _, packName in ipairs(getDetectedPackNames()) do
-        if packName ~= INTERNAL_PACK_NAME then
+        if packName ~= FRAMEWORK_PACK_NAME then
             pushUnique(externalPacks, seen, packName)
         end
     end
@@ -557,12 +561,12 @@ local function loadInstalledPacks(pluginAPI)
 
     local report = {
         totalPacksDetected = #externalPacks,
-        totalPacksDiscovered = #externalPacks + 1,
+        totalPacksDiscovered = #externalPacks,
         externalPacksDetected = #externalPacks,
-        internalPacksDetected = 1,
-        internalPackName = INTERNAL_PACK_NAME,
+        internalPacksDetected = 0,
+        internalPackName = nil,
         internalStatus = {
-            discovered = 1,
+            discovered = 0,
             loaded = 0,
             failedOrSkipped = 0,
         },
@@ -574,10 +578,6 @@ local function loadInstalledPacks(pluginAPI)
         packs = {},
     }
     lastReport = report
-
-    local internalReport = loadPack(INTERNAL_PACK_NAME, skillIDs, effectIDs, pluginAPI)
-    internalReport.discoveryKind = "internal"
-    table.insert(report.packs, internalReport)
 
     if #externalPacks == 0 then
         log("no external content packs detected; skipping external plugin discovery")

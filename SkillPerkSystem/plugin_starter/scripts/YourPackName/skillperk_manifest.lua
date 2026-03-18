@@ -6,4 +6,14 @@
 --   - Put perk modules under scripts/<PackName>/perks/<skillId>/<file>.lua.
 --   - The framework discovers perk modules from the perks/ folder.
 
-return {}
+local function register(api)
+    api.assertCompatibleApiVersion(1)
+end
+
+return {
+    register = register,
+    modules = {
+        -- "scripts.YourPackName.perks.longblade.01_core",
+        -- "scripts.YourPackName.perks.longblade.10_bleed",
+    },
+}

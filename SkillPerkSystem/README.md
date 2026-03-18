@@ -170,7 +170,7 @@ scripts/<PackName>/perks/block/VenninBlock.lua
 scripts/<PackName>/perks/block/JohnsBlock.lua
 ```
 
-All files inside `scripts/<PackName>/perks/<skillId>/` are merged into that one skill's perk tree UI.
+All files listed in `skillperk_manifest.modules` are merged into that one skill's perk tree UI.
 
 ### Add-on pack contract
 
@@ -189,8 +189,10 @@ scripts/<PackName>/
 Manifest expectations:
 
 - Keep `scripts/<PackName>/skillperk_manifest.lua` present so the pack is detectable.
-- Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`; they are discovered automatically and merged deterministically by filename.
-- `manifest.register(api)` is still supported for legacy/manual registration packs, but folder-based module discovery is the official path.
+- Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`.
+- Add every perk module to `skillperk_manifest.lua` under `modules = { "scripts.<PackName>.perks.<skillId>.<module>" }`.
+- In some OpenMW Lua runtimes, folder scanning can be sandbox-limited; manifest `modules` is the reliable, required discovery path.
+- `manifest.register(api)` is still supported for legacy/manual registration packs, but `manifest.modules` is the official vNext path.
 
 ### Loader behavior (strict by design)
 

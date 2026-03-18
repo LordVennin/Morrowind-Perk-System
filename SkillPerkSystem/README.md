@@ -190,7 +190,8 @@ Manifest expectations:
 
 - Keep `scripts/<PackName>/skillperk_manifest.lua` present so the pack is detectable.
 - Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`; they are discovered automatically and merged deterministically by filename.
-- `manifest.register(api)` is still supported for legacy/manual registration packs, but folder-based module discovery is the official path.
+- If your runtime/content setup does not expose the pack via loader discovery, register modules from `skillperk_manifest.lua` via `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)` (see `plugin_starter` template).
+- Load order matters: enable `SkillPerkSystem.omwscripts` first, then `SkillPerkSystem_BasePack.omwscripts`, then your add-on pack `.omwscripts`.
 
 ### Loader behavior (strict by design)
 

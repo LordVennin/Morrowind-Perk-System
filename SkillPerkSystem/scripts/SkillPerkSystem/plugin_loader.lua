@@ -107,6 +107,30 @@ local function getDetectedPackNames()
     return packs
 end
 
+local function getPackNamesFromManifestPaths()
+    local packs = {}
+    local seen = {}
+
+    if type(vfs) ~= "table" or type(vfs.pathsWithPrefix) ~= "function" then
+        return packs
+    end
+
+    for path in vfs.pathsWithPrefix("scripts/") do
+        if type(path) == "string" then
+            local normalizedPath = path:gsub("\\", "/")
+            local packName = normalizedPath:match("^scripts/([^/]+)/skillperk_manifest%.lua$")
+            if type(packName) == "string" and packName ~= "" then
+                pushUnique(packs, seen, packName)
+            end
+        end
+    end
+
+    table.sort(packs, function(left, right)
+        return left < right
+    end)
+    return packs
+end
+
 local function getRecordIDs(records)
     local ids = {}
     local seen = {}
@@ -403,6 +427,11 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
         return
     end
 
+    if manifestModule.selfManaged == true then
+        packReport.selfManaged = true
+        logVerbose("manifest self-managed registration enabled for pack='" .. tostring(packName) .. "'")
+    end
+
     if type(manifestModule.register) == "function" then
         local sourceAwareAPI = buildSourceAwarePluginAPI(pluginAPI, manifestPath)
         local ok, err = pcall(manifestModule.register, sourceAwareAPI)
@@ -425,6 +454,11 @@ local function runManifest(packName, manifestModule, pluginAPI, manifestPath, pa
             end
         end
     end
+end
+
+local function manifestOwnsRegistration(packReport)
+    local manifest = type(packReport) == "table" and packReport.manifest or nil
+    return type(manifest) == "table" and manifest.registerAttempted == true and manifest.registerSuccess == true
 end
 
 local function finalizePackStatus(packReport)
@@ -472,6 +506,7 @@ local function loadPack(packName, skillIDs, effectIDs, pluginAPI, options)
         internalIndexModules = 0,
         status = "unknown",
         reason = nil,
+        selfManaged = false,
     }
 
     local loadedManifest, manifestModule = tryRequire(packName, report.manifest.path, report)
@@ -596,9 +631,25 @@ local function getExternalPackNames()
     local externalPacks = {}
     local seen = {}
 
-    for _, packName in ipairs(getDetectedPackNames()) do
+    local detectedPackNames = getDetectedPackNames()
+    for _, packName in ipairs(detectedPackNames) do
         if packName ~= INTERNAL_PACK_NAME then
             pushUnique(externalPacks, seen, packName)
+        end
+    end
+
+    if #externalPacks == 0 then
+        local manifestDetectedPacks = getPackNamesFromManifestPaths()
+        for _, packName in ipairs(manifestDetectedPacks) do
+            if packName ~= INTERNAL_PACK_NAME then
+                pushUnique(externalPacks, seen, packName)
+            end
+        end
+
+        if #externalPacks > 0 then
+            log(
+                "content-file based external discovery found no external packs; falling back to manifest-path discovery"
+            )
         end
     end
 
@@ -785,11 +836,16 @@ local function preloadPerkModules(pluginAPI)
         internalModulesDiscovered = 0,
         internalModulesLoaded = 0,
         internalModulesFailed = 0,
+        bundledModulesDiscovered = 0,
+        bundledModulesLoaded = 0,
+        bundledModulesFailed = 0,
         externalModulesDiscovered = 0,
         externalModulesLoaded = 0,
         externalModulesFailed = 0,
         internalRegisteredPerks = 0,
         internalRegisteredNodes = 0,
+        bundledRegisteredPerks = 0,
+        bundledRegisteredNodes = 0,
         externalRegisteredPerks = 0,
         externalRegisteredNodes = 0,
         registeredPerks = 0,
@@ -801,9 +857,16 @@ local function preloadPerkModules(pluginAPI)
 
     for _, packReport in ipairs(validationReport.packs or {}) do
         local isInternalPack = packReport.discoveryKind == "internal"
-        if not isInternalPack then
+        local isBundledPack = packReport.discoveryKind == "bundled"
+        if not isInternalPack and not isBundledPack then
             report.packsScanned = report.packsScanned + 1
         end
+
+        if packReport.selfManaged == true then
+            logVerbose("skipping preload auto-registration for self-managed pack='" .. tostring(packReport.packName) .. "'")
+            goto continue_pack
+        end
+
         local seen = {}
         local discoveredModules = {}
 
@@ -839,6 +902,8 @@ local function preloadPerkModules(pluginAPI)
             report.modulesDiscovered = report.modulesDiscovered + 1
             if isInternalPack then
                 report.internalModulesDiscovered = report.internalModulesDiscovered + 1
+            elseif isBundledPack then
+                report.bundledModulesDiscovered = report.bundledModulesDiscovered + 1
             else
                 report.externalModulesDiscovered = report.externalModulesDiscovered + 1
             end
@@ -849,7 +914,21 @@ local function preloadPerkModules(pluginAPI)
                 perks = 0,
                 nodes = 0,
             }
-            if moduleInfo.attempt.success then
+            if moduleInfo.attempt.success and manifestOwnsRegistration(packReport) then
+                registrationResult = {
+                    registered = true,
+                    skipped = false,
+                    perks = 0,
+                    nodes = 0,
+                }
+                logVerbose(
+                    "preload registration skipped (manifest.register already executed) pack='"
+                        .. tostring(packReport.packName)
+                        .. "' module='"
+                        .. tostring(moduleInfo.moduleName)
+                        .. "'"
+                )
+            elseif moduleInfo.attempt.success then
                 local ok, moduleData = pcall(require, moduleInfo.moduleName)
                 local skillFolderPath =
                     "scripts/" .. tostring(packReport.packName) .. "/perks/" .. tostring(moduleInfo.skillID)
@@ -871,6 +950,8 @@ local function preloadPerkModules(pluginAPI)
                 skillSummary.loaded = skillSummary.loaded + 1
                 if isInternalPack then
                     report.internalModulesLoaded = report.internalModulesLoaded + 1
+                elseif isBundledPack then
+                    report.bundledModulesLoaded = report.bundledModulesLoaded + 1
                 else
                     report.externalModulesLoaded = report.externalModulesLoaded + 1
                 end
@@ -879,6 +960,8 @@ local function preloadPerkModules(pluginAPI)
                 skillSummary.failed = skillSummary.failed + 1
                 if isInternalPack then
                     report.internalModulesFailed = report.internalModulesFailed + 1
+                elseif isBundledPack then
+                    report.bundledModulesFailed = report.bundledModulesFailed + 1
                 else
                     report.externalModulesFailed = report.externalModulesFailed + 1
                 end
@@ -890,6 +973,9 @@ local function preloadPerkModules(pluginAPI)
             if isInternalPack then
                 report.internalRegisteredPerks = report.internalRegisteredPerks + (registrationResult.perks or 0)
                 report.internalRegisteredNodes = report.internalRegisteredNodes + (registrationResult.nodes or 0)
+            elseif isBundledPack then
+                report.bundledRegisteredPerks = report.bundledRegisteredPerks + (registrationResult.perks or 0)
+                report.bundledRegisteredNodes = report.bundledRegisteredNodes + (registrationResult.nodes or 0)
             else
                 report.externalRegisteredPerks = report.externalRegisteredPerks + (registrationResult.perks or 0)
                 report.externalRegisteredNodes = report.externalRegisteredNodes + (registrationResult.nodes or 0)
@@ -936,13 +1022,16 @@ local function preloadPerkModules(pluginAPI)
                     .. tostring(skillSummary.nodes)
             )
         end
+
+        ::continue_pack::
     end
 
     report.modulesLoaded = math.min(report.modulesLoaded, report.modulesDiscovered)
     report.internalModulesLoaded = math.min(report.internalModulesLoaded, report.internalModulesDiscovered)
+    report.bundledModulesLoaded = math.min(report.bundledModulesLoaded, report.bundledModulesDiscovered)
     report.externalModulesLoaded = math.min(report.externalModulesLoaded, report.externalModulesDiscovered)
-    report.registeredPerks = report.internalRegisteredPerks + report.externalRegisteredPerks
-    report.registeredNodes = report.internalRegisteredNodes + report.externalRegisteredNodes
+    report.registeredPerks = report.internalRegisteredPerks + report.bundledRegisteredPerks + report.externalRegisteredPerks
+    report.registeredNodes = report.internalRegisteredNodes + report.bundledRegisteredNodes + report.externalRegisteredNodes
 
     local summary =
         "preload summary: internal_modules_discovered="
@@ -951,6 +1040,12 @@ local function preloadPerkModules(pluginAPI)
         .. tostring(report.internalModulesLoaded)
         .. " internal_modules_failed="
         .. tostring(report.internalModulesFailed)
+        .. " bundled_modules_discovered="
+        .. tostring(report.bundledModulesDiscovered)
+        .. " bundled_modules_loaded="
+        .. tostring(report.bundledModulesLoaded)
+        .. " bundled_modules_failed="
+        .. tostring(report.bundledModulesFailed)
         .. " external_modules_discovered="
         .. tostring(report.externalModulesDiscovered)
         .. " external_modules_loaded="

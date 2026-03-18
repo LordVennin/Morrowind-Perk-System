@@ -51,7 +51,7 @@ return {
 }
 ```
 
-Pack manifests call `api.registerPerkModule(require(moduleName), "<skillId>")` to register both perk and node data from the same module.
+The loader auto-discovers modules in each `perks/<skillId>/` folder once the pack manifest exists. `manifest.register(api)` is still supported for legacy/manual registration packs.
 
 Duplicate registration policy is controlled by `ALLOW_DUPLICATE_REGISTRATION_OVERRIDE` in `scripts/SkillPerkSystem/settings.lua`:
 

@@ -89,7 +89,7 @@ scripts/<PackName>/
 Expected loader behavior:
 
 - Keep `skillperk_manifest.lua` present so the pack is detected.
-- Place perk modules under `perks/<skillId>/` and the framework registers them automatically.
+- Place perk modules under `perks/<skillId>/` and register them from `bootstrap.lua`.
 - `manifest.register(api)` remains available for legacy/manual registration packs.
 
 ## Multiple packs targeting the same skill

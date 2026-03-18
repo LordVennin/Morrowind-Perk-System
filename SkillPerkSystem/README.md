@@ -124,7 +124,7 @@ Registration validation note: `registerPerk` requires `skill` to match a valid `
 
 ## Plugin validation report
 
-At startup, plugin discovery now emits a compact validator summary:
+At startup, the framework emits a compact loader summary:
 
 ```
 [SkillPerkSystem] plugin validation summary: packs=<detected> loaded=<success> failed_or_skipped=<failures> strict_validation_failures=<validation errors>
@@ -188,8 +188,8 @@ scripts/<PackName>/
 Manifest expectations:
 
 - Keep `scripts/<PackName>/skillperk_manifest.lua` present so the pack is detectable.
-- Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`; they are discovered automatically and merged deterministically by filename.
-- If your runtime/content setup does not expose the pack via loader discovery, register modules from `skillperk_manifest.lua` via `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)` (see `plugin_starter` template).
+- Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`.
+- Register modules explicitly from your pack bootstrap script using `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)` (see `plugin_starter` template).
 - Load order matters: enable `SkillPerkSystem.omwscripts` first, then add-on pack `.omwscripts` entries.
 
 Concrete explicit-bootstrap addon example:
@@ -370,7 +370,7 @@ The framework uses a perks-only schema where each perk module can include both p
 
 - Canonical module location: `scripts/<PackName>/perks/<skillId>/<file>.lua`
 - Module contract: return one table with perk fields (`id`, `skill`, `effectId`, `cost`, `requires`/`requirements`) plus node fields (`x`, `y`, `title`, `description`) or a nested `node` table.
-- Register modules by placing them under `scripts/<PackName>/perks/<skillId>/`; loader discovery handles registration automatically.
+- Register modules from your pack bootstrap script; placing files in `perks/<skillId>/` alone does not auto-register them.
 - See `scripts/SkillPerkSystem/perks/README.md` for schema details.
 
 ## Migration note (modular installation model)

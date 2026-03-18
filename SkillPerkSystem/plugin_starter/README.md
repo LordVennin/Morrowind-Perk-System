@@ -10,6 +10,7 @@ SkillPerkSystem/plugin_starter/
   YourPackName.omwscripts
   scripts/
     YourPackName/
+      bootstrap.lua
       skillperk_manifest.lua
       perks/
         longblade/
@@ -24,16 +25,17 @@ Copy `scripts/YourPackName/` into your mod, then rename `YourPackName` and sampl
 Also copy `YourPackName.omwscripts`, rename it to your pack name, and keep only:
 
 ```text
-PLAYER:scripts/<YourPackName>/skillperk_manifest.lua
+PLAYER:scripts/<YourPackName>/bootstrap.lua
 ```
 
-## Manifest pattern (official)
+## Bootstrap + manifest pattern (official)
 
 ```lua
-return {}
+-- scripts/<YourPackName>/skillperk_manifest.lua
+return { selfManaged = true }
 ```
 
-Perk modules are discovered automatically from `scripts/<PackName>/perks/<skillId>/` and loaded in alphabetical filename order.
+`bootstrap.lua` explicitly registers perk modules through `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)`.
 
 ## Unified perk module pattern
 
@@ -61,13 +63,11 @@ return {
 1. Place your pack folder (`scripts/<YourPackName>/`) in an OpenMW data path.
 2. Place your pack content file (`<YourPackName>.omwscripts`) in an OpenMW data path.
 3. Enable your `.omwscripts` entry **after** the framework.
-4. If your pack depends on base trees/content, enable it **after** the base pack too.
 
 Recommended order:
 
 1. `content=SkillPerkSystem.omwscripts` (framework)
-2. `content=SkillPerkSystem_BasePack.omwscripts` (bundled base trees, optional/recommended)
-3. `content=<YourPackName>.omwscripts` (your self-contained addon pack)
+2. `content=<YourPackName>.omwscripts` (your self-contained addon pack)
 
 That order keeps framework initialization first so addon packs can register after the core runtime.
 
@@ -78,6 +78,7 @@ Your pack should provide:
 ```text
 <YourPackName>.omwscripts
 scripts/<PackName>/
+  bootstrap.lua
   skillperk_manifest.lua
   perks/
     <skillId>/

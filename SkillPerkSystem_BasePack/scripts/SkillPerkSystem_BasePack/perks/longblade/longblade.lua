@@ -1,13 +1,5 @@
-local settings = require("scripts.SkillPerkSystem.settings")
-
-local samplePackEnabled = settings.ENABLE_SAMPLE_PACK
-if samplePackEnabled == nil then
-    samplePackEnabled = settings.ENABLE_DEMO_TREE_PERKS
-end
-
 return {
     schema = "skillperks.vNext",
-    enabled = samplePackEnabled ~= false,
     perks = {
         {
             id = "longblade_demo_root",

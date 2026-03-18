@@ -21,7 +21,8 @@ content=SkillPerkSystem.omwscripts
 ### Content files and load order
 
 - `content=SkillPerkSystem.omwscripts` is the framework runtime (required).
-- `content=SkillPerkSystem_BasePack.omwscripts` is the bundled base trees pack (Long Blade + Block) and is optional but recommended. Load it **after** the framework.
+- Bundled/internal base trees (Long Blade + Block) are loaded by the framework from the internal module index (`scripts/SkillPerkSystem/perks/internal_module_index.lua`).
+- `content=SkillPerkSystem_BasePack.omwscripts` exists as an optional standalone base-pack example and can be enabled separately if desired.
 - External add-on packs each ship their own content file: `content=<PackName>.omwscripts`. Load these after the framework (and after the base pack if enabled).
 
 ## Console commands
@@ -353,15 +354,24 @@ The framework uses a perks-only schema where each perk module can include both p
 
 ### Bundled base pack layout (Long Blade + Block)
 
-Long Blade and Block demo perks are bundled in a separate base content pack and loaded from:
+Long Blade and Block demo perks are bundled internally and indexed by:
 
-- `scripts/SkillPerkSystem_BasePack/perks/longblade/longblade.lua`
-- `scripts/SkillPerkSystem_BasePack/perks/block/block.lua`
+- `scripts/SkillPerkSystem/perks/internal_module_index.lua`
 
-The base pack manifest is `scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua` and registers modules through the same add-on API flow used by external packs.
+The default indexed modules are:
+
+- `scripts/SkillPerkSystem/perks/longblade/longblade.lua`
+- `scripts/SkillPerkSystem/perks/block/block.lua`
+
+An optional standalone pack variant is also provided at:
+
+- `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/longblade/longblade.lua`
+- `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/block/block.lua`
+
+The standalone pack manifest is `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua` and registers modules through the same add-on API flow used by external packs.
 
 ## Migration note (modular installation model)
 
-- `scripts/SkillPerkSystem/perks/internal_module_index.lua` is deprecated and should no longer be used as a primary/default registration mechanism.
-- Bundled trees are now delivered via `content=SkillPerkSystem_BasePack.omwscripts` (base pack content file), not via internal index wiring.
+- `scripts/SkillPerkSystem/perks/internal_module_index.lua` remains the primary/default registration mechanism for bundled internal demo trees.
+- `content=SkillPerkSystem_BasePack.omwscripts` is optional and provides the same bundled trees in standalone pack form.
 - External pack installation is now: copy pack folder under `scripts/<PackName>/` and enable that pack's `.omwscripts` content file.

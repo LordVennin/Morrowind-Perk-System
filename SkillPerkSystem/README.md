@@ -21,9 +21,9 @@ content=SkillPerkSystem.omwscripts
 ### Content files and load order
 
 - `content=SkillPerkSystem.omwscripts` is the framework runtime (required).
-- Bundled/internal base trees (Long Blade + Block) are loaded by the framework from the internal module index (`scripts/SkillPerkSystem/perks/internal_module_index.lua`).
-- `content=SkillPerkSystem_BasePack.omwscripts` exists as an optional standalone base-pack example and can be enabled separately if desired.
-- External add-on packs each ship their own content file: `content=<PackName>.omwscripts`. Load these after the framework (and after the base pack if enabled).
+- `content=SkillPerkSystem_BasePack.omwscripts` is the bundled default perk pack and should be enabled after the framework.
+- External add-on packs each ship their own content file: `content=<PackName>.omwscripts`. Load these after the framework and after the base pack.
+- The framework no longer auto-loads internal demo trees; official perk content now comes from content packs via `scripts/<PackName>/skillperk_manifest.lua`.
 
 ## Console commands
 
@@ -111,6 +111,18 @@ interfaces.SkillPerkSystem.registerPerk({
 Registration validation note: `registerPerk` requires `skill` to match a valid `openmw.core.stats.Skill.records` ID and raises an error that includes both the perk ID and invalid skill ID when it does not. The optional `cost` field must be a positive integer.
 
 
+
+### Core vs content-pack boundary
+
+- `SkillPerkSystem` (core framework) provides runtime systems, validation, registry state, and content-pack discovery/registration behavior.
+- `SkillPerkSystem_BasePack` (bundled content pack) provides the default perk trees and follows the same content-pack contract as third-party addons.
+- Addon packs should mirror the base-pack structure and must not require edits to core files or shared indexes.
+
+### Migration note
+
+- **Deprecated:** relying on `scripts/SkillPerkSystem/perks/internal_module_index.lua` for shipping bundled gameplay trees in core.
+- **Official path:** ship perks in a pack folder with `scripts/<PackName>/skillperk_manifest.lua` and `scripts/<PackName>/perks/<skillId>/<module>.lua`, then enable `content=<PackName>.omwscripts`.
+
 ## Plugin validation report
 
 At startup, plugin discovery now emits a compact validator summary:
@@ -174,22 +186,11 @@ scripts/<PackName>/
     <effectId>.lua
 ```
 
-Expected manifest call pattern:
+Manifest expectations:
 
-```lua
-local api = require("scripts.SkillPerkSystem.plugin_api")
-
-local PERK_MODULES = {
-  "scripts.MyPack.perks.longblade.01_core",
-  "scripts.MyPack.perks.longblade.10_finishers",
-}
-
-for _, moduleName in ipairs(PERK_MODULES) do
-  api.registerPerkModule(require(moduleName), "longblade")
-end
-```
-
-`api.registerPerkModule` is the canonical registration path for merged perk + node modules.
+- Keep `scripts/<PackName>/skillperk_manifest.lua` present so the pack is detectable.
+- Put perk modules under `scripts/<PackName>/perks/<skillId>/<module>.lua`; they are discovered automatically and merged deterministically by filename.
+- `manifest.register(api)` is still supported for legacy/manual registration packs, but folder-based module discovery is the official path.
 
 ### Loader behavior (strict by design)
 
@@ -280,20 +281,12 @@ Uniqueness policy is controlled by `ALLOW_DUPLICATE_REGISTRATION_OVERRIDE` in `s
 
 Recommended practice: keep perk IDs globally unique (for example `<pack>_<skill>_<name>`) to avoid accidental overrides.
 
-### Copy/paste examples (folder-based skill modules)
+### Copy/paste example (folder-based skill module)
 
-Manifest module list:
+Minimal manifest (detection only):
 
 ```lua
-local PERK_MODULES = {
-  { name = "scripts.MyPack.perks.longblade.01_core", skill = "longblade" },
-  { name = "scripts.MyPack.perks.longblade.20_finishers", skill = "longblade" },
-  { name = "scripts.MyPack.perks.block.01_core", skill = "block" },
-}
-
-for _, module in ipairs(PERK_MODULES) do
-  api.registerPerkModule(require(module.name), module.skill)
-end
+return {}
 ```
 
 Single module file:
@@ -349,29 +342,20 @@ The framework uses a perks-only schema where each perk module can include both p
 
 - Canonical module location: `scripts/<PackName>/perks/<skillId>/<file>.lua`
 - Module contract: return one table with perk fields (`id`, `skill`, `effectId`, `cost`, `requires`/`requirements`) plus node fields (`x`, `y`, `title`, `description`) or a nested `node` table.
-- Register modules with `api.registerPerkModule(require(moduleName), "<skillId>")`.
+- Register modules by placing them under `scripts/<PackName>/perks/<skillId>/`; loader discovery handles registration automatically.
 - See `scripts/SkillPerkSystem/perks/README.md` for schema details.
 
 ### Bundled base pack layout (Long Blade + Block)
 
-Long Blade and Block demo perks are bundled internally and indexed by:
-
-- `scripts/SkillPerkSystem/perks/internal_module_index.lua`
-
-The default indexed modules are:
-
-- `scripts/SkillPerkSystem/perks/longblade/longblade.lua`
-- `scripts/SkillPerkSystem/perks/block/block.lua`
-
-An optional standalone pack variant is also provided at:
+Bundled default trees now live in the standalone pack:
 
 - `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/longblade/longblade.lua`
 - `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/perks/block/block.lua`
 
-The standalone pack manifest is `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua` and registers modules through the same add-on API flow used by external packs.
+They are loaded through `SkillPerkSystem_BasePack/scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua`, which follows the same manifest + `perks/<skillId>/` folder model as addon packs.
 
 ## Migration note (modular installation model)
 
-- `scripts/SkillPerkSystem/perks/internal_module_index.lua` remains the primary/default registration mechanism for bundled internal demo trees.
-- `content=SkillPerkSystem_BasePack.omwscripts` is optional and provides the same bundled trees in standalone pack form.
-- External pack installation is now: copy pack folder under `scripts/<PackName>/` and enable that pack's `.omwscripts` content file.
+- Core no longer relies on `scripts/SkillPerkSystem/perks/internal_module_index.lua` to ship default perk trees.
+- Enable `content=SkillPerkSystem_BasePack.omwscripts` to get bundled defaults.
+- External packs should ship `scripts/<PackName>/skillperk_manifest.lua` plus `scripts/<PackName>/perks/<skillId>/<module>.lua` and be enabled via their own `.omwscripts` file.

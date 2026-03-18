@@ -1,40 +1,11 @@
-local interfaces = require("openmw.interfaces")
-
-local PERK_MODULES = {
-    "scripts.SkillPerkSystem_BasePack.perks.block.block",
-    "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade",
-}
-
-local isRegistered = false
-
-local function tryRegisterWithCore()
-    if isRegistered then
-        return true
-    end
-
-    local api = interfaces.SkillPerkSystem
-    if type(api) ~= "table" or type(api.registerPerkModule) ~= "function" then
-        return false
-    end
-
-    if type(api.assertCompatibleApiVersion) == "function" then
-        api.assertCompatibleApiVersion(1)
-    end
-
-    for _, entry in ipairs(PERK_MODULES) do
-        api.registerPerkModule(require(entry.moduleName), entry.skillID)
-    end
-
-    isRegistered = true
-    return true
+local function register(api)
+    api.assertCompatibleApiVersion(1)
 end
 
-tryRegisterWithCore()
-
 return {
-    engineHandlers = {
-        onUpdate = function()
-            tryRegisterWithCore()
-        end,
+    register = register,
+    modules = {
+        "scripts.SkillPerkSystem_BasePack.perks.block.block",
+        "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade",
     },
 }

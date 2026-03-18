@@ -4,6 +4,6 @@
 -- Official vNext pattern:
 --   - Keep this manifest file present so the pack is detected.
 --   - Put perk modules under scripts/<PackName>/perks/<skillId>/<file>.lua.
---   - The framework discovers and registers those modules automatically.
+--   - The framework discovers perk modules from the perks/ folder.
 
 return {}

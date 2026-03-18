@@ -1,2 +1,2 @@
 # Starter content entry for a self-contained addon pack.
-PLAYER:scripts/YourPackName/skillperk_manifest.lua
+PLAYER:scripts/YourPackName/bootstrap.lua

@@ -10,6 +10,7 @@ SkillPerkSystem/plugin_starter/
   YourPackName.omwscripts
   scripts/
     YourPackName/
+      bootstrap.lua
       skillperk_manifest.lua
       perks/
         longblade/
@@ -24,16 +25,17 @@ Copy `scripts/YourPackName/` into your mod, then rename `YourPackName` and sampl
 Also copy `YourPackName.omwscripts`, rename it to your pack name, and keep only:
 
 ```text
-PLAYER:scripts/<YourPackName>/skillperk_manifest.lua
+PLAYER:scripts/<YourPackName>/bootstrap.lua
 ```
 
-## Manifest pattern (official)
+## Bootstrap + manifest pattern (official)
 
 ```lua
-return {}
+-- scripts/<YourPackName>/skillperk_manifest.lua
+return { selfManaged = true }
 ```
 
-Perk modules are discovered automatically from `scripts/<PackName>/perks/<skillId>/` and loaded in alphabetical filename order.
+`bootstrap.lua` explicitly registers perk modules through `openmw.interfaces.SkillPerkSystem.registerPerkModule(...)`.
 
 ## Unified perk module pattern
 
@@ -78,6 +80,7 @@ Your pack should provide:
 ```text
 <YourPackName>.omwscripts
 scripts/<PackName>/
+  bootstrap.lua
   skillperk_manifest.lua
   perks/
     <skillId>/

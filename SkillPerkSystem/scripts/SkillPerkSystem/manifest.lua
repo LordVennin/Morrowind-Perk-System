@@ -8,6 +8,8 @@ local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
 local SOURCE_MANIFEST = "scripts.SkillPerkSystem.manifest"
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 
+print("[" .. settings.MOD_NAME .. "] framework .omwscripts PLAYER manifest loaded")
+
 packRegistry.beginFramework()
 
 local function registerPerk(data, source)
@@ -143,6 +145,30 @@ local function getPerkIDsForSkill(skillID)
     return out
 end
 
+
+local function sortedInterfaceKeys(interfacesTable)
+    local keys = {}
+    for key, _ in pairs(interfacesTable or {}) do
+        table.insert(keys, tostring(key))
+    end
+    table.sort(keys)
+    return keys
+end
+
+local function logInterfaceExposureDiagnostics()
+    local interfaces = require("openmw.interfaces")
+    local expectedKey = settings.MOD_NAME
+    local exposed = type(interfaces[expectedKey]) == "table"
+    print("[" .. settings.MOD_NAME .. "] interface exposure check expected='" .. expectedKey .. "' visible=" .. tostring(exposed))
+
+    local keys = sortedInterfaceKeys(interfaces)
+    if #keys == 0 then
+        print("[" .. settings.MOD_NAME .. "] visible interfaces snapshot: <none>")
+    else
+        print("[" .. settings.MOD_NAME .. "] visible interfaces snapshot: " .. table.concat(keys, ", "))
+    end
+end
+
 local function getEffectCount()
     local effectCount = 0
     for _ in pairs(effectsRegistry.getEffects()) do
@@ -186,6 +212,8 @@ end
 
 validateMergedTreeGraph()
 buildStartupSummary()
+
+logInterfaceExposureDiagnostics()
 
 local loggedRuntimeRegistrySummary = false
 local validatedRuntimeRegistryGraph = false

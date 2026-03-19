@@ -39,6 +39,8 @@ local function tryRegister()
     return true
 end
 
+tryRegister()
+
 return {
     engineHandlers = {
         onUpdate = function()

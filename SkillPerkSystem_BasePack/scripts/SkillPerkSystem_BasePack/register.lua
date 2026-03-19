@@ -1,5 +1,3 @@
-local interfaces = require("openmw.interfaces")
-
 local PACK_NAME = "SkillPerkSystem_BasePack"
 local registered = false
 local waitingLogged = false
@@ -11,6 +9,7 @@ local function tryRegister()
         return true
     end
 
+    local interfaces = require("openmw.interfaces")
     local api = interfaces.SkillPerkSystem
     if type(api) ~= "table" then
         if not waitingLogged then

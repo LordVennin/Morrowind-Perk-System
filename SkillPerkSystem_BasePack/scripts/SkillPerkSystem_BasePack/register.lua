@@ -1,7 +1,7 @@
 local interfaces = require("openmw.interfaces")
 
 local api = interfaces.SkillPerkSystem
-if type(api) ~= "table" then
+if api == nil or type(api.registerPerk) ~= "function" or type(api.registerTreeNode) ~= "function" then
     local keys = {}
     for key, _ in pairs(interfaces) do
         table.insert(keys, tostring(key))
@@ -12,7 +12,7 @@ if type(api) ~= "table" then
     else
         print("[SkillPerkSystem_BasePack] visible interfaces snapshot: " .. table.concat(keys, ", "))
     end
-    error("[SkillPerkSystem_BasePack] interfaces.SkillPerkSystem unavailable", 2)
+    error("[SkillPerkSystem_BasePack] interfaces.SkillPerkSystem unavailable or missing required methods", 2)
 end
 
 api.assertCompatibleApiVersion(1)

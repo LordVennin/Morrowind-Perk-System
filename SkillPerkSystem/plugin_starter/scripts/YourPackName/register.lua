@@ -6,8 +6,8 @@ local PERK_MODULES = {
 }
 
 local api = interfaces.SkillPerkSystem
-if type(api) ~= "table" then
-    error("[YourPackName] interfaces.SkillPerkSystem unavailable", 2)
+if api == nil or type(api.registerPerk) ~= "function" or type(api.registerTreeNode) ~= "function" then
+    error("[YourPackName] interfaces.SkillPerkSystem unavailable or missing required methods", 2)
 end
 
 api.assertCompatibleApiVersion(1)

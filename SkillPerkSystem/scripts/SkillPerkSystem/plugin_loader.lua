@@ -1,102 +1,132 @@
 local settings = require("scripts.SkillPerkSystem.settings")
 
-local LOADER_TAG = "[SkillPerkSystem][plugin_loader] "
+local LOADER_TAG = "[SkillPerkSystem][pack_registry] "
 
-local hasLoaded = false
-local lastValidationReport = nil
-local hasPreloaded = false
-local lastPreloadReport = nil
+local state = {
+    packs = {},
+    packOrder = {},
+    frameworkStartLogged = false,
+}
 
 local function log(message)
     print(LOADER_TAG .. tostring(message))
 end
 
-local function buildEmptyValidationReport()
-    return {
-        totalPacksDetected = 0,
-        totalPacksDiscovered = 0,
-        externalPacksDetected = 0,
-        internalPacksDetected = 0,
-        bundledPacksDetected = 0,
-        internalPackName = nil,
-        bundledPackName = nil,
-        internalIndexPresent = false,
-        internalIndexModules = 0,
-        internalDemoContentExpected = false,
-        internalStatus = { discovered = 0, loaded = 0, failedOrSkipped = 0 },
-        bundledStatus = { discovered = 0, loaded = 0, failedOrSkipped = 0 },
-        externalStatus = { discovered = 0, loaded = 0, failedOrSkipped = 0 },
-        packs = {},
+local function inferPackName(source)
+    if type(source) ~= "string" then
+        return "unknown"
+    end
+
+    local packName = source:match("^scripts%.([^.]+)%.")
+    if packName ~= nil and packName ~= "" then
+        return packName
+    end
+
+    if source == "scripts.SkillPerkSystem.manifest" then
+        return settings.MOD_NAME
+    end
+
+    return "unknown"
+end
+
+local function ensurePack(packName)
+    local resolved = packName or "unknown"
+    local pack = state.packs[resolved]
+    if pack ~= nil then
+        return pack
+    end
+
+    pack = {
+        packName = resolved,
+        modules = 0,
+        perks = 0,
+        nodes = 0,
+        effects = 0,
+        pointSources = 0,
     }
+    state.packs[resolved] = pack
+    table.insert(state.packOrder, resolved)
+    return pack
 end
 
-local function buildEmptyPreloadReport()
-    return {
-        packsScanned = 0,
-        modulesDiscovered = 0,
-        modulesLoaded = 0,
-        modulesFailed = 0,
-        internalModulesDiscovered = 0,
-        internalModulesLoaded = 0,
-        internalModulesFailed = 0,
-        bundledModulesDiscovered = 0,
-        bundledModulesLoaded = 0,
-        bundledModulesFailed = 0,
-        externalModulesDiscovered = 0,
-        externalModulesLoaded = 0,
-        externalModulesFailed = 0,
-        internalRegisteredPerks = 0,
-        internalRegisteredNodes = 0,
-        bundledRegisteredPerks = 0,
-        bundledRegisteredNodes = 0,
-        externalRegisteredPerks = 0,
-        externalRegisteredNodes = 0,
-        registeredPerks = 0,
-        registeredNodes = 0,
-        perSkill = {},
-        durationMs = 0,
-    }
+local function beginFramework()
+    if state.frameworkStartLogged then
+        return
+    end
+
+    state.frameworkStartLogged = true
+    log("framework started in explicit content-pack registration mode")
 end
 
-local function loadInstalledPacks(_pluginAPI)
-    if hasLoaded then
-        return lastValidationReport
+local function beginPackRegistration(packName)
+    local pack = ensurePack(packName)
+    if pack.started then
+        return false
     end
 
-    hasLoaded = true
-    lastValidationReport = buildEmptyValidationReport()
-
-    log("explicit bootstrap mode enabled; inferred plugin discovery is disabled")
-    if settings.ENABLE_EXTERNAL_PLUGIN_SCANNING ~= false then
-        log("no third-party external content packs detected; skipping external plugin discovery")
-    else
-        log("external plugin discovery disabled by settings; using explicit bootstrap-only loading")
-    end
-
-    return lastValidationReport
+    pack.started = true
+    log("registering pack " .. tostring(pack.packName))
+    return true
 end
 
-local function preloadPerkModules(_pluginAPI)
-    if hasPreloaded then
-        return lastPreloadReport
+local function noteRegistration(kind, source, amount)
+    local pack = ensurePack(inferPackName(source))
+    local key = tostring(kind)
+    if pack[key] == nil then
+        pack[key] = 0
     end
+    pack[key] = pack[key] + (tonumber(amount) or 1)
+end
 
-    hasPreloaded = true
-    lastPreloadReport = buildEmptyPreloadReport()
-
-    log("timing unavailable in this runtime")
+local function completePackRegistration(packName)
+    local pack = ensurePack(packName)
     log(
-        "preload summary: internal_modules_discovered=0 internal_modules_loaded=0 internal_modules_failed=0 "
-            .. "bundled_modules_discovered=0 bundled_modules_loaded=0 bundled_modules_failed=0 "
-            .. "external_modules_discovered=0 external_modules_loaded=0 external_modules_failed=0 "
-            .. "external_packs_scanned=0 modules_discovered_total=0 modules_loaded_total=0 modules_failed_total=0 "
-            .. "registered_perks_total=0 registered_nodes_total=0"
+        "registered pack "
+            .. tostring(pack.packName)
+            .. " modules="
+            .. tostring(pack.modules)
+            .. " perks="
+            .. tostring(pack.perks)
+            .. " nodes="
+            .. tostring(pack.nodes)
+            .. " effects="
+            .. tostring(pack.effects)
     )
+end
 
-    return lastPreloadReport
+local function getSummary()
+    local summary = {
+        packs = {},
+        totals = {
+            packs = 0,
+            modules = 0,
+            perks = 0,
+            nodes = 0,
+            effects = 0,
+            pointSources = 0,
+        },
+    }
+
+    for _, packName in ipairs(state.packOrder) do
+        local pack = state.packs[packName]
+        if pack ~= nil then
+            table.insert(summary.packs, pack)
+            summary.totals.packs = summary.totals.packs + 1
+            summary.totals.modules = summary.totals.modules + (pack.modules or 0)
+            summary.totals.perks = summary.totals.perks + (pack.perks or 0)
+            summary.totals.nodes = summary.totals.nodes + (pack.nodes or 0)
+            summary.totals.effects = summary.totals.effects + (pack.effects or 0)
+            summary.totals.pointSources = summary.totals.pointSources + (pack.pointSources or 0)
+        end
+    end
+
+    return summary
 end
 
 return {
-    loadInstalledPacks = loadInstalledPacks,
-    preloadPerkModules = preloadPerkModules,
+    beginFramework = beginFramework,
+    beginPackRegistration = beginPackRegistration,
+    noteRegistration = noteRegistration,
+    completePackRegistration = completePackRegistration,
+    getSummary = getSummary,
 }

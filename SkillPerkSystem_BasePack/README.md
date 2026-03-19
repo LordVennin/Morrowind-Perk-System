@@ -6,7 +6,6 @@ Bundled default perk content pack for SkillPerkSystem.
 
 - Default Long Blade and Block perk modules under `scripts/SkillPerkSystem_BasePack/perks/`.
 - Bootstrap script at `scripts/SkillPerkSystem_BasePack/bootstrap.lua`.
-- Loader metadata manifest at `scripts/SkillPerkSystem_BasePack/skillperk_manifest.lua` (`selfManaged = true`).
 
 ## How it loads
 
@@ -23,7 +22,6 @@ Follow the same structure used here:
 <PackName>.omwscripts
 scripts/<PackName>/
   bootstrap.lua
-  skillperk_manifest.lua
   perks/
     <skillId>/
       <module>.lua

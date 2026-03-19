@@ -2,6 +2,7 @@ local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
+local packRegistry = require("scripts.SkillPerkSystem.plugin_loader")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local PLUGIN_API_VERSION = 1
@@ -106,6 +107,7 @@ local function registerPerk(data, source)
             2
         )
     end
+    packRegistry.noteRegistration("perks", sourceName, 1)
 end
 
 local function registerTreeNode(data, source)
@@ -163,6 +165,7 @@ local function registerTreeNode(data, source)
             2
         )
     end
+    packRegistry.noteRegistration("nodes", sourceName, 1)
 end
 
 local function buildRequirement(parentID)
@@ -257,7 +260,6 @@ local function registerPerkModule(data, source, expectedSkill)
     end
 
     local sourceName = normalizeSource(source)
-
     local function validatePerkModuleEntry(perk, index)
         local context = "registerPerkModule() source='" .. tostring(sourceName) .. "' perks[" .. tostring(index) .. "]"
         if type(perk.id) ~= "string" or perk.id == "" then
@@ -378,6 +380,7 @@ local function registerPerkModule(data, source, expectedSkill)
         end
     end
 
+    packRegistry.noteRegistration("modules", sourceName, 1)
     return { perks = registeredPerks, nodes = registeredNodes, skipped = false }
 end
 
@@ -387,6 +390,7 @@ local function registerEffect(data, source)
     end
     local sourceName = normalizeSource(source)
     effectsRegistry.registerEffect(data.id, data, sourceName)
+    packRegistry.noteRegistration("effects", sourceName, 1)
 end
 
 local function registerPointSource(sourceId, handlers, source)
@@ -399,6 +403,7 @@ local function registerPointSource(sourceId, handlers, source)
 
     local sourceName = normalizeSource(source)
     registryState.registerPointSource(sourceId, handlers, sourceName)
+    packRegistry.noteRegistration("pointSources", sourceName, 1)
 end
 
 return {

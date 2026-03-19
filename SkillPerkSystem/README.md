@@ -12,14 +12,14 @@ content=SkillPerkSystem.omwscripts
 
 ## Loading model (explicit only)
 
-SkillPerkSystem now follows the same explicit loading style as `example_Mod`:
+SkillPerkSystem intentionally mirrors `example_Mod`:
 
-1. `SkillPerkSystem.omwscripts` loads the framework runtime.
-2. Every perk pack provides its **own** `.omwscripts` file.
-3. That `.omwscripts` file loads the pack bootstrap script.
-4. The bootstrap waits for `interfaces.SkillPerkSystem`, then registers modules/perks/nodes/effects.
+1. `SkillPerkSystem.omwscripts` explicitly loads framework scripts.
+2. Every perk pack ships its own explicit `.omwscripts` file.
+3. The pack `.omwscripts` loads a PLAYER registration script.
+4. That PLAYER script directly registers modules through `interfaces.SkillPerkSystem`.
 
-There is **no folder scanning**, **no inferred plugin discovery**, and **no manifest-based auto-loading**.
+There is **no folder scanning**, **no inferred plugin discovery**, and **no manifest auto-loading**.
 
 ## Required load order
 
@@ -54,12 +54,32 @@ Core interface methods:
 
 ## Startup logging
 
-Framework logs reflect actual runtime registrations only, for example:
+Framework and pack logs are explicit about each stage:
 
-- framework started in explicit content-pack registration mode
-- registering pack SkillPerkSystem_BasePack
-- registered pack SkillPerkSystem_BasePack modules=2 perks=11 nodes=11 effects=0
-- startup registry summary: packs_registered=X modules=Y perks=Z nodes=W effects=V
+- framework `.omwscripts` manifest loaded
+- framework interface exposed
+- pack register script executed
+- pack found framework interface
+- module registrations
+- pack registration complete
+- startup registry summary
+
+Example successful startup pattern:
+
+```text
+[SkillPerkSystem] framework .omwscripts PLAYER manifest loaded
+[SkillPerkSystem][pack_registry] framework started in explicit content-pack registration mode
+[SkillPerkSystem] startup registry summary: packs_registered=0 modules=0 perks=0 nodes=0 effects=1
+[SkillPerkSystem] framework interface exposed as interfaces.SkillPerkSystem
+[SkillPerkSystem_BasePack] register.lua executed
+[SkillPerkSystem_BasePack] found interfaces.SkillPerkSystem
+[SkillPerkSystem][pack_registry] registering pack SkillPerkSystem_BasePack
+[SkillPerkSystem_BasePack] registered module block from scripts.SkillPerkSystem_BasePack.perks.block.block
+[SkillPerkSystem_BasePack] registered module longblade from scripts.SkillPerkSystem_BasePack.perks.longblade.longblade
+[SkillPerkSystem][pack_registry] registered pack SkillPerkSystem_BasePack modules=2 perks=11 nodes=11 effects=0
+[SkillPerkSystem_BasePack] pack registration complete
+[SkillPerkSystem] runtime registry summary: packs_registered=1 modules=2 perks=11 nodes=11 effects=1
+```
 
 ## Base pack
 
@@ -77,7 +97,7 @@ Minimal structure:
 ```text
 MyPack.omwscripts
 scripts/MyPack/
-  bootstrap.lua
+  register.lua
   perks/
     <skillId>/
       <module>.lua
@@ -86,80 +106,32 @@ scripts/MyPack/
 ### `MyPack.omwscripts`
 
 ```text
-PLAYER:scripts/MyPack/bootstrap.lua
+PLAYER:scripts/MyPack/register.lua
 ```
 
-### `scripts/MyPack/bootstrap.lua`
+### `scripts/MyPack/register.lua`
 
 ```lua
 local interfaces = require("openmw.interfaces")
 
 local PACK_NAME = "MyPack"
-local registered = false
+local api = interfaces.SkillPerkSystem
 
-local MODULES = {
-    { moduleName = "scripts.MyPack.perks.longblade.01_core", skillID = "longblade" },
-}
-
-local function tryRegister()
-    if registered then
-        return true
-    end
-
-    local api = interfaces.SkillPerkSystem
-    if type(api) ~= "table" or type(api.registerPerkModule) ~= "function" then
-        return false
-    end
-
-    api.assertCompatibleApiVersion(1)
-
-    if type(api.beginPackRegistration) == "function" then
-        api.beginPackRegistration(PACK_NAME)
-    end
-
-    for _, entry in ipairs(MODULES) do
-        api.registerPerkModule(require(entry.moduleName), entry.skillID, entry.moduleName)
-    end
-
-    if type(api.completePackRegistration) == "function" then
-        api.completePackRegistration(PACK_NAME)
-    end
-
-    registered = true
-    return true
+if type(api) ~= "table" then
+    error("[MyPack] interfaces.SkillPerkSystem unavailable", 2)
 end
 
-tryRegister()
+api.assertCompatibleApiVersion(1)
+api.beginPackRegistration(PACK_NAME)
 
-return {
-    engineHandlers = {
-        onUpdate = function()
-            tryRegister()
-        end,
-    },
-}
+api.registerPerkModule(require("scripts.MyPack.perks.longblade.01_core"), "longblade", "scripts.MyPack.perks.longblade.01_core")
+
+api.completePackRegistration(PACK_NAME)
 ```
 
-### `scripts/MyPack/perks/longblade/01_core.lua`
+### Why this matches `example_Mod`
 
-```lua
-return {
-    schema = "skillperks.vNext",
-    perks = {
-        {
-            id = "mypack_longblade_core",
-            skill = "longblade",
-            effectId = "mypack_bonus_damage",
-            requires = {},
-            cost = 1,
-            x = 0,
-            y = 0,
-            title = "Core Training",
-            description = "Starter node.",
-        },
-    },
-}
-```
+Like `ErnExamplePerkPack.omwscripts -> PLAYER:scripts/ErnExamplePerkPack/dummy.lua`, SkillPerkSystem packs now load via `.omwscripts -> PLAYER register script -> direct framework interface calls`.
 
 ## Point sources
 

@@ -10,7 +10,7 @@ SkillPerkSystem/plugin_starter/
   YourPackName.omwscripts
   scripts/
     YourPackName/
-      bootstrap.lua
+      register.lua
       perks/
         longblade/
           01_core.lua
@@ -19,16 +19,16 @@ SkillPerkSystem/plugin_starter/
 
 ## Registration flow
 
-1. `YourPackName.omwscripts` loads `scripts/YourPackName/bootstrap.lua`.
-2. Bootstrap waits for `interfaces.SkillPerkSystem`.
-3. Bootstrap calls `assertCompatibleApiVersion(1)`.
-4. Bootstrap registers each module through `registerPerkModule(module, expectedSkill, source)`.
-5. Bootstrap guards against double-registration with a `registered` flag.
+1. `YourPackName.omwscripts` loads `scripts/YourPackName/register.lua`.
+2. `register.lua` obtains `interfaces.SkillPerkSystem` in PLAYER context.
+3. `register.lua` calls `assertCompatibleApiVersion(1)`.
+4. `register.lua` wraps registration with `beginPackRegistration` / `completePackRegistration`.
+5. `register.lua` registers each module through `registerPerkModule(module, expectedSkill, source)`.
 
 ## Content file
 
 ```text
-PLAYER:scripts/YourPackName/bootstrap.lua
+PLAYER:scripts/YourPackName/register.lua
 ```
 
 ## Install order

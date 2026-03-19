@@ -1,1 +1,2 @@
-PLAYER:scripts/SkillPerkSystem_BasePack/bootstrap.lua
+# This file should be loaded AFTER SkillPerkSystem.omwscripts.
+PLAYER:scripts/SkillPerkSystem_BasePack/register.lua

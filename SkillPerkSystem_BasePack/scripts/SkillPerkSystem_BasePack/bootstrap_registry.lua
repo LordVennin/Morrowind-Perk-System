@@ -19,9 +19,16 @@ local function registerWithCoreInterface(api)
         api.assertCompatibleApiVersion(1)
     end
 
+    local totals = { modules = 0, perks = 0, nodes = 0 }
     for _, entry in ipairs(MODULES) do
-        api.registerPerkModule(entry.data, entry.skillID)
+        local result = api.registerPerkModule(entry.data, entry.skillID, entry.moduleName)
+        totals.modules = totals.modules + 1
+        if type(result) == "table" and result.skipped ~= true then
+            totals.perks = totals.perks + (result.perks or 0)
+            totals.nodes = totals.nodes + (result.nodes or 0)
+        end
     end
+    return totals
 end
 
 local function registerWithPluginAPI(pluginAPI, source)

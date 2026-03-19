@@ -4,10 +4,6 @@ return {
     MOD_NAME = MOD_NAME,
     MILESTONE_STEP = 25,
     DEBUG_LOGS = false,
-    -- Enables detailed plugin validation logs (per-module load attempts/failures).
-    PLUGIN_VALIDATION_VERBOSE = false,
-    -- Optional external content pack discovery. Internal pack modules always load from the internal index.
-    ENABLE_EXTERNAL_PLUGIN_SCANNING = true,
     -- Strict modular architecture guard:
     -- true  = startup fails loudly when no external perk modules are loaded.
     -- false = allow framework-only startup with an empty registry.
@@ -22,11 +18,6 @@ return {
     PERK_UI_RIGHT_PANE_WIDTH = 408,
     PERK_UI_SIDE_PADDING = 8,
     PERK_UI_GUTTER_WIDTH = 16,
-    -- Controls loading of bundled sample/demo perk content packs.
-    ENABLE_SAMPLE_PACK = true,
-    -- Backward-compatible alias for older config names.
-    -- If both are present, modules prioritize ENABLE_SAMPLE_PACK.
-    ENABLE_DEMO_TREE_PERKS = true,
     POINT_SOURCES = {
         levelUpRewards = {
             enabled = true,

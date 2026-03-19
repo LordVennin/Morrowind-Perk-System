@@ -1,9 +1,8 @@
 local interfaces = require("openmw.interfaces")
 
-local PACK_NAME = "YourPackName"
 local PERK_MODULES = {
-    { moduleName = "scripts.YourPackName.perks.longblade.01_core", skillID = "longblade" },
-    { moduleName = "scripts.YourPackName.perks.longblade.10_bleed", skillID = "longblade" },
+    { moduleName = "scripts.YourPackName.perks.longblade.01_core" },
+    { moduleName = "scripts.YourPackName.perks.longblade.10_bleed" },
 }
 
 local api = interfaces.SkillPerkSystem
@@ -12,12 +11,27 @@ if type(api) ~= "table" then
 end
 
 api.assertCompatibleApiVersion(1)
-api.beginPackRegistration(PACK_NAME)
-
 for _, entry in ipairs(PERK_MODULES) do
-    api.registerPerkModule(require(entry.moduleName), entry.skillID, entry.moduleName)
-end
+    local moduleData = require(entry.moduleName)
+    for _, perk in ipairs(moduleData.perks or {}) do
+        api.registerPerk({
+            id = perk.id,
+            skill = perk.skill,
+            effectId = perk.effectId,
+            cost = perk.cost,
+            requirements = perk.requirements or {},
+        }, entry.moduleName)
 
-api.completePackRegistration(PACK_NAME)
+        api.registerTreeNode({
+            id = perk.id,
+            skill = perk.skill,
+            x = perk.x,
+            y = perk.y,
+            requires = perk.requires or {},
+            title = perk.title,
+            description = perk.description,
+        }, entry.moduleName)
+    end
+end
 
 return {}

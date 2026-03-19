@@ -1,49 +1,43 @@
-local PACK_NAME = "SkillPerkSystem_BasePack"
-local registered = false
-local waitingLogged = false
+local interfaces = require("openmw.interfaces")
 
-print("[SkillPerkSystem_BasePack] register.lua loaded")
-
-local function tryRegister()
-    if registered then
-        return true
-    end
-
-    local interfaces = require("openmw.interfaces")
-    local api = interfaces.SkillPerkSystem
-    if type(api) ~= "table" then
-        if not waitingLogged then
-            waitingLogged = true
-            print("[SkillPerkSystem_BasePack] waiting for interfaces.SkillPerkSystem")
-        end
-        return false
-    end
-
-    print("[SkillPerkSystem_BasePack] interface found")
-    api.assertCompatibleApiVersion(1)
-    api.beginPackRegistration(PACK_NAME)
-
-    local blockSource = "scripts.SkillPerkSystem_BasePack.perks.block.block"
-    api.registerPerkModule(require(blockSource), "block", blockSource)
-    print("[SkillPerkSystem_BasePack] block registered")
-
-    local longbladeSource = "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade"
-    api.registerPerkModule(require(longbladeSource), "longblade", longbladeSource)
-    print("[SkillPerkSystem_BasePack] longblade registered")
-
-    api.completePackRegistration(PACK_NAME)
-    print("[SkillPerkSystem_BasePack] pack registration complete")
-
-    registered = true
-    return true
+local api = interfaces.SkillPerkSystem
+if type(api) ~= "table" then
+    error("[SkillPerkSystem_BasePack] interfaces.SkillPerkSystem unavailable", 2)
 end
 
-tryRegister()
+api.assertCompatibleApiVersion(1)
 
-return {
-    engineHandlers = {
-        onUpdate = function()
-            tryRegister()
-        end,
+local modules = {
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.block.block",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.block.block"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.longblade.longblade"),
     },
 }
+
+for _, entry in ipairs(modules) do
+    for _, perk in ipairs(entry.data.perks or {}) do
+        api.registerPerk({
+            id = perk.id,
+            skill = perk.skill,
+            effectId = perk.effectId,
+            cost = perk.cost,
+            requirements = perk.requirements or {},
+        }, entry.source)
+
+        api.registerTreeNode({
+            id = perk.id,
+            skill = perk.skill,
+            x = perk.x,
+            y = perk.y,
+            requires = perk.requires or {},
+            title = perk.title,
+            description = perk.description,
+        }, entry.source)
+    end
+end
+
+return {}

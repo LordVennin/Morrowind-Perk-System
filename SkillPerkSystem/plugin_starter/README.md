@@ -22,8 +22,7 @@ SkillPerkSystem/plugin_starter/
 1. `YourPackName.omwscripts` loads `scripts/YourPackName/register.lua`.
 2. `register.lua` obtains `interfaces.SkillPerkSystem` in PLAYER context.
 3. `register.lua` calls `assertCompatibleApiVersion(1)`.
-4. `register.lua` wraps registration with `beginPackRegistration` / `completePackRegistration`.
-5. `register.lua` registers each module through `registerPerkModule(module, expectedSkill, source)`.
+4. `register.lua` loads each perk module and registers data through `registerPerk` / `registerTreeNode`.
 
 ## Content file
 

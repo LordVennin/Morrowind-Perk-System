@@ -18,7 +18,7 @@ Bundled default perk content pack for SkillPerkSystem.
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 ```
 
-`register.lua` runs in PLAYER context and directly registers module content with `openmw.interfaces.SkillPerkSystem`, matching the `example_Mod` loading style.
+`register.lua` runs in PLAYER context and directly calls `openmw.interfaces.SkillPerkSystem.registerPerk` / `registerTreeNode`, matching the `example_Mod` direct registration style.
 
 ## Authoring guidance for addon packs
 

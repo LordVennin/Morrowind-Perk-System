@@ -17,7 +17,7 @@ SkillPerkSystem intentionally mirrors `example_Mod`:
 1. `SkillPerkSystem.omwscripts` explicitly loads framework scripts.
 2. Every perk pack ships its own explicit `.omwscripts` file.
 3. The pack `.omwscripts` loads a PLAYER registration script.
-4. That PLAYER script directly registers modules through `interfaces.SkillPerkSystem`.
+4. That PLAYER script directly registers perk/tree records through `interfaces.SkillPerkSystem`.
 
 There is **no folder scanning**, **no inferred plugin discovery**, and **no manifest auto-loading**.
 
@@ -43,8 +43,6 @@ Core interface methods:
 - `registerPerkModule(module, expectedSkill[, source])`
 - `registerEffect(data[, source])`
 - `registerPointSource(sourceId, handlers[, source])`
-- `beginPackRegistration(packName)`
-- `completePackRegistration(packName)`
 - `getRegistrationSummary()`
 - `getPerks()`
 - `getPerkIDs()`
@@ -61,7 +59,6 @@ Framework and pack logs are explicit about each stage:
 - pack register script executed
 - pack found framework interface
 - module registrations
-- pack registration complete
 - startup registry summary
 
 Example successful startup pattern:
@@ -122,11 +119,24 @@ if type(api) ~= "table" then
 end
 
 api.assertCompatibleApiVersion(1)
-api.beginPackRegistration(PACK_NAME)
 
-api.registerPerkModule(require("scripts.MyPack.perks.longblade.01_core"), "longblade", "scripts.MyPack.perks.longblade.01_core")
+api.registerPerk({
+    id = "mypack_longblade_core",
+    skill = "longblade",
+    effectId = "mypack_bonus_damage",
+    cost = 1,
+    requirements = {},
+}, "scripts.MyPack.perks.longblade.01_core")
 
-api.completePackRegistration(PACK_NAME)
+api.registerTreeNode({
+    id = "mypack_longblade_core",
+    skill = "longblade",
+    x = 0,
+    y = 0,
+    requires = {},
+    title = "Core Training",
+    description = "Starter node.",
+}, "scripts.MyPack.perks.longblade.01_core")
 ```
 
 ### Why this matches `example_Mod`

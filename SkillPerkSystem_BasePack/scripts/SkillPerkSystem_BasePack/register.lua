@@ -2,6 +2,16 @@ local interfaces = require("openmw.interfaces")
 
 local api = interfaces.SkillPerkSystem
 if type(api) ~= "table" then
+    local keys = {}
+    for key, _ in pairs(interfaces) do
+        table.insert(keys, tostring(key))
+    end
+    table.sort(keys)
+    if #keys == 0 then
+        print("[SkillPerkSystem_BasePack] visible interfaces snapshot: <none>")
+    else
+        print("[SkillPerkSystem_BasePack] visible interfaces snapshot: " .. table.concat(keys, ", "))
+    end
     error("[SkillPerkSystem_BasePack] interfaces.SkillPerkSystem unavailable", 2)
 end
 

@@ -189,6 +189,7 @@ end
 validateMergedTreeGraph()
 buildStartupSummary()
 
+print("[" .. settings.MOD_NAME .. "] framework interface table returned")
 print("[" .. settings.MOD_NAME .. "] framework interface exposed as interfaces." .. settings.MOD_NAME)
 
 local loggedRuntimeRegistrySummary = false

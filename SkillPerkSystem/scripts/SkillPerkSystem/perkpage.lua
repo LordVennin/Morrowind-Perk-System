@@ -119,12 +119,12 @@ local function refreshLayoutMetrics()
     uiScale = computeUiScale()
     SKILL_SELECTOR_WIDTH = 352
     SKILL_INDEX_WIDTH = 80
-    SKILL_SELECTOR_ROW_WIDTH = 560
 
     PERK_UI_LEFT_PANE_WIDTH = settings.PERK_UI_LEFT_PANE_WIDTH or 540
     PERK_UI_RIGHT_PANE_WIDTH = settings.PERK_UI_RIGHT_PANE_WIDTH or 408
     PERK_UI_SIDE_PADDING = settings.PERK_UI_SIDE_PADDING or 8
     PERK_UI_GUTTER_WIDTH = settings.PERK_UI_GUTTER_WIDTH or 16
+    SKILL_SELECTOR_ROW_WIDTH = (44 * 2) + SKILL_SELECTOR_WIDTH + SKILL_INDEX_WIDTH + (PERK_UI_SIDE_PADDING * 2) + 12
 
     PERK_UI_CONTENT_HEIGHT = 510
     PERK_UI_BOTTOM_ROW_HEIGHT = 32
@@ -134,7 +134,7 @@ local function refreshLayoutMetrics()
 
     TREE_VIEWPORT_WIDTH = PERK_UI_LEFT_PANE_WIDTH
     TREE_VIEWPORT_HEIGHT = PERK_UI_CONTENT_HEIGHT
-    TREE_INNER_VIEWPORT_WIDTH = TREE_VIEWPORT_WIDTH - 20
+    TREE_INNER_VIEWPORT_WIDTH = TREE_VIEWPORT_WIDTH - 4
     TREE_INNER_VIEWPORT_HEIGHT = TREE_VIEWPORT_HEIGHT - 42
     TREE_CANVAS_MARGIN = 140
     TREE_CONTENT_OFFSET_X = 240
@@ -852,6 +852,8 @@ local function buildPerkPane()
         return lines
     end
 
+    local detailWidth = math.max(220, PERK_UI_RIGHT_PANE_WIDTH - 8)
+    local detailHeaderWidth = math.min(detailWidth, 230)
     local perkDetail
     if selectedPerkID == nil then
         local detailRows = {
@@ -860,7 +862,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = v2(374, 32),
+                    size = v2(detailWidth, 32),
                 },
                 content = ui.content {
                     {
@@ -872,7 +874,7 @@ local function buildPerkPane()
                         template = interfaces.MWUI.templates.boxSolidThick,
                         props = {
                             autoSize = false,
-                            size = v2(230, 28),
+                            size = v2(detailHeaderWidth, 28),
                         },
                         content = ui.content {
                             {
@@ -881,7 +883,7 @@ local function buildPerkPane()
                                 props = {
                                     text = skillName,
                                     autoSize = false,
-                                    size = v2(230, 28),
+                                    size = v2(detailHeaderWidth, 28),
                                     textAlignH = ui.ALIGNMENT.Center,
                                     textAlignV = ui.ALIGNMENT.Center,
                                 },
@@ -906,7 +908,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = v2(374, 20),
+                    size = v2(detailWidth, 20),
                 },
                 content = ui.content {
                     {
@@ -934,7 +936,7 @@ local function buildPerkPane()
             props = {
                 horizontal = false,
                 autoSize = false,
-                size = v2(374, 360),
+                size = v2(detailWidth, 360),
             },
             content = ui.content(detailRows),
         }
@@ -949,7 +951,7 @@ local function buildPerkPane()
                 props = {
                     text = string.format("%s\nTab: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.tab, selectedPerk.cost, status),
                     autoSize = false,
-                    size = v2(374, 360),
+                    size = v2(detailWidth, 360),
                 },
             }
         else
@@ -963,7 +965,7 @@ local function buildPerkPane()
                 props = {
                     text = string.format("%s\nNode ID: %s\nRequires: %s\n\n%s", nodeTitle, selectedPerkID, nodeReqs, nodeDescription),
                     autoSize = false,
-                    size = v2(374, 360),
+                    size = v2(detailWidth, 360),
                 },
             }
         end

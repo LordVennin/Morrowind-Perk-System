@@ -33,6 +33,14 @@ local function getSkillIds()
     return out
 end
 
+local function getRegisteredTabIds()
+    local api = interfaces[MOD_NAME]
+    if api ~= nil and type(api.getTabIDs) == "function" then
+        return api.getTabIDs() or {}
+    end
+    return {}
+end
+
 local function skillBase(skillID)
     local accessor = types.NPC.stats.skills[skillID]
     if type(accessor) ~= "function" then
@@ -232,15 +240,11 @@ local function reconcileSaveState()
     local filteredActivePerks = {}
     local recomputedSpentBySkill = {}
 
-    for _, skillID in ipairs(getSkillIds()) do
-        recomputedSpentBySkill[skillID] = 0
-    end
-
     for _, perkID in ipairs(activePerks) do
         local perk = perks[perkID]
         if perk ~= nil then
             table.insert(filteredActivePerks, perkID)
-            recomputedSpentBySkill[perk.skill] = (recomputedSpentBySkill[perk.skill] or 0) + perk.cost
+            recomputedSpentBySkill[perk.tab] = (recomputedSpentBySkill[perk.tab] or 0) + perk.cost
         else
             print("[" .. MOD_NAME .. "] Dropping missing active perk from save: " .. tostring(perkID))
         end
@@ -250,8 +254,8 @@ local function reconcileSaveState()
     spentPointsBySkill = recomputedSpentBySkill
 
     local recomputedSpentTotal = 0
-    for _, skillID in ipairs(getSkillIds()) do
-        recomputedSpentTotal = recomputedSpentTotal + spentPointsBySkill[skillID]
+    for _, amount in pairs(spentPointsBySkill) do
+        recomputedSpentTotal = recomputedSpentTotal + amount
     end
 
     local totalAdded = pointsLedger.getTotalAdded()
@@ -302,7 +306,7 @@ local function addPerk(data)
     end
 
     table.insert(activePerks, data.perkID)
-    spentPointsBySkill[perk.skill] = spentPoints(perk.skill) + perk.cost
+    spentPointsBySkill[perk.tab] = spentPoints(perk.tab) + perk.cost
     effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
 end
 
@@ -319,7 +323,7 @@ local function removePerk(data)
     for i, id in ipairs(activePerks) do
         if id == data.perkID then
             table.remove(activePerks, i)
-            spentPointsBySkill[perk.skill] = math.max(0, spentPoints(perk.skill) - perk.cost)
+            spentPointsBySkill[perk.tab] = math.max(0, spentPoints(perk.tab) - perk.cost)
             pointsLedger.addPoints(perk.cost, "Perk removed", data.perkID)
             effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
             return
@@ -329,15 +333,15 @@ end
 
 local function printSkillMenu(filterSkill)
     print("--- Skill Perk Menu ---")
-    for _, skillID in ipairs(getSkillIds()) do
+    for _, skillID in ipairs(getRegisteredTabIds()) do
         if filterSkill == nil or filterSkill == "" or filterSkill == skillID then
-            local base = skillBase(skillID)
+            local base = type(types.NPC.stats.skills[skillID]) == "function" and skillBase(skillID) or -1
             local earned = earnedPoints(skillID)
             local spent = spentPoints(skillID)
             local available = availablePoints(skillID)
-            print(string.format("%s | skill=%d | milestones=%d | spent=%d | available=%d", skillID, base, earned, spent, available))
+            print(string.format("%s | actorSkill=%d | milestones=%d | spent=%d | available=%d", skillID, base, earned, spent, available))
 
-            local perkIds = interfaces[MOD_NAME].getPerkIDsForSkill(skillID)
+            local perkIds = interfaces[MOD_NAME].getPerkIDsForTab(skillID)
             table.sort(perkIds)
             for _, perkID in ipairs(perkIds) do
                 local owned = hasPerk(perkID) and "[owned]" or ""
@@ -357,7 +361,7 @@ local function respecAllPerks()
     for _, perkID in ipairs(activePerks) do
         local perk = perks[perkID]
         if perk ~= nil then
-            refundsBySkill[perk.skill] = (refundsBySkill[perk.skill] or 0) + perk.cost
+            refundsBySkill[perk.tab] = (refundsBySkill[perk.tab] or 0) + perk.cost
             effectsRegistry.onRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself })
             removedCount = removedCount + 1
         else
@@ -366,7 +370,7 @@ local function respecAllPerks()
     end
 
     activePerks = {}
-    for _, skillID in ipairs(getSkillIds()) do
+    for _, skillID in ipairs(getRegisteredTabIds()) do
         spentPointsBySkill[skillID] = 0
     end
 
@@ -380,7 +384,7 @@ local function respecAllPerks()
 
     print("[" .. MOD_NAME .. "] Respec complete: removed " .. removedCount .. " perks")
     print("[" .. MOD_NAME .. "] Points refunded by skill:")
-    for _, skillID in ipairs(getSkillIds()) do
+    for _, skillID in ipairs(getRegisteredTabIds()) do
         print(string.format("  %s: %d", skillID, refundsBySkill[skillID] or 0))
     end
 end
@@ -467,12 +471,7 @@ local function onUpdate(dt)
 end
 
 local function shouldShowUI()
-    for _, skillID in ipairs(getSkillIds()) do
-        if globalAvailablePoints() > 0 then
-            return true
-        end
-    end
-    return false
+    return globalAvailablePoints() > 0
 end
 
 local function UiModeChanged(data)
@@ -509,9 +508,11 @@ local function onLoad(data)
     if data == nil or data.pointsLedger == nil then
         local migratedEarned = 0
         local migratedSpent = 0
-        for _, skillID in ipairs(getSkillIds()) do
-            migratedEarned = migratedEarned + earnedPoints(skillID)
-            migratedSpent = migratedSpent + spentPoints(skillID)
+        for _, amount in pairs(earnedMilestonesBySkill) do
+            migratedEarned = migratedEarned + (tonumber(amount) or 0)
+        end
+        for _, amount in pairs(spentPointsBySkill) do
+            migratedSpent = migratedSpent + (tonumber(amount) or 0)
         end
         pointsLedger.importState({
             balance = math.max(0, migratedEarned - migratedSpent),
@@ -536,7 +537,7 @@ local function onLoad(data)
     print(string.format(
         "[%s] Loaded (skills=%d, activePerks=%d, totalAdded=%d, spent=%d, available=%d)",
         MOD_NAME,
-        #getSkillIds(),
+        #getRegisteredTabIds(),
         #activePerks,
         pointsLedger.getTotalAdded(),
         pointsLedger.getTotalSpent(),

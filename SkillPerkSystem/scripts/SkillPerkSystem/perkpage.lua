@@ -1,4 +1,3 @@
-local core = require("openmw.core")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
@@ -78,33 +77,25 @@ local TREE_CONTENT_OFFSET_Y = 140
 
 local buildLayout
 
-local function getSkillRecordByID(skillID)
-    local direct = core.stats.Skill.records[skillID]
-    if direct ~= nil then
-        return direct
-    end
-
-    for _, record in ipairs(core.stats.Skill.records) do
-        if record.id == skillID then
-            return record
-        end
-    end
-    return nil
-end
-
 local function getSkillIDs()
+    local modApi = interfaces[MOD_NAME]
     local out = {}
-    for _, record in ipairs(core.stats.Skill.records) do
-        table.insert(out, record.id)
+    if modApi ~= nil and type(modApi.getTabIDs) == "function" then
+        for _, tabID in ipairs(modApi.getTabIDs() or {}) do
+            table.insert(out, tabID)
+        end
     end
     table.sort(out)
     return out
 end
 
 local function getSkillLabel(skillID)
-    local record = getSkillRecordByID(skillID)
-    if record ~= nil and type(record.name) == "string" and record.name ~= "" then
-        return record.name
+    local modApi = interfaces[MOD_NAME]
+    if modApi ~= nil and type(modApi.getTabLabel) == "function" then
+        local label = modApi.getTabLabel(skillID)
+        if type(label) == "string" and label ~= "" then
+            return label
+        end
     end
     return tostring(skillID)
 end
@@ -177,6 +168,44 @@ local function clampTreePan(pan)
     pan.y = math.max(-600, math.min(600, pan.y))
 end
 
+local function updateTreePanBounds(skillID, treeNodes)
+    if skillID == nil or treeNodes == nil or #treeNodes == 0 then
+        return
+    end
+
+    local minX, maxX = treeNodes[1].x, treeNodes[1].x
+    local minY, maxY = treeNodes[1].y, treeNodes[1].y
+    for i = 2, #treeNodes do
+        local node = treeNodes[i]
+        minX = math.min(minX, node.x)
+        maxX = math.max(maxX, node.x)
+        minY = math.min(minY, node.y)
+        maxY = math.max(maxY, node.y)
+    end
+
+    local pan = getTreePan(skillID)
+    local halfViewportX = math.floor(TREE_INNER_VIEWPORT_WIDTH / 2)
+    local halfViewportY = math.floor(TREE_INNER_VIEWPORT_HEIGHT / 2)
+    local edgeSlackX = math.max(40, halfViewportX - TREE_CANVAS_MARGIN)
+    local edgeSlackY = math.max(40, halfViewportY - TREE_CANVAS_MARGIN)
+
+    local minPanX = minX - edgeSlackX
+    local maxPanX = maxX + edgeSlackX
+    local minPanY = -maxY - edgeSlackY
+    local maxPanY = -minY + edgeSlackY
+
+    if minPanX > maxPanX then
+        minPanX, maxPanX = maxPanX, minPanX
+    end
+    if minPanY > maxPanY then
+        minPanY, maxPanY = maxPanY, minPanY
+    end
+
+    pan.x = math.max(minPanX, math.min(maxPanX, pan.x))
+    pan.y = math.max(minPanY, math.min(maxPanY, pan.y))
+    clampTreePan(pan)
+end
+
 local function findPerkIndexByID(perkID)
     for i, id in ipairs(filteredPerkIDs) do
         if id == perkID then
@@ -205,7 +234,9 @@ local function updateFilteredPerks()
         return
     end
 
-    if type(modApi.getPerkIDsForSkill) == "function" then
+    if type(modApi.getPerkIDsForTab) == "function" then
+        filteredPerkIDs = modApi.getPerkIDsForTab(selectedSkillID) or {}
+    elseif type(modApi.getPerkIDsForSkill) == "function" then
         filteredPerkIDs = modApi.getPerkIDsForSkill(selectedSkillID) or {}
     else
         filteredPerkIDs = {}
@@ -220,7 +251,7 @@ local function updateFilteredPerks()
 
     if selectedTreeNodeID ~= nil and type(modApi.getTreeNode) == "function" then
         local node = modApi.getTreeNode(selectedTreeNodeID)
-        if node == nil or node.skill ~= selectedSkillID then
+        if node == nil or node.tab ~= selectedSkillID then
             selectedTreeNodeID = nil
         end
     end
@@ -269,7 +300,7 @@ local function canPurchasePerk(perkID)
         return false
     end
     local playerApi = interfaces[MOD_NAME .. "Player"]
-    local available = type(playerApi.globalAvailablePoints) == "function" and playerApi.globalAvailablePoints() or playerApi.availablePoints(perk.skill)
+    local available = type(playerApi.globalAvailablePoints) == "function" and playerApi.globalAvailablePoints() or playerApi.availablePoints(perk.tab)
     return available >= perk.cost
 end
 
@@ -527,8 +558,8 @@ local function buildPerkPane()
     local selectedSkillID = getSelectedSkillID()
     local modApi = getModApi()
     local perks = modApi ~= nil and type(modApi.getPerks) == "function" and modApi.getPerks() or {}
-    local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForSkill) == "function"
-        and modApi.getTreeNodesForSkill(selectedSkillID)
+    local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
+        and modApi.getTreeNodesForTab(selectedSkillID)
         or {}
 
     if #treeNodes > 0 then
@@ -712,11 +743,13 @@ local function buildPerkPane()
         end
     end
 
-    local skillRecord = selectedSkillID ~= nil and getSkillRecordByID(selectedSkillID) or nil
-    local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Skill"
-    local skillDescription = "No description available."
-    if skillRecord ~= nil and type(skillRecord.description) == "string" and skillRecord.description ~= "" then
-        skillDescription = skillRecord.description
+    local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Tab"
+    local skillDescription = "Perks registered under this tab."
+    if modApi ~= nil and type(modApi.getTabDescription) == "function" then
+        local description = modApi.getTabDescription(selectedSkillID)
+        if type(description) == "string" and description ~= "" then
+            skillDescription = description
+        end
     end
 
     local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
@@ -844,7 +877,7 @@ local function buildPerkPane()
                 type = ui.TYPE.Text,
                 template = interfaces.MWUI.templates.textNormal,
                 props = {
-                    text = string.format("%s\nSkill: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.skill, selectedPerk.cost, status),
+                    text = string.format("%s\nTab: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.tab, selectedPerk.cost, status),
                     autoSize = false,
                     size = util.vector2(374, 360),
                 },
@@ -1193,8 +1226,8 @@ local function onFrame(dt)
     if menu ~= nil then
         local modApi = getModApi()
         local selectedSkillID = getSelectedSkillID()
-        local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForSkill) == "function"
-            and modApi.getTreeNodesForSkill(selectedSkillID)
+        local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
+            and modApi.getTreeNodesForTab(selectedSkillID)
             or {}
 
         if #treeNodes > 0 then

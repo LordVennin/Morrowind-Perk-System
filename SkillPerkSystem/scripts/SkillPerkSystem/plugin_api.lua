@@ -1,4 +1,3 @@
-local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 local effectsRegistry = require("scripts.SkillPerkSystem.effects_registry")
@@ -27,16 +26,43 @@ local function duplicatePolicyLabel()
     return "strict(error)"
 end
 
-local function hasSkillRecord(skillID)
-    if core.stats.Skill.records[skillID] ~= nil then
-        return true
+local function normalizeTabName(tabName)
+    local text = tostring(tabName or "")
+    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    text = text:gsub("%s+", " ")
+    return text
+end
+
+local function canonicalTabId(tabName)
+    return normalizeTabName(tabName):lower()
+end
+
+local function resolveTab(data, context)
+    local rawTab = data.tab
+    if rawTab == nil then
+        rawTab = data.skill
     end
-    for _, record in ipairs(core.stats.Skill.records) do
-        if record.id == skillID then
-            return true
+    if type(rawTab) ~= "string" then
+        validationError(context .. " missing string field 'tab'", 2)
+    end
+
+    local normalizedTab = normalizeTabName(rawTab)
+    if normalizedTab == "" then
+        validationError(context .. " field 'tab' cannot be empty", 2)
+    end
+
+    data.tab = canonicalTabId(normalizedTab)
+    data.tabName = normalizedTab
+    if data.tabDescription ~= nil then
+        if type(data.tabDescription) ~= "string" then
+            validationError(context .. " field 'tabDescription' must be a string", 2)
+        end
+        data.tabDescription = data.tabDescription:gsub("^%s+", ""):gsub("%s+$", "")
+        if data.tabDescription == "" then
+            data.tabDescription = nil
         end
     end
-    return false
+    data.skill = nil
 end
 
 local function assertCompatibleApiVersion(expectedVersion)
@@ -65,15 +91,7 @@ local function registerPerk(data, source)
     if type(data.id) ~= "string" then
         validationError("registerPerk() missing string field 'id'", 2)
     end
-    if type(data.skill) ~= "string" then
-        validationError("registerPerk(" .. tostring(data.id) .. ") missing string field 'skill'", 2)
-    end
-    if not hasSkillRecord(data.skill) then
-        validationError(
-            "registerPerk(" .. tostring(data.id) .. ") has invalid skill id '" .. tostring(data.skill) .. "'",
-            2
-        )
-    end
+    resolveTab(data, "registerPerk(" .. tostring(data.id) .. ")")
     if type(data.effectId) ~= "string" or data.effectId == "" then
         validationError("registerPerk(" .. tostring(data.id) .. ") missing non-empty string field 'effectId'", 2)
     end
@@ -117,9 +135,7 @@ local function registerTreeNode(data, source)
     if type(data.id) ~= "string" or data.id == "" then
         validationError("registerTreeNode() missing string field 'id'", 2)
     end
-    if type(data.skill) ~= "string" or not hasSkillRecord(data.skill) then
-        validationError("registerTreeNode(" .. tostring(data.id) .. ") has invalid field 'skill'", 2)
-    end
+    resolveTab(data, "registerTreeNode(" .. tostring(data.id) .. ")")
     if type(data.x) ~= "number" or type(data.y) ~= "number" then
         validationError("registerTreeNode(" .. tostring(data.id) .. ") requires numeric fields 'x' and 'y'", 2)
     end
@@ -180,7 +196,8 @@ end
 local function normalizePerkDefinition(perk)
     local normalized = {
         id = perk.id,
-        skill = perk.skill,
+        tab = perk.tab,
+        tabName = perk.tabName,
         effectId = perk.effectId,
         cost = perk.cost,
         requirements = perk.requirements,
@@ -219,7 +236,8 @@ local function deriveNodeFromPerk(perk, sourceName)
     local nodeID = nodeData.id or nodeData.nodeId or nodeData.nodeID or perk.nodeId or perk.nodeID or perk.id
     return {
         id = nodeID,
-        skill = nodeData.skill or perk.skill,
+        tab = nodeData.tab or nodeData.skill or perk.tab or perk.skill,
+        tabName = nodeData.tabName or nodeData.tab or nodeData.skill or perk.tabName or perk.tab or perk.skill,
         x = nodeData.x,
         y = nodeData.y,
         requires = nodeData.requires,
@@ -228,7 +246,7 @@ local function deriveNodeFromPerk(perk, sourceName)
     }, nodeData.perkId or nodeData.perkID or perk.perkId or perk.perkID or perk.id
 end
 
-local function registerPerkModule(data, source, expectedSkill)
+local function registerPerkModule(data, source, expectedTab)
     if type(data) ~= "table" then
         validationError("registerPerkModule() expects a table", 2)
     end
@@ -265,8 +283,9 @@ local function registerPerkModule(data, source, expectedSkill)
         if type(perk.id) ~= "string" or perk.id == "" then
             validationError(context .. " missing non-empty string field 'id'", 2)
         end
-        if type(perk.skill) ~= "string" or perk.skill == "" then
-            validationError(context .. " missing non-empty string field 'skill'", 2)
+        local moduleTab = perk.tab or perk.skill
+        if type(moduleTab) ~= "string" or normalizeTabName(moduleTab) == "" then
+            validationError(context .. " missing non-empty string field 'tab'", 2)
         end
         if type(perk.effectId) ~= "string" or perk.effectId == "" then
             validationError(context .. " missing non-empty string field 'effectId'", 2)
@@ -284,8 +303,9 @@ local function registerPerkModule(data, source, expectedSkill)
         if type(node.id) ~= "string" or node.id == "" then
             validationError(context .. " missing non-empty string field 'id'", 2)
         end
-        if type(node.skill) ~= "string" or node.skill == "" then
-            validationError(context .. " missing non-empty string field 'skill'", 2)
+        local moduleTab = node.tab or node.skill
+        if type(moduleTab) ~= "string" or normalizeTabName(moduleTab) == "" then
+            validationError(context .. " missing non-empty string field 'tab'", 2)
         end
         if type(node.x) ~= "number" then
             validationError(context .. " missing numeric field 'x'", 2)
@@ -306,14 +326,16 @@ local function registerPerkModule(data, source, expectedSkill)
                 validationError("registerPerkModule() perks[" .. tostring(i) .. "] must be a table", 2)
             end
             validatePerkModuleEntry(perk, i)
-            if type(expectedSkill) == "string" and expectedSkill ~= "" and type(perk.skill) == "string" and perk.skill ~= "" and perk.skill ~= expectedSkill then
+            local perkTab = normalizeTabName(perk.tab or perk.skill)
+            local expectedTabNormalized = normalizeTabName(expectedTab)
+            if type(expectedTab) == "string" and expectedTabNormalized ~= "" and perkTab ~= expectedTabNormalized then
                 validationError(
                     "registerPerkModule() perk '"
                         .. tostring(perk.id)
-                        .. "' declares skill '"
-                        .. tostring(perk.skill)
+                        .. "' declares tab '"
+                        .. tostring(perkTab)
                         .. "' but expected '"
-                        .. tostring(expectedSkill)
+                        .. tostring(expectedTabNormalized)
                         .. "'",
                     2
                 )
@@ -349,14 +371,16 @@ local function registerPerkModule(data, source, expectedSkill)
                 validationError("registerPerkModule() nodes[" .. tostring(i) .. "] must be a table", 2)
             end
             validateNodeModuleEntry(node, i, "nodes")
-            if type(expectedSkill) == "string" and expectedSkill ~= "" and type(node.skill) == "string" and node.skill ~= "" and node.skill ~= expectedSkill then
+            local nodeTab = normalizeTabName(node.tab or node.skill)
+            local expectedTabNormalized = normalizeTabName(expectedTab)
+            if type(expectedTab) == "string" and expectedTabNormalized ~= "" and nodeTab ~= expectedTabNormalized then
                 validationError(
                     "registerPerkModule() node '"
                         .. tostring(node.id)
-                        .. "' declares skill '"
-                        .. tostring(node.skill)
+                        .. "' declares tab '"
+                        .. tostring(nodeTab)
                         .. "' but expected '"
-                        .. tostring(expectedSkill)
+                        .. tostring(expectedTabNormalized)
                         .. "'",
                     2
                 )

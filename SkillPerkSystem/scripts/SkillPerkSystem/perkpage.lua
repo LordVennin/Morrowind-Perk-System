@@ -109,6 +109,7 @@ local PERK_UI_BOTTOM_ROW_HEIGHT = 32
 local PERK_UI_BOTTOM_ROW_SPACER_HEIGHT = 6
 local PERK_UI_HEIGHT = 560
 local PERK_UI_TOTAL_ROW_WIDTH = (PERK_UI_SIDE_PADDING * 2) + PERK_UI_LEFT_PANE_WIDTH + PERK_UI_GUTTER_WIDTH + PERK_UI_RIGHT_PANE_WIDTH
+local PERK_UI_BODY_RIGHT_EXPANSION = settings.PERK_UI_BODY_RIGHT_EXPANSION or 18
 local PERK_UI_BODY_WIDTH = PERK_UI_TOTAL_ROW_WIDTH
 
 local TREE_VIEWPORT_WIDTH = PERK_UI_LEFT_PANE_WIDTH
@@ -142,7 +143,8 @@ local function refreshLayoutMetrics()
     PERK_UI_BOTTOM_ROW_SPACER_HEIGHT = 6
     PERK_UI_HEIGHT = 560
     PERK_UI_TOTAL_ROW_WIDTH = (PERK_UI_SIDE_PADDING * 2) + PERK_UI_LEFT_PANE_WIDTH + PERK_UI_GUTTER_WIDTH + PERK_UI_RIGHT_PANE_WIDTH
-    PERK_UI_BODY_WIDTH = PERK_UI_TOTAL_ROW_WIDTH + (settings.PERK_UI_BODY_RIGHT_EXPANSION or 18)
+    PERK_UI_BODY_RIGHT_EXPANSION = settings.PERK_UI_BODY_RIGHT_EXPANSION or 18
+    PERK_UI_BODY_WIDTH = PERK_UI_TOTAL_ROW_WIDTH + PERK_UI_BODY_RIGHT_EXPANSION
 
     TREE_VIEWPORT_WIDTH = PERK_UI_LEFT_PANE_WIDTH
     TREE_VIEWPORT_HEIGHT = PERK_UI_CONTENT_HEIGHT
@@ -872,7 +874,8 @@ local function buildPerkPane()
         return lines
     end
 
-    local detailWidth = math.max(220, PERK_UI_RIGHT_PANE_WIDTH - 8)
+    local rightPaneWidth = PERK_UI_RIGHT_PANE_WIDTH + PERK_UI_BODY_RIGHT_EXPANSION
+    local detailWidth = math.max(220, rightPaneWidth - 8)
     local detailHeaderWidth = math.min(detailWidth, 230)
     local perkDetail
     if selectedPerkID == nil then
@@ -1064,7 +1067,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = v2(PERK_UI_RIGHT_PANE_WIDTH, PERK_UI_CONTENT_HEIGHT),
+                            size = v2(rightPaneWidth, PERK_UI_CONTENT_HEIGHT),
                         },
                         content = ui.content { perkDetail },
                     },
@@ -1114,7 +1117,7 @@ end
 
 buildLayout = function()
     local topHeaderFillTiles = {}
-    for _ = 1, math.max(1, math.ceil(PERK_UI_TOTAL_ROW_WIDTH / 20)) do
+    for _ = 1, math.max(1, math.ceil(PERK_UI_BODY_WIDTH / 20)) do
         table.insert(topHeaderFillTiles, {
             type = ui.TYPE.Image,
             props = {
@@ -1148,7 +1151,7 @@ buildLayout = function()
                         template = interfaces.MWUI.templates.boxTransparentThick,
                         props = {
                             autoSize = false,
-                            size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                            size = v2(PERK_UI_BODY_WIDTH, 30),
                         },
                         content = ui.content {
                             {
@@ -1156,7 +1159,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                                    size = v2(PERK_UI_BODY_WIDTH, 30),
                                 },
                                 content = ui.content(topHeaderFillTiles),
                             },
@@ -1165,7 +1168,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                                    size = v2(PERK_UI_BODY_WIDTH, 30),
                                 },
                                 content = ui.content {
                                     {
@@ -1206,7 +1209,7 @@ buildLayout = function()
                         props = {
                             horizontal = true,
                             autoSize = false,
-                            size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
+                            size = v2(PERK_UI_BODY_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
                         },
                         content = ui.content {
                             {

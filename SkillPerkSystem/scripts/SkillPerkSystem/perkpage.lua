@@ -705,12 +705,8 @@ local function buildPerkPane()
         end
     end
 
-    local skillRecord = selectedSkillID ~= nil and getSkillRecordByID(selectedSkillID) or nil
-    local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Skill"
-    local skillDescription = "No description available."
-    if skillRecord ~= nil and type(skillRecord.description) == "string" and skillRecord.description ~= "" then
-        skillDescription = skillRecord.description
-    end
+    local skillName = selectedSkillID ~= nil and getSkillLabel(selectedSkillID) or "Unknown Tab"
+    local skillDescription = "Perks registered under this tab."
 
     local selectedPerkID = selectedPerkIndex > 0 and filteredPerkIDs[selectedPerkIndex] or nil
     if selectedPerkID == nil and selectedTreeNodeID ~= nil then

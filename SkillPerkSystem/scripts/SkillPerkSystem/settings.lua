@@ -24,7 +24,7 @@ return {
     -- Perk UI layout tunables.
     PERK_UI_LEFT_PANE_WIDTH = 540,
     PERK_UI_RIGHT_PANE_WIDTH = 408,
-    PERK_UI_SIDE_PADDING = 8,
+    PERK_UI_SIDE_PADDING = 0,
     PERK_UI_GUTTER_WIDTH = 16,
     POINT_SOURCES = {
         levelUpRewards = {

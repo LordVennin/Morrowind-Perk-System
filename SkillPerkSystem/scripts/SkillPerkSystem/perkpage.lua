@@ -636,7 +636,7 @@ local function buildPerkPane()
         local viewportSize = v2(TREE_INNER_VIEWPORT_WIDTH, TREE_INNER_VIEWPORT_HEIGHT)
         -- Keep tree node boxes/lines at a fixed pixel footprint so dense trees remain readable
         -- and scrolling doesn't feel overly zoomed on high-resolution displays.
-        local nodeHeight = 28
+        local nodeHeight = 24
         local lineThickness = 2
         local horizontalLineTexture = ui.texture { path = "textures/menu_thin_border_top.dds" }
         local verticalLineTexture = ui.texture { path = "textures/menu_thin_border_left.dds" }
@@ -737,8 +737,8 @@ local function buildPerkPane()
                 nodeLabel = nodeLabel .. " [node]"
             end
 
-            local buttonSize = v2(isSelected and 196 or 184, 26)
-            local borderPadding = px(2)
+            local buttonSize = util.vector2(isSelected and 174 or 162, 22)
+            local borderPadding = 2
             local outerSize = util.vector2(buttonSize.x + borderPadding * 2, buttonSize.y + borderPadding * 2)
             local nodePos = toCanvasPos(node)
 

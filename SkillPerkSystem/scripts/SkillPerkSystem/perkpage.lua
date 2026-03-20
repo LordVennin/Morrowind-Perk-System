@@ -737,8 +737,8 @@ local function buildPerkPane()
                 nodeLabel = nodeLabel .. " [node]"
             end
 
-            local buttonSize = util.vector2(isSelected and 196 or 184, 26)
-            local borderPadding = 2
+            local buttonSize = v2(isSelected and 196 or 184, 26)
+            local borderPadding = px(2)
             local outerSize = util.vector2(buttonSize.x + borderPadding * 2, buttonSize.y + borderPadding * 2)
             local nodePos = toCanvasPos(node)
 

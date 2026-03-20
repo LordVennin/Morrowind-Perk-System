@@ -3,7 +3,7 @@ return {
     perks = {
         {
             id = "yourpack_longblade_bleed_strikes",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "yourpack_bonus_damage",
             requires = { "yourpack_longblade_core_training" },
             cost = 1,

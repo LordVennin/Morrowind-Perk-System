@@ -32,7 +32,7 @@ for _, entry in ipairs(modules) do
     for _, perk in ipairs(entry.data.perks or {}) do
         api.registerPerk({
             id = perk.id,
-            skill = perk.skill,
+            tab = perk.tab,
             effectId = perk.effectId,
             cost = perk.cost,
             requirements = perk.requirements or {},
@@ -40,7 +40,7 @@ for _, entry in ipairs(modules) do
 
         api.registerTreeNode({
             id = perk.id,
-            skill = perk.skill,
+            tab = perk.tab,
             x = perk.x,
             y = perk.y,
             requires = perk.requires or {},

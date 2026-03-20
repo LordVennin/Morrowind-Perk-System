@@ -3,7 +3,7 @@ return {
     perks = {
         {
             id = "longblade_demo_root",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = {},
             cost = 1,
@@ -14,7 +14,7 @@ return {
         },
         {
             id = "longblade_demo_precision",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = { "longblade_demo_root" },
             cost = 1,
@@ -25,7 +25,7 @@ return {
         },
         {
             id = "longblade_demo_pressure",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = { "longblade_demo_root" },
             cost = 1,
@@ -36,7 +36,7 @@ return {
         },
         {
             id = "longblade_demo_cleaving",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = { "longblade_demo_root" },
             cost = 1,
@@ -47,7 +47,7 @@ return {
         },
         {
             id = "longblade_demo_duelist",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = { "longblade_demo_precision" },
             cost = 1,
@@ -58,7 +58,7 @@ return {
         },
         {
             id = "longblade_demo_whirlwind",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = { "longblade_demo_cleaving" },
             cost = 1,
@@ -69,7 +69,7 @@ return {
         },
         {
             id = "longblade_demo_mastery",
-            skill = "longblade",
+            tab = "longblade",
             effectId = "demo_noop",
             requires = { "longblade_demo_duelist", "longblade_demo_whirlwind", "longblade_demo_pressure" },
             cost = 2,

@@ -1107,7 +1107,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = v2(0, 1) },
+                        props = { size = v2(8, 1) },
                     },
                 }
             }
@@ -1151,7 +1151,7 @@ buildLayout = function()
                         template = interfaces.MWUI.templates.boxTransparentThick,
                         props = {
                             autoSize = false,
-                            size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                            size = v2(PERK_UI_BODY_WIDTH, 30),
                         },
                         content = ui.content {
                             {
@@ -1159,7 +1159,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                                    size = v2(PERK_UI_BODY_WIDTH, 30),
                                 },
                                 content = ui.content(topHeaderFillTiles),
                             },
@@ -1168,7 +1168,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                                    size = v2(PERK_UI_BODY_WIDTH, 30),
                                 },
                                 content = ui.content {
                                     {
@@ -1209,7 +1209,7 @@ buildLayout = function()
                         props = {
                             horizontal = true,
                             autoSize = false,
-                            size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
+                            size = v2(PERK_UI_BODY_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
                         },
                         content = ui.content {
                             {

@@ -28,6 +28,8 @@ return {
     PERK_UI_GUTTER_WIDTH = 16,
     -- Compensates for outer template frame thickness so inner panes visually reach the right edge.
     PERK_UI_FRAME_EDGE_COMPENSATION = 10,
+    -- Additional right-side expansion for the main body box (tree + description + exit row).
+    PERK_UI_BODY_RIGHT_EXPANSION = 18,
     POINT_SOURCES = {
         levelUpRewards = {
             enabled = true,

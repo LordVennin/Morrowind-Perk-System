@@ -109,6 +109,7 @@ local PERK_UI_BOTTOM_ROW_HEIGHT = 32
 local PERK_UI_BOTTOM_ROW_SPACER_HEIGHT = 6
 local PERK_UI_HEIGHT = 560
 local PERK_UI_TOTAL_ROW_WIDTH = (PERK_UI_SIDE_PADDING * 2) + PERK_UI_LEFT_PANE_WIDTH + PERK_UI_GUTTER_WIDTH + PERK_UI_RIGHT_PANE_WIDTH
+local PERK_UI_BODY_WIDTH = PERK_UI_TOTAL_ROW_WIDTH
 
 local TREE_VIEWPORT_WIDTH = PERK_UI_LEFT_PANE_WIDTH
 local TREE_VIEWPORT_HEIGHT = PERK_UI_CONTENT_HEIGHT
@@ -141,6 +142,7 @@ local function refreshLayoutMetrics()
     PERK_UI_BOTTOM_ROW_SPACER_HEIGHT = 6
     PERK_UI_HEIGHT = 560
     PERK_UI_TOTAL_ROW_WIDTH = (PERK_UI_SIDE_PADDING * 2) + PERK_UI_LEFT_PANE_WIDTH + PERK_UI_GUTTER_WIDTH + PERK_UI_RIGHT_PANE_WIDTH
+    PERK_UI_BODY_WIDTH = PERK_UI_TOTAL_ROW_WIDTH + (settings.PERK_UI_BODY_RIGHT_EXPANSION or 18)
 
     TREE_VIEWPORT_WIDTH = PERK_UI_LEFT_PANE_WIDTH
     TREE_VIEWPORT_HEIGHT = PERK_UI_CONTENT_HEIGHT
@@ -994,7 +996,7 @@ local function buildPerkPane()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_HEIGHT),
+            size = v2(PERK_UI_BODY_WIDTH, PERK_UI_HEIGHT),
         },
         content = ui.content {
             {
@@ -1002,7 +1004,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_CONTENT_HEIGHT),
+                    size = v2(PERK_UI_BODY_WIDTH, PERK_UI_CONTENT_HEIGHT),
                 },
                 content = ui.content {
                     {
@@ -1081,7 +1083,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
+                    size = v2(PERK_UI_BODY_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
                 },
                 content = ui.content {
                     {

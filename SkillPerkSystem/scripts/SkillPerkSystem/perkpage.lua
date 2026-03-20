@@ -1117,7 +1117,7 @@ end
 
 buildLayout = function()
     local topHeaderFillTiles = {}
-    for _ = 1, math.max(1, math.ceil(PERK_UI_TOTAL_ROW_WIDTH / 20)) do
+    for _ = 1, math.max(1, math.ceil(PERK_UI_BODY_WIDTH / 20)) do
         table.insert(topHeaderFillTiles, {
             type = ui.TYPE.Image,
             props = {

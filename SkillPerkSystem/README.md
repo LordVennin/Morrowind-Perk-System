@@ -40,15 +40,17 @@ Core interface methods:
 - `assertCompatibleApiVersion(expectedVersion)`
 - `registerPerk(data[, source])`
 - `registerTreeNode(data[, source])`
-- `registerPerkModule(module, expectedSkill[, source])`
+- `registerPerkModule(module, expectedTab[, source])`
 - `registerEffect(data[, source])`
 - `registerPointSource(sourceId, handlers[, source])`
 - `getRegistrationSummary()`
 - `getPerks()`
 - `getPerkIDs()`
-- `getPerkIDsForSkill(skillID)`
+- `getPerkIDsForTab(tabID)`
+- `getTabIDs()`
+- `getTabLabel(tabID)`
 - `getTreeNode(nodeID)`
-- `getTreeNodesForSkill(skillID)`
+- `getTreeNodesForTab(tabID)`
 
 ## Startup logging
 
@@ -96,7 +98,7 @@ MyPack.omwscripts
 scripts/MyPack/
   register.lua
   perks/
-    <skillId>/
+    <tabName>/
       <module>.lua
 ```
 
@@ -122,7 +124,8 @@ api.assertCompatibleApiVersion(1)
 
 api.registerPerk({
     id = "mypack_longblade_core",
-    skill = "longblade",
+    tab = "Long Blade",
+    tabDescription = "Optional text shown in the tab detail pane.",
     effectId = "mypack_bonus_damage",
     cost = 1,
     requirements = {},
@@ -130,7 +133,7 @@ api.registerPerk({
 
 api.registerTreeNode({
     id = "mypack_longblade_core",
-    skill = "longblade",
+    tab = "Long Blade",
     x = 0,
     y = 0,
     requires = {},
@@ -150,7 +153,7 @@ Register event-driven point sources with `registerPointSource(sourceId, handlers
 ## Console commands
 
 - `skillperks`
-- `skillperks <skillId>`
+- `skillperks <tabId>`
 - `lua skillperks`
-- `lua skillperks <skillId>`
+- `lua skillperks <tabId>`
 - `lua skillperksrespec`

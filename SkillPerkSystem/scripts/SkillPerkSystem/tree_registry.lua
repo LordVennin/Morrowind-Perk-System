@@ -14,16 +14,16 @@ local function registerTreeNodes(nodes, source)
     end
 end
 
-local function loadSkillTree(skillID)
-    return registryState.getTreeNodesForSkill(skillID)
+local function loadTabTree(tabID)
+    return registryState.getTreeNodesForTab(tabID)
 end
 
 local function getTreeNode(nodeID)
     return registryState.getTreeNode(nodeID)
 end
 
-local function getTreeNodesForSkill(skillID)
-    local nodes = registryState.getTreeNodesForSkill(skillID)
+local function getTreeNodesForTab(tabID)
+    local nodes = registryState.getTreeNodesForTab(tabID)
     local out = {}
     for _, node in ipairs(nodes) do
         table.insert(out, node)
@@ -44,6 +44,8 @@ return {
     registerTreeNode = registerTreeNode,
     registerTreeNodes = registerTreeNodes,
     getTreeNode = getTreeNode,
-    getTreeNodesForSkill = getTreeNodesForSkill,
-    loadSkillTree = loadSkillTree,
+    getTreeNodesForTab = getTreeNodesForTab,
+    getTreeNodesForSkill = getTreeNodesForTab,
+    loadTabTree = loadTabTree,
+    loadSkillTree = loadTabTree,
 }

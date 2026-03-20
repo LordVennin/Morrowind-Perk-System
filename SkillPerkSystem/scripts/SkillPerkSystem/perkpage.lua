@@ -95,6 +95,9 @@ end
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
 local SKILL_SELECTOR_ROW_WIDTH = 560
+local SKILL_SELECTOR_EDGE_PADDING = 4
+local SKILL_SELECTOR_INNER_PADDING = 6
+local SKILL_SELECTOR_CONTROL_SPACER = 12
 
 local PERK_UI_LEFT_PANE_WIDTH = settings.PERK_UI_LEFT_PANE_WIDTH or 540
 local PERK_UI_RIGHT_PANE_WIDTH = settings.PERK_UI_RIGHT_PANE_WIDTH or 408
@@ -124,7 +127,13 @@ local function refreshLayoutMetrics()
     PERK_UI_RIGHT_PANE_WIDTH = settings.PERK_UI_RIGHT_PANE_WIDTH or 408
     PERK_UI_SIDE_PADDING = settings.PERK_UI_SIDE_PADDING or 8
     PERK_UI_GUTTER_WIDTH = settings.PERK_UI_GUTTER_WIDTH or 16
-    SKILL_SELECTOR_ROW_WIDTH = (44 * 2) + SKILL_SELECTOR_WIDTH + SKILL_INDEX_WIDTH + (PERK_UI_SIDE_PADDING * 2) + 12
+    SKILL_SELECTOR_ROW_WIDTH =
+        (SKILL_SELECTOR_EDGE_PADDING * 2)
+        + (44 * 2)
+        + SKILL_SELECTOR_WIDTH
+        + SKILL_INDEX_WIDTH
+        + (SKILL_SELECTOR_INNER_PADDING * 2)
+        + SKILL_SELECTOR_CONTROL_SPACER
 
     PERK_UI_CONTENT_HEIGHT = 510
     PERK_UI_BOTTOM_ROW_HEIGHT = 32
@@ -556,12 +565,16 @@ local function buildSkillTabs()
             size = v2(SKILL_SELECTOR_ROW_WIDTH, 32),
         },
         content = ui.content {
+            {
+                type = ui.TYPE.Widget,
+                props = { size = v2(SKILL_SELECTOR_EDGE_PADDING, 1) },
+            },
             createBoxedButton("<", function()
                 changeSelectedSkill(-1)
             end, v2(44, 28), px(3)),
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
+                props = { size = v2(SKILL_SELECTOR_INNER_PADDING, 1) },
             },
             {
                 type = ui.TYPE.Container,
@@ -586,14 +599,14 @@ local function buildSkillTabs()
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
+                props = { size = v2(SKILL_SELECTOR_INNER_PADDING, 1) },
             },
             createBoxedButton(">", function()
                 changeSelectedSkill(1)
             end, v2(44, 28), px(3)),
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(12, 1) },
+                props = { size = v2(SKILL_SELECTOR_CONTROL_SPACER, 1) },
             },
             {
                 type = ui.TYPE.Container,
@@ -615,6 +628,10 @@ local function buildSkillTabs()
                         },
                     },
                 },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = v2(SKILL_SELECTOR_EDGE_PADDING, 1) },
             },
         },
     }
@@ -1084,7 +1101,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
+                        props = { size = v2(6, 1) },
                     },
                 }
             }

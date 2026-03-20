@@ -1116,8 +1116,10 @@ local function buildPerkPane()
 end
 
 buildLayout = function()
+    local menuWidth = PERK_UI_BODY_WIDTH
+    local menuHeight = 30 + PERK_UI_BOTTOM_ROW_HEIGHT + 10 + PERK_UI_HEIGHT
     local topHeaderFillTiles = {}
-    for _ = 1, math.max(1, math.ceil(PERK_UI_BODY_WIDTH / 20)) do
+    for _ = 1, math.max(1, math.ceil(menuWidth / 20)) do
         table.insert(topHeaderFillTiles, {
             type = ui.TYPE.Image,
             props = {
@@ -1135,7 +1137,8 @@ buildLayout = function()
         props = {
             anchor = util.vector2(0.5, 0.5),
             relativePosition = util.vector2(0.5, 0.5),
-            autoSize = true,
+            autoSize = false,
+            size = v2(menuWidth, menuHeight),
         },
         content = ui.content {
             {
@@ -1143,7 +1146,8 @@ buildLayout = function()
                 template = interfaces.MWUI.templates.background,
                 props = {
                     horizontal = false,
-                    autoSize = true,
+                    autoSize = false,
+                    size = v2(menuWidth, menuHeight),
                 },
                 content = ui.content {
                     {
@@ -1151,7 +1155,7 @@ buildLayout = function()
                         template = interfaces.MWUI.templates.boxTransparentThick,
                         props = {
                             autoSize = false,
-                            size = v2(PERK_UI_BODY_WIDTH, 30),
+                            size = v2(menuWidth, 30),
                         },
                         content = ui.content {
                             {
@@ -1159,7 +1163,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = v2(PERK_UI_BODY_WIDTH, 30),
+                                    size = v2(menuWidth, 30),
                                 },
                                 content = ui.content(topHeaderFillTiles),
                             },
@@ -1168,7 +1172,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = v2(PERK_UI_BODY_WIDTH, 30),
+                                    size = v2(menuWidth, 30),
                                 },
                                 content = ui.content {
                                     {
@@ -1209,7 +1213,7 @@ buildLayout = function()
                         props = {
                             horizontal = true,
                             autoSize = false,
-                            size = v2(PERK_UI_BODY_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
+                            size = v2(menuWidth, PERK_UI_BOTTOM_ROW_HEIGHT),
                         },
                         content = ui.content {
                             {

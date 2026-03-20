@@ -20,8 +20,8 @@ local function registerTreeNode(data, source)
     return pluginAPI.registerTreeNode(data, source or SOURCE_MANIFEST)
 end
 
-local function registerPerkModule(data, expectedSkill, source)
-    return pluginAPI.registerPerkModule(data, source or SOURCE_MANIFEST, expectedSkill)
+local function registerPerkModule(data, expectedTab, source)
+    return pluginAPI.registerPerkModule(data, source or SOURCE_MANIFEST, expectedTab)
 end
 
 local function registerEffect(data, source)
@@ -135,14 +135,26 @@ local function getPerkIDs()
     return registryState.getPerkIDs()
 end
 
-local function getPerkIDsForSkill(skillID)
+local function getPerkIDsForTab(tabID)
     local out = {}
     for _, id in ipairs(registryState.getPerkIDs()) do
-        if registryState.getPerks()[id].skill == skillID then
+        if registryState.getPerks()[id].tab == tabID then
             table.insert(out, id)
         end
     end
     return out
+end
+
+local function getTabIDs()
+    local out = {}
+    for _, tabID in ipairs(registryState.getTabIDs()) do
+        table.insert(out, tabID)
+    end
+    return out
+end
+
+local function getTabLabel(tabID)
+    return registryState.getTabLabel(tabID) or tostring(tabID)
 end
 
 
@@ -275,11 +287,16 @@ return {
         getRegistrationSummary = packRegistry.getSummary,
         getPerks = getPerks,
         getPerkIDs = getPerkIDs,
-        getPerkIDsForSkill = getPerkIDsForSkill,
+        getPerkIDsForTab = getPerkIDsForTab,
+        getPerkIDsForSkill = getPerkIDsForTab,
+        getTabIDs = getTabIDs,
+        getTabLabel = getTabLabel,
         registerTreeNodes = treeRegistry.registerTreeNodes,
         getTreeNode = treeRegistry.getTreeNode,
-        getTreeNodesForSkill = treeRegistry.getTreeNodesForSkill,
-        loadSkillTree = treeRegistry.loadSkillTree,
+        getTreeNodesForTab = treeRegistry.getTreeNodesForTab,
+        getTreeNodesForSkill = treeRegistry.getTreeNodesForTab,
+        loadTabTree = treeRegistry.loadTabTree,
+        loadSkillTree = treeRegistry.loadTabTree,
     },
     engineHandlers = {
         onUpdate = onUpdate,

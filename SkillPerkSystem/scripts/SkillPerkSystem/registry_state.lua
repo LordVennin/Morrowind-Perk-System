@@ -2,11 +2,21 @@ local state = {
     perksByID = {},
     perkIDs = {},
     perkSourceByID = {},
-    treeNodesBySkill = {},
+    treeNodesByTab = {},
     treeNodeByID = {},
     treeNodeSourceByID = {},
+    tabDisplayNames = {},
+    tabIDs = {},
     pointSourcesByID = {},
 }
+
+local function ensureTab(tabID, tabName)
+    if state.tabDisplayNames[tabID] == nil then
+        state.tabDisplayNames[tabID] = tabName or tabID
+        table.insert(state.tabIDs, tabID)
+        table.sort(state.tabIDs)
+    end
+end
 
 local function registerPerk(perk, source, allowOverwrite)
     local previousSource = state.perkSourceByID[perk.id]
@@ -20,6 +30,7 @@ local function registerPerk(perk, source, allowOverwrite)
 
     state.perksByID[perk.id] = perk
     state.perkSourceByID[perk.id] = source
+    ensureTab(perk.tab, perk.tabName)
     return true, previousSource
 end
 
@@ -31,10 +42,10 @@ local function registerTreeNode(node, source, allowOverwrite)
     end
 
     if previousNode ~= nil then
-        local previousSkillNodes = state.treeNodesBySkill[previousNode.skill] or {}
-        for i, existingNode in ipairs(previousSkillNodes) do
+        local previousTabNodes = state.treeNodesByTab[previousNode.tab] or {}
+        for i, existingNode in ipairs(previousTabNodes) do
             if existingNode.id == node.id then
-                table.remove(previousSkillNodes, i)
+                table.remove(previousTabNodes, i)
                 break
             end
         end
@@ -42,13 +53,14 @@ local function registerTreeNode(node, source, allowOverwrite)
 
     state.treeNodeByID[node.id] = node
     state.treeNodeSourceByID[node.id] = source
-    state.treeNodesBySkill[node.skill] = state.treeNodesBySkill[node.skill] or {}
-    table.insert(state.treeNodesBySkill[node.skill], node)
+    ensureTab(node.tab, node.tabName)
+    state.treeNodesByTab[node.tab] = state.treeNodesByTab[node.tab] or {}
+    table.insert(state.treeNodesByTab[node.tab], node)
     return true, previousSource
 end
 
-local function getTreeNodesForSkill(skillID)
-    return state.treeNodesBySkill[skillID] or {}
+local function getTreeNodesForTab(tabID)
+    return state.treeNodesByTab[tabID] or {}
 end
 
 local function registerPointSource(sourceId, handlers, source)
@@ -80,7 +92,14 @@ return {
     getTreeNodeSource = function(nodeID)
         return state.treeNodeSourceByID[nodeID]
     end,
-    getTreeNodesForSkill = getTreeNodesForSkill,
+    getTreeNodesForTab = getTreeNodesForTab,
+    getTreeNodesForSkill = getTreeNodesForTab,
+    getTabIDs = function()
+        return state.tabIDs
+    end,
+    getTabLabel = function(tabID)
+        return state.tabDisplayNames[tabID]
+    end,
     registerPointSource = registerPointSource,
     getPointSources = function()
         return state.pointSourcesByID

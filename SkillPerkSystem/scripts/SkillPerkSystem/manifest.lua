@@ -157,6 +157,10 @@ local function getTabLabel(tabID)
     return registryState.getTabLabel(tabID) or tostring(tabID)
 end
 
+local function getTabDescription(tabID)
+    return registryState.getTabDescription(tabID)
+end
+
 
 local function sortedInterfaceKeys(interfacesTable)
     local keys = {}
@@ -291,6 +295,7 @@ return {
         getPerkIDsForSkill = getPerkIDsForTab,
         getTabIDs = getTabIDs,
         getTabLabel = getTabLabel,
+        getTabDescription = getTabDescription,
         registerTreeNodes = treeRegistry.registerTreeNodes,
         getTreeNode = treeRegistry.getTreeNode,
         getTreeNodesForTab = treeRegistry.getTreeNodesForTab,

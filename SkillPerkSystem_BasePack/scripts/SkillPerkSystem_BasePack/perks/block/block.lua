@@ -3,7 +3,8 @@ return {
     perks = {
         {
             id = "block_basic_guard",
-            tab = "block",
+            tab = "Block",
+            tabDescription = "Block skill allows one to use shields to block any melee attack. A successful block removes all damage from the attack.",
             effectId = "demo_noop",
             requires = {},
             cost = 1,
@@ -14,7 +15,7 @@ return {
         },
         {
             id = "block_reactive_guard",
-            tab = "block",
+            tab = "Block",
             effectId = "demo_noop",
             requires = { "block_basic_guard" },
             cost = 1,
@@ -25,7 +26,7 @@ return {
         },
         {
             id = "block_bulwark_stance",
-            tab = "block",
+            tab = "Block",
             effectId = "demo_noop",
             requires = { "block_basic_guard" },
             cost = 1,
@@ -36,7 +37,7 @@ return {
         },
         {
             id = "block_iron_wall",
-            tab = "block",
+            tab = "Block",
             effectId = "demo_noop",
             requires = { "block_reactive_guard", "block_bulwark_stance" },
             cost = 2,

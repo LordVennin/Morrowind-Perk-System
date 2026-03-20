@@ -6,15 +6,19 @@ local state = {
     treeNodeByID = {},
     treeNodeSourceByID = {},
     tabDisplayNames = {},
+    tabDescriptions = {},
     tabIDs = {},
     pointSourcesByID = {},
 }
 
-local function ensureTab(tabID, tabName)
+local function ensureTab(tabID, tabName, tabDescription)
     if state.tabDisplayNames[tabID] == nil then
         state.tabDisplayNames[tabID] = tabName or tabID
         table.insert(state.tabIDs, tabID)
         table.sort(state.tabIDs)
+    end
+    if state.tabDescriptions[tabID] == nil and type(tabDescription) == "string" and tabDescription ~= "" then
+        state.tabDescriptions[tabID] = tabDescription
     end
 end
 
@@ -30,7 +34,7 @@ local function registerPerk(perk, source, allowOverwrite)
 
     state.perksByID[perk.id] = perk
     state.perkSourceByID[perk.id] = source
-    ensureTab(perk.tab, perk.tabName)
+    ensureTab(perk.tab, perk.tabName, perk.tabDescription)
     return true, previousSource
 end
 
@@ -53,7 +57,7 @@ local function registerTreeNode(node, source, allowOverwrite)
 
     state.treeNodeByID[node.id] = node
     state.treeNodeSourceByID[node.id] = source
-    ensureTab(node.tab, node.tabName)
+    ensureTab(node.tab, node.tabName, node.tabDescription)
     state.treeNodesByTab[node.tab] = state.treeNodesByTab[node.tab] or {}
     table.insert(state.treeNodesByTab[node.tab], node)
     return true, previousSource
@@ -99,6 +103,9 @@ return {
     end,
     getTabLabel = function(tabID)
         return state.tabDisplayNames[tabID]
+    end,
+    getTabDescription = function(tabID)
+        return state.tabDescriptions[tabID]
     end,
     registerPointSource = registerPointSource,
     getPointSources = function()

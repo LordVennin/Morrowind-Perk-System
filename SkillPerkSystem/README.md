@@ -125,6 +125,7 @@ api.assertCompatibleApiVersion(1)
 api.registerPerk({
     id = "mypack_longblade_core",
     tab = "Long Blade",
+    tabDescription = "Optional text shown in the tab detail pane.",
     effectId = "mypack_bonus_damage",
     cost = 1,
     requirements = {},

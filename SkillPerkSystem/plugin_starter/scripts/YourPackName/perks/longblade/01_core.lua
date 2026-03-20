@@ -3,7 +3,7 @@ return {
     perks = {
         {
             id = "yourpack_longblade_core_training",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "yourpack_bonus_damage",
             requires = {},
             cost = 1,

@@ -3,7 +3,8 @@ return {
     perks = {
         {
             id = "longblade_demo_root",
-            tab = "longblade",
+            tab = "Long Blade",
+            tabDescription = "Long Blade skill lets one use broadswords, sabers, longswords, claymores, katanas, and dai-katanas effectively.",
             effectId = "demo_noop",
             requires = {},
             cost = 1,
@@ -14,7 +15,7 @@ return {
         },
         {
             id = "longblade_demo_precision",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "demo_noop",
             requires = { "longblade_demo_root" },
             cost = 1,
@@ -25,7 +26,7 @@ return {
         },
         {
             id = "longblade_demo_pressure",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "demo_noop",
             requires = { "longblade_demo_root" },
             cost = 1,
@@ -36,7 +37,7 @@ return {
         },
         {
             id = "longblade_demo_cleaving",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "demo_noop",
             requires = { "longblade_demo_root" },
             cost = 1,
@@ -47,7 +48,7 @@ return {
         },
         {
             id = "longblade_demo_duelist",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "demo_noop",
             requires = { "longblade_demo_precision" },
             cost = 1,
@@ -58,7 +59,7 @@ return {
         },
         {
             id = "longblade_demo_whirlwind",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "demo_noop",
             requires = { "longblade_demo_cleaving" },
             cost = 1,
@@ -69,7 +70,7 @@ return {
         },
         {
             id = "longblade_demo_mastery",
-            tab = "longblade",
+            tab = "Long Blade",
             effectId = "demo_noop",
             requires = { "longblade_demo_duelist", "longblade_demo_whirlwind", "longblade_demo_pressure" },
             cost = 2,

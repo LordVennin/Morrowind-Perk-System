@@ -53,6 +53,15 @@ local function resolveTab(data, context)
 
     data.tab = canonicalTabId(normalizedTab)
     data.tabName = normalizedTab
+    if data.tabDescription ~= nil then
+        if type(data.tabDescription) ~= "string" then
+            validationError(context .. " field 'tabDescription' must be a string", 2)
+        end
+        data.tabDescription = data.tabDescription:gsub("^%s+", ""):gsub("%s+$", "")
+        if data.tabDescription == "" then
+            data.tabDescription = nil
+        end
+    end
     data.skill = nil
 end
 

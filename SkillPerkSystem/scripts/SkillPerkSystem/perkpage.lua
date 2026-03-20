@@ -52,6 +52,46 @@ local isDraggingTree = false
 local lastMousePos = nil
 local apiUnavailableWarned = false
 
+local uiScale = 1
+
+local function clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
+    if value > maxValue then
+        return maxValue
+    end
+    return value
+end
+
+local function computeUiScale()
+    local referenceWidth = tonumber(settings.PERK_UI_SCALE_REFERENCE_WIDTH) or 1920
+    if referenceWidth <= 0 then
+        referenceWidth = 1920
+    end
+
+    local scale = tonumber(settings.PERK_UI_SCALE_MULTIPLIER) or 1
+    if settings.PERK_UI_AUTO_SCALE ~= false then
+        local screenWidth = ui.screenSize().x
+        scale = scale * (screenWidth / referenceWidth)
+    end
+
+    local minScale = tonumber(settings.PERK_UI_SCALE_MIN) or 0.75
+    local maxScale = tonumber(settings.PERK_UI_SCALE_MAX) or 1.6
+    if minScale > maxScale then
+        minScale, maxScale = maxScale, minScale
+    end
+    return clamp(scale, minScale, maxScale)
+end
+
+local function px(value)
+    return math.max(1, math.floor(value * uiScale + 0.5))
+end
+
+local function v2(x, y)
+    return util.vector2(px(x), px(y))
+end
+
 local SKILL_SELECTOR_WIDTH = 352
 local SKILL_INDEX_WIDTH = 80
 local SKILL_SELECTOR_ROW_WIDTH = 560
@@ -74,6 +114,32 @@ local TREE_INNER_VIEWPORT_HEIGHT = TREE_VIEWPORT_HEIGHT - 42
 local TREE_CANVAS_MARGIN = 140
 local TREE_CONTENT_OFFSET_X = 240
 local TREE_CONTENT_OFFSET_Y = 140
+
+local function refreshLayoutMetrics()
+    uiScale = computeUiScale()
+    SKILL_SELECTOR_WIDTH = 352
+    SKILL_INDEX_WIDTH = 80
+    SKILL_SELECTOR_ROW_WIDTH = 560
+
+    PERK_UI_LEFT_PANE_WIDTH = settings.PERK_UI_LEFT_PANE_WIDTH or 540
+    PERK_UI_RIGHT_PANE_WIDTH = settings.PERK_UI_RIGHT_PANE_WIDTH or 408
+    PERK_UI_SIDE_PADDING = settings.PERK_UI_SIDE_PADDING or 8
+    PERK_UI_GUTTER_WIDTH = settings.PERK_UI_GUTTER_WIDTH or 16
+
+    PERK_UI_CONTENT_HEIGHT = 510
+    PERK_UI_BOTTOM_ROW_HEIGHT = 32
+    PERK_UI_BOTTOM_ROW_SPACER_HEIGHT = 6
+    PERK_UI_HEIGHT = 560
+    PERK_UI_TOTAL_ROW_WIDTH = (PERK_UI_SIDE_PADDING * 2) + PERK_UI_LEFT_PANE_WIDTH + PERK_UI_GUTTER_WIDTH + PERK_UI_RIGHT_PANE_WIDTH
+
+    TREE_VIEWPORT_WIDTH = PERK_UI_LEFT_PANE_WIDTH
+    TREE_VIEWPORT_HEIGHT = PERK_UI_CONTENT_HEIGHT
+    TREE_INNER_VIEWPORT_WIDTH = TREE_VIEWPORT_WIDTH - 20
+    TREE_INNER_VIEWPORT_HEIGHT = TREE_VIEWPORT_HEIGHT - 42
+    TREE_CANVAS_MARGIN = 140
+    TREE_CONTENT_OFFSET_X = 240
+    TREE_CONTENT_OFFSET_Y = 140
+end
 
 local buildLayout
 
@@ -158,14 +224,16 @@ local function ensureTreePanInitialized(skillID, treeNodes)
     local pan = getTreePan(skillID)
     pan.x = math.floor((minX + maxX) / 2)
     pan.y = -math.floor((minY + maxY) / 2)
-    pan.x = math.max(-600, math.min(600, pan.x))
-    pan.y = math.max(-600, math.min(600, pan.y))
+    local maxPan = px(600)
+    pan.x = math.max(-maxPan, math.min(maxPan, pan.x))
+    pan.y = math.max(-maxPan, math.min(maxPan, pan.y))
     treePanInitializedBySkill[skillID] = true
 end
 
 local function clampTreePan(pan)
-    pan.x = math.max(-600, math.min(600, pan.x))
-    pan.y = math.max(-600, math.min(600, pan.y))
+    local maxPan = px(600)
+    pan.x = math.max(-maxPan, math.min(maxPan, pan.x))
+    pan.y = math.max(-maxPan, math.min(maxPan, pan.y))
 end
 
 local function updateTreePanBounds(skillID, treeNodes)
@@ -323,7 +391,7 @@ local function createButton(label, onPress, enabled, size)
         type = ui.TYPE.Container,
         template = buttonTemplate,
         props = {
-            size = size or util.vector2(140, 28),
+            size = size or v2(140, 28),
         },
         content = ui.content { textLayout }
     }
@@ -363,7 +431,7 @@ local function createButton(label, onPress, enabled, size)
 end
 
 local function createBoxedButton(label, onPress, size, textOffsetY)
-    local buttonSize = size or util.vector2(140, 28)
+    local buttonSize = size or v2(140, 28)
     local yOffset = math.max(0, math.floor(textOffsetY or 0))
 
     local textLayout = {
@@ -391,7 +459,7 @@ local function createBoxedButton(label, onPress, size, textOffsetY)
                 content = ui.content {
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(1, yOffset) },
+                        props = { size = v2(1, yOffset) },
                     },
                     textLayout,
                 },
@@ -485,22 +553,22 @@ local function buildSkillTabs()
         props = {
             horizontal = true,
             autoSize = false,
-            size = util.vector2(SKILL_SELECTOR_ROW_WIDTH, 32),
+            size = v2(SKILL_SELECTOR_ROW_WIDTH, 32),
         },
         content = ui.content {
             createBoxedButton("<", function()
                 changeSelectedSkill(-1)
-            end, util.vector2(44, 28), 3),
+            end, v2(44, 28), px(3)),
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(PERK_UI_SIDE_PADDING, 1) },
+                props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
             },
             {
                 type = ui.TYPE.Container,
                 template = interfaces.MWUI.templates.boxTransparentThick,
                 props = {
                     autoSize = false,
-                    size = util.vector2(SKILL_SELECTOR_WIDTH, 28),
+                    size = v2(SKILL_SELECTOR_WIDTH, 28),
                 },
                 content = ui.content {
                     {
@@ -511,28 +579,28 @@ local function buildSkillTabs()
                             textAlignH = ui.ALIGNMENT.Center,
                             textAlignV = ui.ALIGNMENT.Center,
                             autoSize = false,
-                            size = util.vector2(SKILL_SELECTOR_WIDTH, 28),
+                            size = v2(SKILL_SELECTOR_WIDTH, 28),
                         },
                     },
                 },
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(PERK_UI_SIDE_PADDING, 1) },
+                props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
             },
             createBoxedButton(">", function()
                 changeSelectedSkill(1)
-            end, util.vector2(44, 28), 3),
+            end, v2(44, 28), px(3)),
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(12, 1) },
+                props = { size = v2(12, 1) },
             },
             {
                 type = ui.TYPE.Container,
                 template = interfaces.MWUI.templates.boxTransparentThick,
                 props = {
                     autoSize = false,
-                    size = util.vector2(SKILL_INDEX_WIDTH, 28),
+                    size = v2(SKILL_INDEX_WIDTH, 28),
                 },
                 content = ui.content {
                     {
@@ -543,7 +611,7 @@ local function buildSkillTabs()
                             textAlignH = ui.ALIGNMENT.Center,
                             textAlignV = ui.ALIGNMENT.Center,
                             autoSize = false,
-                            size = util.vector2(SKILL_INDEX_WIDTH, 28),
+                            size = v2(SKILL_INDEX_WIDTH, 28),
                         },
                     },
                 },
@@ -565,9 +633,9 @@ local function buildPerkPane()
     if #treeNodes > 0 then
         ensureTreePanInitialized(selectedSkillID, treeNodes)
         local pan = getTreePan(selectedSkillID)
-        local viewportSize = util.vector2(TREE_INNER_VIEWPORT_WIDTH, TREE_INNER_VIEWPORT_HEIGHT)
-        local nodeHeight = 28
-        local lineThickness = 2
+        local viewportSize = v2(TREE_INNER_VIEWPORT_WIDTH, TREE_INNER_VIEWPORT_HEIGHT)
+        local nodeHeight = px(28)
+        local lineThickness = px(2)
         local horizontalLineTexture = ui.texture { path = "textures/menu_thin_border_top.dds" }
         local verticalLineTexture = ui.texture { path = "textures/menu_thin_border_left.dds" }
         local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), math.floor(viewportSize.y / 2))
@@ -593,7 +661,7 @@ local function buildPerkPane()
 
         local treeHintSpacer = {
             type = ui.TYPE.Widget,
-            props = { size = util.vector2(1, PERK_UI_BOTTOM_ROW_SPACER_HEIGHT) },
+            props = { size = v2(1, PERK_UI_BOTTOM_ROW_SPACER_HEIGHT) },
         }
 
         table.insert(perksCol, treeHintRow)
@@ -667,8 +735,8 @@ local function buildPerkPane()
                 nodeLabel = nodeLabel .. " [node]"
             end
 
-            local buttonSize = util.vector2(isSelected and 196 or 184, 26)
-            local borderPadding = 2
+            local buttonSize = v2(isSelected and 196 or 184, 26)
+            local borderPadding = px(2)
             local outerSize = util.vector2(buttonSize.x + borderPadding * 2, buttonSize.y + borderPadding * 2)
             local nodePos = toCanvasPos(node)
 
@@ -790,7 +858,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(374, 32),
+                    size = v2(374, 32),
                 },
                 content = ui.content {
                     {
@@ -802,7 +870,7 @@ local function buildPerkPane()
                         template = interfaces.MWUI.templates.boxSolidThick,
                         props = {
                             autoSize = false,
-                            size = util.vector2(230, 28),
+                            size = v2(230, 28),
                         },
                         content = ui.content {
                             {
@@ -811,7 +879,7 @@ local function buildPerkPane()
                                 props = {
                                     text = skillName,
                                     autoSize = false,
-                                    size = util.vector2(230, 28),
+                                    size = v2(230, 28),
                                     textAlignH = ui.ALIGNMENT.Center,
                                     textAlignV = ui.ALIGNMENT.Center,
                                 },
@@ -826,7 +894,7 @@ local function buildPerkPane()
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, 12) },
+                props = { size = v2(1, 12) },
             },
         }
 
@@ -836,7 +904,7 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(374, 20),
+                    size = v2(374, 20),
                 },
                 content = ui.content {
                     {
@@ -864,7 +932,7 @@ local function buildPerkPane()
             props = {
                 horizontal = false,
                 autoSize = false,
-                size = util.vector2(374, 360),
+                size = v2(374, 360),
             },
             content = ui.content(detailRows),
         }
@@ -879,7 +947,7 @@ local function buildPerkPane()
                 props = {
                     text = string.format("%s\nTab: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.tab, selectedPerk.cost, status),
                     autoSize = false,
-                    size = util.vector2(374, 360),
+                    size = v2(374, 360),
                 },
             }
         else
@@ -893,7 +961,7 @@ local function buildPerkPane()
                 props = {
                     text = string.format("%s\nNode ID: %s\nRequires: %s\n\n%s", nodeTitle, selectedPerkID, nodeReqs, nodeDescription),
                     autoSize = false,
-                    size = util.vector2(374, 360),
+                    size = v2(374, 360),
                 },
             }
         end
@@ -904,7 +972,7 @@ local function buildPerkPane()
         template = interfaces.MWUI.templates.borders,
         props = {
             horizontal = false,
-            size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_HEIGHT),
+            size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_HEIGHT),
         },
         content = ui.content {
             {
@@ -912,12 +980,12 @@ local function buildPerkPane()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_CONTENT_HEIGHT),
+                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_CONTENT_HEIGHT),
                 },
                 content = ui.content {
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(PERK_UI_SIDE_PADDING, 1) },
+                        props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
                     },
                     {
                         type = ui.TYPE.Flex,
@@ -925,7 +993,7 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(PERK_UI_LEFT_PANE_WIDTH, PERK_UI_CONTENT_HEIGHT),
+                            size = v2(PERK_UI_LEFT_PANE_WIDTH, PERK_UI_CONTENT_HEIGHT),
                         },
                         events = #treeNodes > 0 and {
                             mousePress = async:callback(function(mouseEvent)
@@ -964,7 +1032,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(PERK_UI_GUTTER_WIDTH, 1) },
+                        props = { size = v2(PERK_UI_GUTTER_WIDTH, 1) },
                     },
                     {
                         type = ui.TYPE.Flex,
@@ -972,26 +1040,26 @@ local function buildPerkPane()
                         props = {
                             horizontal = false,
                             autoSize = false,
-                            size = util.vector2(PERK_UI_RIGHT_PANE_WIDTH, PERK_UI_CONTENT_HEIGHT),
+                            size = v2(PERK_UI_RIGHT_PANE_WIDTH, PERK_UI_CONTENT_HEIGHT),
                         },
                         content = ui.content { perkDetail },
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(PERK_UI_SIDE_PADDING, 1) },
+                        props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
                     },
                 }
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(1, PERK_UI_BOTTOM_ROW_SPACER_HEIGHT) },
+                props = { size = v2(1, PERK_UI_BOTTOM_ROW_SPACER_HEIGHT) },
             },
             {
                 type = ui.TYPE.Flex,
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
+                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
                 },
                 content = ui.content {
                     {
@@ -1007,12 +1075,12 @@ local function buildPerkPane()
                         content = ui.content {
                             createBoxedButton("Exit", function()
                                 pself:sendEvent(MOD_NAME .. "closePerkUI")
-                            end, util.vector2(64, 28)),
+                            end, v2(64, 28)),
                         },
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(PERK_UI_SIDE_PADDING, 1) },
+                        props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
                     },
                 }
             }
@@ -1027,7 +1095,7 @@ buildLayout = function()
             type = ui.TYPE.Image,
             props = {
                 resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
-                size = util.vector2(20, 30),
+                size = v2(20, 30),
             },
         })
     end
@@ -1056,7 +1124,7 @@ buildLayout = function()
                         template = interfaces.MWUI.templates.boxTransparentThick,
                         props = {
                             autoSize = false,
-                            size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                            size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
                         },
                         content = ui.content {
                             {
@@ -1064,7 +1132,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
                                 },
                                 content = ui.content(topHeaderFillTiles),
                             },
@@ -1073,7 +1141,7 @@ buildLayout = function()
                                 props = {
                                     horizontal = true,
                                     autoSize = false,
-                                    size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, 30),
+                                    size = v2(PERK_UI_TOTAL_ROW_WIDTH, 30),
                                 },
                                 content = ui.content {
                                     {
@@ -1085,7 +1153,7 @@ buildLayout = function()
                                         template = interfaces.MWUI.templates.boxTransparentThick,
                                         props = {
                                             autoSize = false,
-                                            size = util.vector2(180, 24),
+                                            size = v2(180, 24),
                                         },
                                         content = ui.content {
                                             {
@@ -1094,7 +1162,7 @@ buildLayout = function()
                                                 props = {
                                                     text = "Skill Perks",
                                                     autoSize = false,
-                                                    size = util.vector2(180, 24),
+                                                    size = v2(180, 24),
                                                     textAlignH = ui.ALIGNMENT.Center,
                                                     textAlignV = ui.ALIGNMENT.Center,
                                                 },
@@ -1114,7 +1182,7 @@ buildLayout = function()
                         props = {
                             horizontal = true,
                             autoSize = false,
-                            size = util.vector2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
+                            size = v2(PERK_UI_TOTAL_ROW_WIDTH, PERK_UI_BOTTOM_ROW_HEIGHT),
                         },
                         content = ui.content {
                             {
@@ -1130,7 +1198,7 @@ buildLayout = function()
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = util.vector2(1, 10) },
+                        props = { size = v2(1, 10) },
                     },
                     buildPerkPane(),
                 }
@@ -1143,6 +1211,7 @@ local function showMenu()
     if menu ~= nil then
         return
     end
+    refreshLayoutMetrics()
     skillIDs = getSkillIDs()
     selectedSkillIndex = math.max(1, math.min(selectedSkillIndex, #skillIDs))
     selectedPerkIndex = 0

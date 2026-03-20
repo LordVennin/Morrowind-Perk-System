@@ -13,10 +13,18 @@ return {
     -- true            = last-write-wins (development convenience)
     ALLOW_DUPLICATE_REGISTRATION_OVERRIDE = false,
     TOGGLE_UI_KEY = "p",
+    -- Perk UI global scaling controls.
+    -- Automatic scaling uses current screen width relative to PERK_UI_SCALE_REFERENCE_WIDTH.
+    PERK_UI_AUTO_SCALE = true,
+    PERK_UI_SCALE_REFERENCE_WIDTH = 1920,
+    PERK_UI_SCALE_MIN = 0.75,
+    PERK_UI_SCALE_MAX = 1.6,
+    -- Additional multiplier applied after auto-scaling (1.0 = no change).
+    PERK_UI_SCALE_MULTIPLIER = 1.0,
     -- Perk UI layout tunables.
     PERK_UI_LEFT_PANE_WIDTH = 540,
     PERK_UI_RIGHT_PANE_WIDTH = 408,
-    PERK_UI_SIDE_PADDING = 8,
+    PERK_UI_SIDE_PADDING = 0,
     PERK_UI_GUTTER_WIDTH = 16,
     POINT_SOURCES = {
         levelUpRewards = {

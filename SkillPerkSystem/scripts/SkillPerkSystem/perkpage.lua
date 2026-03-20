@@ -634,8 +634,10 @@ local function buildPerkPane()
         ensureTreePanInitialized(selectedSkillID, treeNodes)
         local pan = getTreePan(selectedSkillID)
         local viewportSize = v2(TREE_INNER_VIEWPORT_WIDTH, TREE_INNER_VIEWPORT_HEIGHT)
-        local nodeHeight = px(28)
-        local lineThickness = px(2)
+        -- Keep tree node boxes/lines at a fixed pixel footprint so dense trees remain readable
+        -- and scrolling doesn't feel overly zoomed on high-resolution displays.
+        local nodeHeight = 28
+        local lineThickness = 2
         local horizontalLineTexture = ui.texture { path = "textures/menu_thin_border_top.dds" }
         local verticalLineTexture = ui.texture { path = "textures/menu_thin_border_left.dds" }
         local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), math.floor(viewportSize.y / 2))

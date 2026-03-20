@@ -26,6 +26,8 @@ return {
     PERK_UI_RIGHT_PANE_WIDTH = 408,
     PERK_UI_SIDE_PADDING = 0,
     PERK_UI_GUTTER_WIDTH = 16,
+    -- Compensates for outer template frame thickness so inner panes visually reach the right edge.
+    PERK_UI_FRAME_EDGE_COMPENSATION = 10,
     POINT_SOURCES = {
         levelUpRewards = {
             enabled = true,

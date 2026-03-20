@@ -93,7 +93,7 @@ local function v2(x, y)
 end
 
 local SKILL_SELECTOR_WIDTH = 352
-local SKILL_INDEX_WIDTH = 80
+local SKILL_INDEX_WIDTH = 92
 local SKILL_SELECTOR_ROW_WIDTH = 560
 local SKILL_SELECTOR_EDGE_PADDING = 4
 local SKILL_SELECTOR_INNER_PADDING = 6
@@ -121,10 +121,11 @@ local TREE_CONTENT_OFFSET_Y = 140
 local function refreshLayoutMetrics()
     uiScale = computeUiScale()
     SKILL_SELECTOR_WIDTH = 352
-    SKILL_INDEX_WIDTH = 80
+    SKILL_INDEX_WIDTH = 92
 
     PERK_UI_LEFT_PANE_WIDTH = settings.PERK_UI_LEFT_PANE_WIDTH or 540
-    PERK_UI_RIGHT_PANE_WIDTH = settings.PERK_UI_RIGHT_PANE_WIDTH or 408
+    local edgeCompensation = settings.PERK_UI_FRAME_EDGE_COMPENSATION or 10
+    PERK_UI_RIGHT_PANE_WIDTH = (settings.PERK_UI_RIGHT_PANE_WIDTH or 408) + edgeCompensation
     PERK_UI_SIDE_PADDING = settings.PERK_UI_SIDE_PADDING or 8
     PERK_UI_GUTTER_WIDTH = settings.PERK_UI_GUTTER_WIDTH or 16
     SKILL_SELECTOR_ROW_WIDTH =
@@ -1101,7 +1102,7 @@ local function buildPerkPane()
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = v2(6, 1) },
+                        props = { size = v2(0, 1) },
                     },
                 }
             }

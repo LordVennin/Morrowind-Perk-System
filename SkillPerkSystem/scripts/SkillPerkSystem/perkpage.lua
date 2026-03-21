@@ -50,6 +50,7 @@ end
 
 local menu = nil
 local openedInterfaceForPerkMenu = false
+local lastKnownGlobalPoints = nil
 local selectedSkillIndex = 1
 local selectedPerkIndex = 1
 
@@ -1278,6 +1279,14 @@ local function showMenu()
 
     menu = createdOrError
     openedInterfaceForPerkMenu = true
+    local playerApi = interfaces[MOD_NAME .. "Player"]
+    if playerApi ~= nil then
+        if type(playerApi.globalAvailablePoints) == "function" then
+            lastKnownGlobalPoints = playerApi.globalAvailablePoints()
+        elseif type(playerApi.availablePoints) == "function" then
+            lastKnownGlobalPoints = playerApi.availablePoints(getSelectedSkillID())
+        end
+    end
 end
 
 local function closeMenu()
@@ -1293,6 +1302,7 @@ local function closeMenu()
         interfaces.UI.removeMode("Interface")
         openedInterfaceForPerkMenu = false
     end
+    lastKnownGlobalPoints = nil
 end
 
 local function toggleMenu()
@@ -1334,6 +1344,22 @@ end
 
 local function onFrame(dt)
     if menu ~= nil then
+        local playerApi = interfaces[MOD_NAME .. "Player"]
+        if playerApi ~= nil then
+            local globalPoints = nil
+            if type(playerApi.globalAvailablePoints) == "function" then
+                globalPoints = playerApi.globalAvailablePoints()
+            elseif type(playerApi.availablePoints) == "function" then
+                globalPoints = playerApi.availablePoints(getSelectedSkillID())
+            end
+
+            if type(globalPoints) == "number" and globalPoints ~= lastKnownGlobalPoints then
+                lastKnownGlobalPoints = globalPoints
+                menu.layout = buildLayout()
+                menu:update()
+            end
+        end
+
         local modApi = getModApi()
         local selectedSkillID = getSelectedSkillID()
         local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"

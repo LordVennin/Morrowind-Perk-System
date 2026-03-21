@@ -55,26 +55,42 @@ local function skillBase(skillID)
 end
 
 
-local function playerLevel()
-    local levelAccessor = types.Actor.stats.level
+local function levelFromAccessor(levelAccessor)
     if type(levelAccessor) ~= "function" then
-        return 1
+        return nil
     end
 
     local levelStat = levelAccessor(pself)
-    if levelStat == nil then
-        return 1
+    if type(levelStat) ~= "table" then
+        return nil
     end
 
     local levelValue = levelStat.current
     if type(levelValue) ~= "number" then
+        levelValue = levelStat.modified
+    end
+    if type(levelValue) ~= "number" then
         levelValue = levelStat.base
     end
     if type(levelValue) ~= "number" then
-        return 1
+        return nil
     end
 
     return math.max(1, math.floor(levelValue))
+end
+
+local function playerLevel()
+    local npcLevel = levelFromAccessor(types.NPC.stats.level)
+    if npcLevel ~= nil then
+        return npcLevel
+    end
+
+    local actorLevel = levelFromAccessor(types.Actor.stats.level)
+    if actorLevel ~= nil then
+        return actorLevel
+    end
+
+    return 1
 end
 
 local function sortedNumericKeys(map)

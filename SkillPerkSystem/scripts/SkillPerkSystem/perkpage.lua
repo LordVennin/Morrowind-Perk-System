@@ -216,6 +216,29 @@ local function getSelectedSkillID()
     return skillIDs[selectedSkillIndex]
 end
 
+local function getCurrentGlobalPoints(skillID)
+    local playerApi = interfaces[MOD_NAME .. "Player"]
+    if playerApi == nil then
+        return 0
+    end
+
+    if type(playerApi.globalAvailablePoints) == "function" then
+        local points = playerApi.globalAvailablePoints()
+        if type(points) == "number" then
+            return math.max(0, math.floor(points))
+        end
+    end
+
+    if type(playerApi.availablePoints) == "function" then
+        local points = playerApi.availablePoints(skillID)
+        if type(points) == "number" then
+            return math.max(0, math.floor(points))
+        end
+    end
+
+    return 0
+end
+
 local function getTreePan(skillID)
     if skillID == nil then
         return { x = 0, y = 0 }
@@ -568,9 +591,7 @@ local function buildSkillTabs()
     end
 
     local skillID = getSelectedSkillID()
-    local playerApi = interfaces[MOD_NAME .. "Player"]
-    local globalPoints = type(playerApi.globalAvailablePoints) == "function" and playerApi.globalAvailablePoints() or playerApi.availablePoints(skillID)
-    local label = string.format("%s (global %d)", getSkillLabel(skillID), globalPoints)
+    local label = getSkillLabel(skillID)
 
     return {
         type = ui.TYPE.Flex,
@@ -648,6 +669,74 @@ local function buildSkillTabs()
             {
                 type = ui.TYPE.Widget,
                 props = { size = v2(SKILL_SELECTOR_EDGE_PADDING, 1) },
+            },
+        },
+    }
+end
+
+local function buildGlobalPointsDisplay()
+    local pointsValue = tostring(getCurrentGlobalPoints(getSelectedSkillID()))
+    local boxWidth = 84
+    local boxHeight = 24
+
+    return {
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            autoSize = false,
+            size = v2(boxWidth, boxHeight),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = true,
+                    autoSize = false,
+                    size = v2(boxWidth, boxHeight),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = v2(6, 1) },
+                    },
+                    {
+                        type = ui.TYPE.Flex,
+                        props = {
+                            horizontal = false,
+                            autoSize = false,
+                            size = v2(16, boxHeight),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = v2(1, 3) },
+                            },
+                            {
+                                type = ui.TYPE.Image,
+                                props = {
+                                    autoSize = false,
+                                    size = v2(16, 16),
+                                    resource = ui.texture { path = "icons/tx_goldicon.dds" },
+                                },
+                            },
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = v2(6, 1) },
+                    },
+                    {
+                        type = ui.TYPE.Text,
+                        template = interfaces.MWUI.templates.textNormal,
+                        props = {
+                            text = pointsValue,
+                            textAlignH = ui.ALIGNMENT.Center,
+                            textAlignV = ui.ALIGNMENT.Center,
+                            autoSize = false,
+                            size = v2(50, boxHeight),
+                        },
+                    },
+                },
             },
         },
     }
@@ -1229,6 +1318,15 @@ buildLayout = function()
                         content = ui.content {
                             {
                                 type = ui.TYPE.Widget,
+                                props = { size = v2(PERK_UI_SIDE_PADDING, 1) },
+                            },
+                            buildGlobalPointsDisplay(),
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = v2(8, 1) },
+                            },
+                            {
+                                type = ui.TYPE.Widget,
                                 external = { grow = 1 },
                             },
                             buildSkillTabs(),
@@ -1279,14 +1377,7 @@ local function showMenu()
 
     menu = createdOrError
     openedInterfaceForPerkMenu = true
-    local playerApi = interfaces[MOD_NAME .. "Player"]
-    if playerApi ~= nil then
-        if type(playerApi.globalAvailablePoints) == "function" then
-            lastKnownGlobalPoints = playerApi.globalAvailablePoints()
-        elseif type(playerApi.availablePoints) == "function" then
-            lastKnownGlobalPoints = playerApi.availablePoints(getSelectedSkillID())
-        end
-    end
+    lastKnownGlobalPoints = getCurrentGlobalPoints(getSelectedSkillID())
 end
 
 local function closeMenu()
@@ -1346,12 +1437,7 @@ local function onFrame(dt)
     if menu ~= nil then
         local playerApi = interfaces[MOD_NAME .. "Player"]
         if playerApi ~= nil then
-            local globalPoints = nil
-            if type(playerApi.globalAvailablePoints) == "function" then
-                globalPoints = playerApi.globalAvailablePoints()
-            elseif type(playerApi.availablePoints) == "function" then
-                globalPoints = playerApi.availablePoints(getSelectedSkillID())
-            end
+            local globalPoints = getCurrentGlobalPoints(getSelectedSkillID())
 
             if type(globalPoints) == "number" and globalPoints ~= lastKnownGlobalPoints then
                 lastKnownGlobalPoints = globalPoints

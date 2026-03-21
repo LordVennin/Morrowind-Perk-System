@@ -676,13 +676,15 @@ end
 
 local function buildGlobalPointsDisplay()
     local pointsValue = tostring(getCurrentGlobalPoints(getSelectedSkillID()))
+    local boxWidth = 84
+    local boxHeight = 24
 
     return {
         type = ui.TYPE.Container,
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             autoSize = false,
-            size = v2(112, 28),
+            size = v2(boxWidth, boxHeight),
         },
         content = ui.content {
             {
@@ -690,24 +692,38 @@ local function buildGlobalPointsDisplay()
                 props = {
                     horizontal = true,
                     autoSize = false,
-                    size = v2(112, 28),
+                    size = v2(boxWidth, boxHeight),
                 },
                 content = ui.content {
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = v2(8, 1) },
+                        props = { size = v2(6, 1) },
                     },
                     {
-                        type = ui.TYPE.Image,
+                        type = ui.TYPE.Flex,
                         props = {
+                            horizontal = false,
                             autoSize = false,
-                            size = v2(16, 16),
-                            resource = ui.texture { path = "icons/tx_goldicon.dds" },
+                            size = v2(16, boxHeight),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = v2(1, 3) },
+                            },
+                            {
+                                type = ui.TYPE.Image,
+                                props = {
+                                    autoSize = false,
+                                    size = v2(16, 16),
+                                    resource = ui.texture { path = "icons/tx_goldicon.dds" },
+                                },
+                            },
                         },
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = v2(8, 1) },
+                        props = { size = v2(6, 1) },
                     },
                     {
                         type = ui.TYPE.Text,
@@ -717,7 +733,7 @@ local function buildGlobalPointsDisplay()
                             textAlignH = ui.ALIGNMENT.Center,
                             textAlignV = ui.ALIGNMENT.Center,
                             autoSize = false,
-                            size = v2(72, 28),
+                            size = v2(50, boxHeight),
                         },
                     },
                 },

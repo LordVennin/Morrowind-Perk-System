@@ -83,20 +83,22 @@ local function init()
 
     interfaces.Settings.registerPage {
         key = SETTINGS_PAGE_KEY,
-        name = "Skill Perk System",
-        description = "Configure perk menu keybind and point rewards.",
+        l10n = MOD_NAME,
+        name = "name",
+        description = "modSettingsDescription",
     }
 
     interfaces.Settings.registerGroup {
         key = SETTINGS_GROUP_KEY,
         page = SETTINGS_PAGE_KEY,
-        name = "Gameplay",
+        l10n = MOD_NAME,
+        name = "gameplay",
         permanentStorage = true,
         settings = {
             {
                 key = "toggleUiKey",
-                name = "Perk Menu Key",
-                description = "Single letter key used to open the perk menu.",
+                name = "toggleUiKeyName",
+                description = "toggleUiKeyDescription",
                 default = defaults.TOGGLE_UI_KEY,
                 renderer = "textLine",
                 argument = {
@@ -106,8 +108,8 @@ local function init()
             },
             {
                 key = "pointsPerLevel",
-                name = "Points Per Level",
-                description = "How many perk points are awarded on each level up.",
+                name = "pointsPerLevelName",
+                description = "pointsPerLevelDescription",
                 default = defaults.POINT_SOURCES.levelUpRewards.pointsPerLevel,
                 renderer = "number",
                 argument = {
@@ -118,8 +120,8 @@ local function init()
             },
             {
                 key = "skillMilestone1",
-                name = "Skill Milestone #1",
-                description = "First skill level threshold that grants a perk point.",
+                name = "skillMilestone1Name",
+                description = "skillMilestone1Description",
                 default = 50,
                 renderer = "number",
                 argument = {
@@ -130,8 +132,8 @@ local function init()
             },
             {
                 key = "skillMilestone2",
-                name = "Skill Milestone #2",
-                description = "Second skill level threshold that grants a perk point.",
+                name = "skillMilestone2Name",
+                description = "skillMilestone2Description",
                 default = 75,
                 renderer = "number",
                 argument = {
@@ -142,8 +144,8 @@ local function init()
             },
             {
                 key = "skillMilestone3",
-                name = "Skill Milestone #3",
-                description = "Third skill level threshold that grants a perk point.",
+                name = "skillMilestone3Name",
+                description = "skillMilestone3Description",
                 default = 100,
                 renderer = "number",
                 argument = {

@@ -1,0 +1,19 @@
+name: "Skill Perk System"
+modSettingsDescription: "Configure perk keybind and point progression rewards."
+
+gameplay: "Gameplay"
+
+toggleUiKeyName: "Perk Menu Key"
+toggleUiKeyDescription: "Single letter key used to open the perk menu."
+
+pointsPerLevelName: "Points Per Level"
+pointsPerLevelDescription: "How many perk points are awarded on each level up."
+
+skillMilestone1Name: "Skill Threshold #1"
+skillMilestone1Description: "First skill level threshold that grants one perk point."
+
+skillMilestone2Name: "Skill Threshold #2"
+skillMilestone2Description: "Second skill level threshold that grants one perk point."
+
+skillMilestone3Name: "Skill Threshold #3"
+skillMilestone3Description: "Third skill level threshold that grants one perk point."

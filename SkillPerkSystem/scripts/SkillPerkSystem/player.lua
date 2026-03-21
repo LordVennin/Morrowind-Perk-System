@@ -55,18 +55,42 @@ local function skillBase(skillID)
 end
 
 
-local function playerLevel()
-    local levelAccessor = types.NPC.stats.level
+local function levelFromAccessor(levelAccessor)
     if type(levelAccessor) ~= "function" then
-        return 1
+        return nil
     end
 
     local levelStat = levelAccessor(pself)
-    if levelStat == nil or type(levelStat.base) ~= "number" then
-        return 1
+    if type(levelStat) ~= "table" then
+        return nil
     end
 
-    return math.max(1, math.floor(levelStat.base))
+    local levelValue = levelStat.current
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.modified
+    end
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.base
+    end
+    if type(levelValue) ~= "number" then
+        return nil
+    end
+
+    return math.max(1, math.floor(levelValue))
+end
+
+local function playerLevel()
+    local npcLevel = levelFromAccessor(types.NPC.stats.level)
+    if npcLevel ~= nil then
+        return npcLevel
+    end
+
+    local actorLevel = levelFromAccessor(types.Actor.stats.level)
+    if actorLevel ~= nil then
+        return actorLevel
+    end
+
+    return 1
 end
 
 local function sortedNumericKeys(map)
@@ -81,11 +105,34 @@ local function sortedNumericKeys(map)
 end
 
 local function awardFromSource(sourceId, claimId, amount, reason)
+    local beforeAvailable = pointsLedger.getAvailablePoints()
     local ok, resultOrErr = pointsLedger.claimAndAddPoints(sourceId, claimId, amount, reason)
     if ok then
+        local afterAvailable = pointsLedger.getAvailablePoints()
+        print(string.format(
+            "[%s] Point grant OK source=%s claim=%s amount=%s available=%d->%d totalAdded=%d totalSpent=%d",
+            MOD_NAME,
+            tostring(sourceId),
+            tostring(claimId),
+            tostring(amount),
+            beforeAvailable,
+            afterAvailable,
+            pointsLedger.getTotalAdded(),
+            pointsLedger.getTotalSpent()
+        ))
         debugPrint(string.format("Point source '%s' granted %d for claim '%s'", sourceId, amount, claimId))
     elseif resultOrErr ~= "already claimed" then
         print("[" .. MOD_NAME .. "] point source '" .. tostring(sourceId) .. "' failed claim='" .. tostring(claimId) .. "': " .. tostring(resultOrErr))
+    else
+        print(string.format(
+            "[%s] Point grant skipped source=%s claim=%s reason=already claimed available=%d totalAdded=%d totalSpent=%d",
+            MOD_NAME,
+            tostring(sourceId),
+            tostring(claimId),
+            pointsLedger.getAvailablePoints(),
+            pointsLedger.getTotalAdded(),
+            pointsLedger.getTotalSpent()
+        ))
     end
     return ok
 end
@@ -116,7 +163,16 @@ local function registerBuiltInPointSources()
             onUpdate = function(_)
                 local pointsPerLevel = settings.getPointsPerLevel and settings.getPointsPerLevel() or (tonumber(levelUpConfig.pointsPerLevel) or 1)
                 local firstRewardLevel = math.max(1, math.floor(tonumber(levelUpConfig.firstRewardLevel) or 2))
-                for level = firstRewardLevel, playerLevel() do
+                local currentLevel = playerLevel()
+                print(string.format(
+                    "[%s] Level reward check playerLevel=%d firstRewardLevel=%d pointsPerLevel=%d available=%d",
+                    MOD_NAME,
+                    currentLevel,
+                    firstRewardLevel,
+                    pointsPerLevel,
+                    pointsLedger.getAvailablePoints()
+                ))
+                for level = firstRewardLevel, currentLevel do
                     awardFromSource("level-up", "level:" .. tostring(level), pointsPerLevel, "Level up reward")
                 end
             end,
@@ -309,6 +365,15 @@ local function addPerk(data)
 
     table.insert(activePerks, data.perkID)
     spentPointsBySkill[perk.tab] = spentPoints(perk.tab) + perk.cost
+    print(string.format(
+        "[%s] Added perk=%s cost=%d available=%d totalAdded=%d totalSpent=%d",
+        MOD_NAME,
+        tostring(data.perkID),
+        perk.cost,
+        pointsLedger.getAvailablePoints(),
+        pointsLedger.getTotalAdded(),
+        pointsLedger.getTotalSpent()
+    ))
     effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
 end
 
@@ -483,12 +548,17 @@ local function UiModeChanged(data)
 
     local hasNCGDMW = interfaces.NCGDMW ~= nil
     if data.oldMode == "LevelUp" then
+        -- Run point source update immediately when the level-up menu closes so
+        -- newly-earned level rewards are available before checking shouldShowUI().
+        pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
         if shouldShowUI() then
             pself:sendEvent(MOD_NAME .. "showPerkUI", {})
         else
             pself:sendEvent(MOD_NAME .. "closePerkUI", {})
         end
     elseif hasNCGDMW and data.oldMode == "Rest" then
+        -- NCGDMW level progression can happen when resting; refresh points first.
+        pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
         if shouldShowUI() then
             pself:sendEvent(MOD_NAME .. "showPerkUI", {})
         else

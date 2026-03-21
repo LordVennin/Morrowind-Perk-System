@@ -55,68 +55,10 @@ local function skillBase(skillID)
 end
 
 
-local function readLevelValue(levelStat)
-    if type(levelStat) == "number" then
-        return math.max(1, math.floor(levelStat))
-    end
-    if type(levelStat) ~= "table" then
-        return nil
-    end
-
-    local levelValue = levelStat.current
-    if type(levelValue) ~= "number" then
-        levelValue = levelStat.modified
-    end
-    if type(levelValue) ~= "number" then
-        levelValue = levelStat.base
-    end
-    if type(levelValue) ~= "number" then
-        levelValue = levelStat.level
-    end
-    if type(levelValue) ~= "number" then
-        levelValue = levelStat.value
-    end
-    if type(levelValue) ~= "number" then
-        return nil
-    end
-
-    return math.max(1, math.floor(levelValue))
-end
-
-local function levelFromAccessor(levelAccessor)
-    if type(levelAccessor) ~= "function" then
-        return nil
-    end
-
-    local ok, levelStat = pcall(levelAccessor, pself)
-    if not ok then
-        debugPrint("level accessor failed: " .. tostring(levelStat))
-        return nil
-    end
-
-    return readLevelValue(levelStat)
-end
-
 local function playerLevel()
-    if type(types.Player) == "table" and type(types.Player.stats) == "table" then
-        local playerLevel = levelFromAccessor(types.Player.stats.level)
-        if playerLevel ~= nil then
-            return playerLevel
-        end
-    end
-
-    if type(types.NPC) == "table" and type(types.NPC.stats) == "table" then
-        local npcLevel = levelFromAccessor(types.NPC.stats.level)
-        if npcLevel ~= nil then
-            return npcLevel
-        end
-    end
-
-    if type(types.Actor) == "table" and type(types.Actor.stats) == "table" then
-        local actorLevel = levelFromAccessor(types.Actor.stats.level)
-        if actorLevel ~= nil then
-            return actorLevel
-        end
+    local stat = types.Actor.stats.level(pself)
+    if stat and type(stat.current) == "number" then
+        return math.max(1, math.floor(stat.current))
     end
 
     return 1
@@ -199,6 +141,7 @@ local function registerBuiltInPointSources()
                     pointsPerLevel,
                     pointsLedger.getAvailablePoints()
                 ))
+                print("[SkillPerkSystem][LEVEL_DEBUG] playerLevel=" .. tostring(playerLevel()))
                 for level = firstRewardLevel, currentLevel do
                     awardFromSource("level-up", "level:" .. tostring(level), pointsPerLevel, "Level up reward")
                 end

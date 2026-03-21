@@ -56,17 +56,25 @@ end
 
 
 local function playerLevel()
-    local levelAccessor = types.NPC.stats.level
+    local levelAccessor = types.Actor.stats.level
     if type(levelAccessor) ~= "function" then
         return 1
     end
 
     local levelStat = levelAccessor(pself)
-    if levelStat == nil or type(levelStat.base) ~= "number" then
+    if levelStat == nil then
         return 1
     end
 
-    return math.max(1, math.floor(levelStat.base))
+    local levelValue = levelStat.current
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.base
+    end
+    if type(levelValue) ~= "number" then
+        return 1
+    end
+
+    return math.max(1, math.floor(levelValue))
 end
 
 local function sortedNumericKeys(map)
@@ -483,12 +491,17 @@ local function UiModeChanged(data)
 
     local hasNCGDMW = interfaces.NCGDMW ~= nil
     if data.oldMode == "LevelUp" then
+        -- Run point source update immediately when the level-up menu closes so
+        -- newly-earned level rewards are available before checking shouldShowUI().
+        pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
         if shouldShowUI() then
             pself:sendEvent(MOD_NAME .. "showPerkUI", {})
         else
             pself:sendEvent(MOD_NAME .. "closePerkUI", {})
         end
     elseif hasNCGDMW and data.oldMode == "Rest" then
+        -- NCGDMW level progression can happen when resting; refresh points first.
+        pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
         if shouldShowUI() then
             pself:sendEvent(MOD_NAME .. "showPerkUI", {})
         else

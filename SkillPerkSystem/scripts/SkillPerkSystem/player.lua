@@ -105,11 +105,34 @@ local function sortedNumericKeys(map)
 end
 
 local function awardFromSource(sourceId, claimId, amount, reason)
+    local beforeAvailable = pointsLedger.getAvailablePoints()
     local ok, resultOrErr = pointsLedger.claimAndAddPoints(sourceId, claimId, amount, reason)
     if ok then
+        local afterAvailable = pointsLedger.getAvailablePoints()
+        print(string.format(
+            "[%s] Point grant OK source=%s claim=%s amount=%s available=%d->%d totalAdded=%d totalSpent=%d",
+            MOD_NAME,
+            tostring(sourceId),
+            tostring(claimId),
+            tostring(amount),
+            beforeAvailable,
+            afterAvailable,
+            pointsLedger.getTotalAdded(),
+            pointsLedger.getTotalSpent()
+        ))
         debugPrint(string.format("Point source '%s' granted %d for claim '%s'", sourceId, amount, claimId))
     elseif resultOrErr ~= "already claimed" then
         print("[" .. MOD_NAME .. "] point source '" .. tostring(sourceId) .. "' failed claim='" .. tostring(claimId) .. "': " .. tostring(resultOrErr))
+    else
+        print(string.format(
+            "[%s] Point grant skipped source=%s claim=%s reason=already claimed available=%d totalAdded=%d totalSpent=%d",
+            MOD_NAME,
+            tostring(sourceId),
+            tostring(claimId),
+            pointsLedger.getAvailablePoints(),
+            pointsLedger.getTotalAdded(),
+            pointsLedger.getTotalSpent()
+        ))
     end
     return ok
 end
@@ -140,7 +163,16 @@ local function registerBuiltInPointSources()
             onUpdate = function(_)
                 local pointsPerLevel = settings.getPointsPerLevel and settings.getPointsPerLevel() or (tonumber(levelUpConfig.pointsPerLevel) or 1)
                 local firstRewardLevel = math.max(1, math.floor(tonumber(levelUpConfig.firstRewardLevel) or 2))
-                for level = firstRewardLevel, playerLevel() do
+                local currentLevel = playerLevel()
+                print(string.format(
+                    "[%s] Level reward check playerLevel=%d firstRewardLevel=%d pointsPerLevel=%d available=%d",
+                    MOD_NAME,
+                    currentLevel,
+                    firstRewardLevel,
+                    pointsPerLevel,
+                    pointsLedger.getAvailablePoints()
+                ))
+                for level = firstRewardLevel, currentLevel do
                     awardFromSource("level-up", "level:" .. tostring(level), pointsPerLevel, "Level up reward")
                 end
             end,
@@ -333,6 +365,15 @@ local function addPerk(data)
 
     table.insert(activePerks, data.perkID)
     spentPointsBySkill[perk.tab] = spentPoints(perk.tab) + perk.cost
+    print(string.format(
+        "[%s] Added perk=%s cost=%d available=%d totalAdded=%d totalSpent=%d",
+        MOD_NAME,
+        tostring(data.perkID),
+        perk.cost,
+        pointsLedger.getAvailablePoints(),
+        pointsLedger.getTotalAdded(),
+        pointsLedger.getTotalSpent()
+    ))
     effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
 end
 

@@ -56,17 +56,25 @@ end
 
 
 local function playerLevel()
-    local levelAccessor = types.NPC.stats.level
+    local levelAccessor = types.Actor.stats.level
     if type(levelAccessor) ~= "function" then
         return 1
     end
 
     local levelStat = levelAccessor(pself)
-    if levelStat == nil or type(levelStat.base) ~= "number" then
+    if levelStat == nil then
         return 1
     end
 
-    return math.max(1, math.floor(levelStat.base))
+    local levelValue = levelStat.current
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.base
+    end
+    if type(levelValue) ~= "number" then
+        return 1
+    end
+
+    return math.max(1, math.floor(levelValue))
 end
 
 local function sortedNumericKeys(map)

@@ -9,18 +9,28 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
 
-local function resolveToggleKey()
-    local keyName = tostring(settings.TOGGLE_UI_KEY or "p"):upper()
-    local keyCode = input.KEY[keyName]
+local activeToggleKeyName = nil
+local activeToggleKeyCode = input.KEY.P
+local toggleKeyWasPressed = false
+
+local function refreshToggleKeyBinding()
+    local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
+    local normalized = requestedKey:upper()
+
+    if normalized == activeToggleKeyName then
+        return
+    end
+
+    local keyCode = input.KEY[normalized]
     if keyCode == nil then
-        print("[" .. MOD_NAME .. "] Invalid TOGGLE_UI_KEY='" .. tostring(settings.TOGGLE_UI_KEY) .. "'; using P")
+        print("[" .. MOD_NAME .. "] Invalid TOGGLE_UI_KEY='" .. tostring(requestedKey) .. "'; using P")
+        normalized = "P"
         keyCode = input.KEY.P
     end
-    return keyCode
-end
 
-local TOGGLE_UI_KEY_CODE = resolveToggleKey()
-local toggleKeyWasPressed = false
+    activeToggleKeyName = normalized
+    activeToggleKeyCode = keyCode
+end
 
 local function keyDown(keyName)
     local ok, code = pcall(function()
@@ -1369,7 +1379,8 @@ local function onFrame(dt)
         end
     end
 
-    local isPressed = input.isKeyPressed(TOGGLE_UI_KEY_CODE)
+    refreshToggleKeyBinding()
+    local isPressed = input.isKeyPressed(activeToggleKeyCode)
     if isPressed and not toggleKeyWasPressed then
         toggleMenu()
     end

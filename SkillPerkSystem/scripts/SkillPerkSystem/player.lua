@@ -55,18 +55,42 @@ local function skillBase(skillID)
 end
 
 
-local function playerLevel()
-    local levelAccessor = types.NPC.stats.level
+local function levelFromAccessor(levelAccessor)
     if type(levelAccessor) ~= "function" then
-        return 1
+        return nil
     end
 
     local levelStat = levelAccessor(pself)
-    if levelStat == nil or type(levelStat.base) ~= "number" then
-        return 1
+    if type(levelStat) ~= "table" then
+        return nil
     end
 
-    return math.max(1, math.floor(levelStat.base))
+    local levelValue = levelStat.current
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.modified
+    end
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.base
+    end
+    if type(levelValue) ~= "number" then
+        return nil
+    end
+
+    return math.max(1, math.floor(levelValue))
+end
+
+local function playerLevel()
+    local npcLevel = levelFromAccessor(types.NPC.stats.level)
+    if npcLevel ~= nil then
+        return npcLevel
+    end
+
+    local actorLevel = levelFromAccessor(types.Actor.stats.level)
+    if actorLevel ~= nil then
+        return actorLevel
+    end
+
+    return 1
 end
 
 local function sortedNumericKeys(map)
@@ -483,12 +507,17 @@ local function UiModeChanged(data)
 
     local hasNCGDMW = interfaces.NCGDMW ~= nil
     if data.oldMode == "LevelUp" then
+        -- Run point source update immediately when the level-up menu closes so
+        -- newly-earned level rewards are available before checking shouldShowUI().
+        pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
         if shouldShowUI() then
             pself:sendEvent(MOD_NAME .. "showPerkUI", {})
         else
             pself:sendEvent(MOD_NAME .. "closePerkUI", {})
         end
     elseif hasNCGDMW and data.oldMode == "Rest" then
+        -- NCGDMW level progression can happen when resting; refresh points first.
+        pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
         if shouldShowUI() then
             pself:sendEvent(MOD_NAME .. "showPerkUI", {})
         else

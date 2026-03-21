@@ -569,6 +569,12 @@ local function UiModeChanged(data)
     end
 end
 
+
+local function onInit()
+    initializePointSources()
+    print(string.format("[%s] Initialized point sources", MOD_NAME))
+end
+
 local function onLoad(data)
     earnedMilestonesBySkill = (data and data.earnedMilestonesBySkill) or {}
     spentPointsBySkill = (data and data.spentPointsBySkill) or {}
@@ -651,6 +657,7 @@ return {
         [MOD_NAME .. "questCompleted"] = onQuestCompleted,
     },
     engineHandlers = {
+        onInit = onInit,
         onUpdate = onUpdate,
         onLoad = onLoad,
         onSave = onSave,

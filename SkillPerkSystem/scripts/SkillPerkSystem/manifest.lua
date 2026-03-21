@@ -9,6 +9,7 @@ local SOURCE_MANIFEST = "scripts.SkillPerkSystem.manifest"
 local VALIDATION_ERROR_TAG = "VALIDATION_ERROR"
 
 print("[" .. settings.MOD_NAME .. "] framework .omwscripts PLAYER manifest loaded")
+settings.init()
 
 packRegistry.beginFramework()
 

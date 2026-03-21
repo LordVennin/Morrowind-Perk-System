@@ -702,7 +702,7 @@ local function buildGlobalPointsDisplay()
                         props = {
                             autoSize = false,
                             size = v2(16, 16),
-                            resource = ui.texture { path = "textures\\tx_goldicon.dds" },
+                            resource = ui.texture { path = "icons/tx_goldicon.dds" },
                         },
                     },
                     {

@@ -97,47 +97,7 @@ local function levelFromAccessor(levelAccessor)
     return readLevelValue(levelStat)
 end
 
-local function tryReadFromSkillProgression()
-    local progression = interfaces.SkillProgression
-    if type(progression) ~= "table" then
-        return nil
-    end
-
-    local candidateKeys = { "getLevel", "getCurrentLevel", "level" }
-    for _, key in ipairs(candidateKeys) do
-        local getter = progression[key]
-        if type(getter) == "function" then
-            local ok, result = pcall(getter)
-            if ok then
-                local level = readLevelValue(result)
-                if level ~= nil then
-                    return level
-                end
-            else
-                debugPrint("SkillProgression." .. key .. "() failed: " .. tostring(result))
-            end
-
-            ok, result = pcall(getter, pself)
-            if ok then
-                local level = readLevelValue(result)
-                if level ~= nil then
-                    return level
-                end
-            else
-                debugPrint("SkillProgression." .. key .. "(self) failed: " .. tostring(result))
-            end
-        end
-    end
-
-    return nil
-end
-
 local function playerLevel()
-    local progressionLevel = tryReadFromSkillProgression()
-    if progressionLevel ~= nil then
-        return progressionLevel
-    end
-
     if type(types.Player) == "table" and type(types.Player.stats) == "table" then
         local playerLevel = levelFromAccessor(types.Player.stats.level)
         if playerLevel ~= nil then
@@ -607,6 +567,7 @@ end
 local function shouldShowUI()
     return globalAvailablePoints() > 0
 end
+
 
 local function UiModeChanged(data)
     if data.newMode ~= nil then

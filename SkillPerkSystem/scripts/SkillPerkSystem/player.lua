@@ -55,12 +55,10 @@ local function skillBase(skillID)
 end
 
 
-local function levelFromAccessor(levelAccessor)
-    if type(levelAccessor) ~= "function" then
-        return nil
+local function readLevelValue(levelStat)
+    if type(levelStat) == "number" then
+        return math.max(1, math.floor(levelStat))
     end
-
-    local levelStat = levelAccessor(pself)
     if type(levelStat) ~= "table" then
         return nil
     end
@@ -73,21 +71,52 @@ local function levelFromAccessor(levelAccessor)
         levelValue = levelStat.base
     end
     if type(levelValue) ~= "number" then
+        levelValue = levelStat.level
+    end
+    if type(levelValue) ~= "number" then
+        levelValue = levelStat.value
+    end
+    if type(levelValue) ~= "number" then
         return nil
     end
 
     return math.max(1, math.floor(levelValue))
 end
 
-local function playerLevel()
-    local npcLevel = levelFromAccessor(types.NPC.stats.level)
-    if npcLevel ~= nil then
-        return npcLevel
+local function levelFromAccessor(levelAccessor)
+    if type(levelAccessor) ~= "function" then
+        return nil
     end
 
-    local actorLevel = levelFromAccessor(types.Actor.stats.level)
-    if actorLevel ~= nil then
-        return actorLevel
+    local ok, levelStat = pcall(levelAccessor, pself)
+    if not ok then
+        debugPrint("level accessor failed: " .. tostring(levelStat))
+        return nil
+    end
+
+    return readLevelValue(levelStat)
+end
+
+local function playerLevel()
+    if type(types.Player) == "table" and type(types.Player.stats) == "table" then
+        local playerLevel = levelFromAccessor(types.Player.stats.level)
+        if playerLevel ~= nil then
+            return playerLevel
+        end
+    end
+
+    if type(types.NPC) == "table" and type(types.NPC.stats) == "table" then
+        local npcLevel = levelFromAccessor(types.NPC.stats.level)
+        if npcLevel ~= nil then
+            return npcLevel
+        end
+    end
+
+    if type(types.Actor) == "table" and type(types.Actor.stats) == "table" then
+        local actorLevel = levelFromAccessor(types.Actor.stats.level)
+        if actorLevel ~= nil then
+            return actorLevel
+        end
     end
 
     return 1
@@ -124,9 +153,8 @@ local function awardFromSource(sourceId, claimId, amount, reason)
     elseif resultOrErr ~= "already claimed" then
         print("[" .. MOD_NAME .. "] point source '" .. tostring(sourceId) .. "' failed claim='" .. tostring(claimId) .. "': " .. tostring(resultOrErr))
     else
-        print(string.format(
-            "[%s] Point grant skipped source=%s claim=%s reason=already claimed available=%d totalAdded=%d totalSpent=%d",
-            MOD_NAME,
+        debugPrint(string.format(
+            "Point grant skipped source=%s claim=%s reason=already claimed available=%d totalAdded=%d totalSpent=%d",
             tostring(sourceId),
             tostring(claimId),
             pointsLedger.getAvailablePoints(),
@@ -164,9 +192,8 @@ local function registerBuiltInPointSources()
                 local pointsPerLevel = settings.getPointsPerLevel and settings.getPointsPerLevel() or (tonumber(levelUpConfig.pointsPerLevel) or 1)
                 local firstRewardLevel = math.max(1, math.floor(tonumber(levelUpConfig.firstRewardLevel) or 2))
                 local currentLevel = playerLevel()
-                print(string.format(
-                    "[%s] Level reward check playerLevel=%d firstRewardLevel=%d pointsPerLevel=%d available=%d",
-                    MOD_NAME,
+                debugPrint(string.format(
+                    "Level reward check playerLevel=%d firstRewardLevel=%d pointsPerLevel=%d available=%d",
                     currentLevel,
                     firstRewardLevel,
                     pointsPerLevel,
@@ -541,6 +568,7 @@ local function shouldShowUI()
     return globalAvailablePoints() > 0
 end
 
+
 local function UiModeChanged(data)
     if data.newMode ~= nil then
         return
@@ -567,6 +595,12 @@ local function UiModeChanged(data)
     else
         pself:sendEvent(MOD_NAME .. "closePerkUI", {})
     end
+end
+
+
+local function onInit()
+    initializePointSources()
+    print(string.format("[%s] Initialized point sources", MOD_NAME))
 end
 
 local function onLoad(data)
@@ -651,6 +685,7 @@ return {
         [MOD_NAME .. "questCompleted"] = onQuestCompleted,
     },
     engineHandlers = {
+        onInit = onInit,
         onUpdate = onUpdate,
         onLoad = onLoad,
         onSave = onSave,

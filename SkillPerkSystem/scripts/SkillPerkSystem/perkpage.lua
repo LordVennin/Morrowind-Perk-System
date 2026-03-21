@@ -714,7 +714,7 @@ local function buildGlobalPointsDisplay()
                         template = interfaces.MWUI.templates.textNormal,
                         props = {
                             text = pointsValue,
-                            textAlignH = ui.ALIGNMENT.Left,
+                            textAlignH = ui.ALIGNMENT.Center,
                             textAlignV = ui.ALIGNMENT.Center,
                             autoSize = false,
                             size = v2(72, 28),

@@ -8,7 +8,6 @@ local pointsLedger = require("scripts.SkillPerkSystem.points")
 local registryState = require("scripts.SkillPerkSystem.registry_state")
 
 local MOD_NAME = settings.MOD_NAME
-local POINT_SOURCE_SETTINGS = settings.POINT_SOURCES or {}
 local DEBUG_LOGS = settings.DEBUG_LOGS == true
 
 local earnedMilestonesBySkill = {}
@@ -110,11 +109,12 @@ local function globalAvailablePoints()
 end
 
 local function registerBuiltInPointSources()
-    local levelUpConfig = POINT_SOURCE_SETTINGS.levelUpRewards or {}
+    local pointSourceSettings = settings.POINT_SOURCES or {}
+    local levelUpConfig = pointSourceSettings.levelUpRewards or {}
     if levelUpConfig.enabled ~= false then
         pointsLedger.registerPointSource("level-up", {
             onUpdate = function(_)
-                local pointsPerLevel = tonumber(levelUpConfig.pointsPerLevel) or 1
+                local pointsPerLevel = settings.getPointsPerLevel and settings.getPointsPerLevel() or (tonumber(levelUpConfig.pointsPerLevel) or 1)
                 local firstRewardLevel = math.max(1, math.floor(tonumber(levelUpConfig.firstRewardLevel) or 2))
                 for level = firstRewardLevel, playerLevel() do
                     awardFromSource("level-up", "level:" .. tostring(level), pointsPerLevel, "Level up reward")
@@ -123,15 +123,17 @@ local function registerBuiltInPointSources()
         })
     end
 
-    local milestoneConfig = POINT_SOURCE_SETTINGS.skillMilestoneRewards or {}
+    local milestoneConfig = pointSourceSettings.skillMilestoneRewards or {}
     if milestoneConfig.enabled ~= false then
-        local rewardsByLevel = milestoneConfig.rewardsBySkillLevel or {
-            [50] = 1,
-            [75] = 1,
-            [100] = 1,
-        }
         pointsLedger.registerPointSource("skill-milestones", {
             onUpdate = function(_)
+                local rewardsByLevel = settings.getSkillMilestoneRewards and settings.getSkillMilestoneRewards()
+                    or milestoneConfig.rewardsBySkillLevel
+                    or {
+                        [50] = 1,
+                        [75] = 1,
+                        [100] = 1,
+                    }
                 for _, skillID in ipairs(getSkillIds()) do
                     local skillLevel = skillBase(skillID)
                     local grantedCount = 0
@@ -154,7 +156,7 @@ local function registerBuiltInPointSources()
         })
     end
 
-    local questConfig = POINT_SOURCE_SETTINGS.questCompletionRewards or {}
+    local questConfig = pointSourceSettings.questCompletionRewards or {}
     if questConfig.enabled ~= false then
         pointsLedger.registerPointSource("quest-completion", {
             onQuestCompleted = function(data)

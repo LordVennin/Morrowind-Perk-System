@@ -453,7 +453,7 @@ local function getAnyParentRequirementLabel(parentIDs)
         end
         table.insert(labels, label)
     end
-    return string.format("Any parent perk: %s", table.concat(labels, " or "))
+    return table.concat(labels, " or ")
 end
 
 local function getMissingParentPerks(perkID)

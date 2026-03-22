@@ -1036,14 +1036,24 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             props = { size = v2(1, 4) },
         },
         {
-            type = ui.TYPE.Text,
-            template = interfaces.MWUI.templates.textHeader,
+            type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.borders,
             props = {
-                text = "Requirements",
                 autoSize = false,
                 size = v2(leftColumnWidth - (requirementInset * 2), requirementRowHeight),
-                textAlignH = ui.ALIGNMENT.Center,
-                textAlignV = ui.ALIGNMENT.Center,
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Text,
+                    template = interfaces.MWUI.templates.textHeader,
+                    props = {
+                        text = "Requirements",
+                        autoSize = false,
+                        size = v2(leftColumnWidth - (requirementInset * 2), requirementRowHeight),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Center,
+                    },
+                },
             },
         },
         {

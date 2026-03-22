@@ -1035,6 +1035,21 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             type = ui.TYPE.Widget,
             props = { size = v2(1, 4) },
         },
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = {
+                text = "Requirements",
+                autoSize = false,
+                size = v2(leftColumnWidth - (requirementInset * 2), requirementRowHeight),
+                textAlignH = ui.ALIGNMENT.Center,
+                textAlignV = ui.ALIGNMENT.Center,
+            },
+        },
+        {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, requirementRowGap) },
+        },
     }
 
     for _, req in ipairs(requirementRows) do

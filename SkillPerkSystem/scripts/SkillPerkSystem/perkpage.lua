@@ -743,6 +743,346 @@ local function buildGlobalPointsDisplay()
     }
 end
 
+
+local function wrapTextLines(text, maxChars)
+    local lines = {}
+
+    for paragraph in tostring(text or ""):gmatch("[^\n]+") do
+        local line = ""
+        for word in paragraph:gmatch("%S+") do
+            local candidate = (line == "") and word or (line .. " " .. word)
+            if #candidate > maxChars and line ~= "" then
+                table.insert(lines, line)
+                line = word
+            else
+                line = candidate
+            end
+        end
+        if line ~= "" then
+            table.insert(lines, line)
+        end
+    end
+
+    if #lines == 0 then
+        table.insert(lines, "")
+    end
+    return lines
+end
+
+local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth)
+    local contentWidth = math.max(220, rightPaneWidth - 14)
+    local titleWidth = math.min(contentWidth, px(252))
+    local twoColumnHeight = px(188)
+    local leftColumnWidth = math.floor(contentWidth * 0.6)
+    local rightColumnWidth = contentWidth - leftColumnWidth - px(10)
+    local unlockContainerHeight = px(48)
+    local descriptionHeight = px(122)
+    local topRowHeight = px(34)
+
+    local title = selectedPerkID or skillName or "Perk Details"
+    local descriptionText = skillDescription or "Perks registered under this tab."
+    local effectId = "--"
+    local cost = 0
+    local owned = false
+    local canUnlock = false
+
+    if node ~= nil and type(node.title) == "string" and node.title ~= "" then
+        title = node.title
+    end
+
+    if selectedPerk ~= nil then
+        effectId = selectedPerk.effectId or "--"
+        cost = selectedPerk.cost or 0
+        owned = hasPerk(selectedPerkID)
+        canUnlock = canPurchasePerk(selectedPerkID)
+    end
+
+    if node ~= nil and type(node.description) == "string" and node.description ~= "" then
+        descriptionText = node.description
+    elseif selectedPerk ~= nil then
+        descriptionText = string.format("Perk ID: %s\nTab: %s", tostring(selectedPerkID), tostring(selectedPerk.tab))
+    end
+
+    local requirementRows = {}
+
+    if node ~= nil and type(node.requires) == "table" then
+        for _, parentID in ipairs(node.requires) do
+            local parentOwned = hasPerk(parentID)
+            table.insert(requirementRows, {
+                label = tostring(parentID),
+                state = parentOwned and "Met" or "Missing",
+                met = parentOwned,
+            })
+        end
+    end
+
+    if selectedPerk ~= nil and type(selectedPerk.requirements) == "table" and #selectedPerk.requirements > 0 then
+        local checksMet = requirementSatisfied(selectedPerk)
+        table.insert(requirementRows, {
+            label = "Custom checks",
+            state = checksMet and "Met" or "Missing",
+            met = checksMet,
+        })
+    end
+
+    if #requirementRows == 0 then
+        table.insert(requirementRows, {
+            label = "No requirements",
+            state = "Ready",
+            met = true,
+        })
+    end
+
+    local requirementContent = {
+        {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, 4) },
+        },
+    }
+
+    for _, req in ipairs(requirementRows) do
+        table.insert(requirementContent, {
+            type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.borders,
+            props = {
+                autoSize = false,
+                size = v2(leftColumnWidth - 14, 24),
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Flex,
+                    props = {
+                        horizontal = true,
+                        autoSize = false,
+                        size = v2(leftColumnWidth - 14, 24),
+                    },
+                    content = ui.content {
+                        {
+                            type = ui.TYPE.Widget,
+                            props = { size = v2(5, 1) },
+                        },
+                        {
+                            type = ui.TYPE.Text,
+                            template = interfaces.MWUI.templates.textNormal,
+                            props = {
+                                text = req.label,
+                            },
+                        },
+                        {
+                            type = ui.TYPE.Widget,
+                            external = { grow = 1 },
+                        },
+                        {
+                            type = ui.TYPE.Text,
+                            template = req.met and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textDisabled,
+                            props = {
+                                text = req.state,
+                            },
+                        },
+                        {
+                            type = ui.TYPE.Widget,
+                            props = { size = v2(5, 1) },
+                        },
+                    },
+                },
+            },
+        })
+        table.insert(requirementContent, {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, 4) },
+        })
+    end
+
+    local unlockLabel = "No Perk"
+    local unlockEnabled = false
+    if selectedPerk ~= nil and owned then
+        unlockLabel = "Owned"
+    elseif selectedPerk ~= nil then
+        unlockLabel = canUnlock and "Unlock" or "Locked"
+        unlockEnabled = canUnlock
+    end
+
+    local unlockButton = createButton(unlockLabel, function()
+        if selectedPerkID ~= nil then
+            pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })
+            menu.layout = buildLayout()
+            menu:update()
+        end
+    end, unlockEnabled, v2(128, 30))
+
+    return {
+        type = ui.TYPE.Flex,
+        props = {
+            horizontal = false,
+            autoSize = false,
+            size = v2(rightPaneWidth, PERK_UI_CONTENT_HEIGHT),
+        },
+        content = ui.content {
+            {
+                type = ui.TYPE.Widget,
+                props = { size = v2(1, 8) },
+            },
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = true,
+                    autoSize = false,
+                    size = v2(contentWidth, topRowHeight),
+                },
+                content = ui.content {
+                    { type = ui.TYPE.Widget, external = { grow = 1 } },
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.boxSolidThick,
+                        props = { autoSize = false, size = v2(titleWidth, topRowHeight) },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Text,
+                                template = interfaces.MWUI.templates.textHeader,
+                                props = {
+                                    text = title,
+                                    autoSize = false,
+                                    size = v2(titleWidth, topRowHeight),
+                                    textAlignH = ui.ALIGNMENT.Center,
+                                    textAlignV = ui.ALIGNMENT.Center,
+                                },
+                            },
+                        },
+                    },
+                    { type = ui.TYPE.Widget, external = { grow = 1 } },
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = v2(1, 8) },
+            },
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = true,
+                    autoSize = false,
+                    size = v2(contentWidth, twoColumnHeight),
+                },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            autoSize = false,
+                            size = v2(leftColumnWidth, twoColumnHeight),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Flex,
+                                props = { horizontal = false, autoSize = false, size = v2(leftColumnWidth, twoColumnHeight) },
+                                content = ui.content(requirementContent),
+                            },
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        props = { size = v2(10, 1) },
+                    },
+                    {
+                        type = ui.TYPE.Flex,
+                        props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, twoColumnHeight) },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Container,
+                                template = interfaces.MWUI.templates.boxSolid,
+                                props = { autoSize = false, size = v2(rightColumnWidth, 66) },
+                                content = ui.content {
+                                    {
+                                        type = ui.TYPE.Text,
+                                        template = interfaces.MWUI.templates.textNormal,
+                                        props = {
+                                            text = string.format("Cost: %d\nStatus: %s", cost, owned and "Owned" or (canUnlock and "Available" or "Unavailable")),
+                                            autoSize = false,
+                                            size = v2(rightColumnWidth, 66),
+                                            textAlignH = ui.ALIGNMENT.Center,
+                                            textAlignV = ui.ALIGNMENT.Center,
+                                        },
+                                    },
+                                },
+                            },
+                            {
+                                type = ui.TYPE.Widget,
+                                props = { size = v2(1, 8) },
+                            },
+                            {
+                                type = ui.TYPE.Container,
+                                template = interfaces.MWUI.templates.boxSolid,
+                                props = { autoSize = false, size = v2(rightColumnWidth, 66) },
+                                content = ui.content {
+                                    {
+                                        type = ui.TYPE.Text,
+                                        template = interfaces.MWUI.templates.textNormal,
+                                        props = {
+                                            text = string.format("Effect: %s\nToggle: %s", tostring(effectId), owned and "ON" or "OFF"),
+                                            autoSize = false,
+                                            size = v2(rightColumnWidth, 66),
+                                            textAlignH = ui.ALIGNMENT.Center,
+                                            textAlignV = ui.ALIGNMENT.Center,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = v2(1, 8) },
+            },
+            {
+                type = ui.TYPE.Flex,
+                props = { horizontal = true, autoSize = false, size = v2(contentWidth, descriptionHeight) },
+                content = ui.content {
+                    { type = ui.TYPE.Widget, external = { grow = 1 } },
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = { autoSize = false, size = v2(contentWidth - 12, descriptionHeight) },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Text,
+                                template = interfaces.MWUI.templates.textNormal,
+                                props = {
+                                    text = table.concat(wrapTextLines(descriptionText, 44), "\n"),
+                                    autoSize = false,
+                                    size = v2(contentWidth - 20, descriptionHeight - 8),
+                                    position = v2(4, 4),
+                                },
+                            },
+                        },
+                    },
+                    { type = ui.TYPE.Widget, external = { grow = 1 } },
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                external = { grow = 1 },
+            },
+            {
+                type = ui.TYPE.Container,
+                props = { autoSize = false, size = v2(contentWidth, unlockContainerHeight) },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = { autoSize = false, size = v2(140, unlockContainerHeight), position = v2(0, 0) },
+                        content = ui.content { unlockButton },
+                    },
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = v2(1, 8) },
+            },
+        },
+    }
+end
 local function buildPerkPane()
     local perksCol = {}
     local treeViewportContent = nil
@@ -950,150 +1290,13 @@ local function buildPerkPane()
         selectedPerkID = selectedTreeNodeID
     end
 
-    local function wrapTextLines(text, maxChars)
-        local lines = {}
-
-        for paragraph in tostring(text or ""):gmatch("[^\n]+") do
-            local line = ""
-            for word in paragraph:gmatch("%S+") do
-                local candidate = (line == "") and word or (line .. " " .. word)
-                if #candidate > maxChars and line ~= "" then
-                    table.insert(lines, line)
-                    line = word
-                else
-                    line = candidate
-                end
-            end
-            if line ~= "" then
-                table.insert(lines, line)
-            end
-        end
-
-        if #lines == 0 then
-            table.insert(lines, "")
-        end
-        return lines
-    end
-
     local rightPaneWidth = PERK_UI_RIGHT_PANE_WIDTH + PERK_UI_BODY_RIGHT_EXPANSION
-    local detailWidth = math.max(220, rightPaneWidth - 8)
-    local detailHeaderWidth = math.min(detailWidth, 230)
-    local perkDetail
-    if selectedPerkID == nil then
-        local detailRows = {
-            {
-                type = ui.TYPE.Flex,
-                props = {
-                    horizontal = true,
-                    autoSize = false,
-                    size = v2(detailWidth, 32),
-                },
-                content = ui.content {
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                    {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.boxSolidThick,
-                        props = {
-                            autoSize = false,
-                            size = v2(detailHeaderWidth, 28),
-                        },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Text,
-                                template = interfaces.MWUI.templates.textHeader,
-                                props = {
-                                    text = skillName,
-                                    autoSize = false,
-                                    size = v2(detailHeaderWidth, 28),
-                                    textAlignH = ui.ALIGNMENT.Center,
-                                    textAlignV = ui.ALIGNMENT.Center,
-                                },
-                            },
-                        },
-                    },
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                },
-            },
-            {
-                type = ui.TYPE.Widget,
-                props = { size = v2(1, 12) },
-            },
-        }
+    local selectedPerk = selectedPerkID ~= nil and perks[selectedPerkID] or nil
+    local selectedNode = selectedPerkID ~= nil and modApi ~= nil and type(modApi.getTreeNode) == "function"
+        and modApi.getTreeNode(selectedPerkID)
+        or nil
 
-        for _, line in ipairs(wrapTextLines(skillDescription, 40)) do
-            table.insert(detailRows, {
-                type = ui.TYPE.Flex,
-                props = {
-                    horizontal = true,
-                    autoSize = false,
-                    size = v2(detailWidth, 20),
-                },
-                content = ui.content {
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                    {
-                        type = ui.TYPE.Text,
-                        template = interfaces.MWUI.templates.textNormal,
-                        props = {
-                            text = line,
-                            textAlignH = ui.ALIGNMENT.Center,
-                        },
-                    },
-                    {
-                        type = ui.TYPE.Widget,
-                        external = { grow = 1 },
-                    },
-                },
-            })
-        end
-
-        perkDetail = {
-            type = ui.TYPE.Flex,
-            props = {
-                horizontal = false,
-                autoSize = false,
-                size = v2(detailWidth, 360),
-            },
-            content = ui.content(detailRows),
-        }
-    else
-        local selectedPerk = perks[selectedPerkID]
-        if selectedPerk ~= nil then
-            local owned = hasPerk(selectedPerkID)
-            local status = owned and "Owned" or (canPurchasePerk(selectedPerkID) and "Available" or "Unavailable")
-            perkDetail = {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textNormal,
-                props = {
-                    text = string.format("%s\nTab: %s\nCost: %d\nStatus: %s", selectedPerkID, selectedPerk.tab, selectedPerk.cost, status),
-                    autoSize = false,
-                    size = v2(detailWidth, 360),
-                },
-            }
-        else
-            local node = modApi ~= nil and type(modApi.getTreeNode) == "function" and modApi.getTreeNode(selectedPerkID) or nil
-            local nodeReqs = (node ~= nil and #node.requires > 0) and table.concat(node.requires, ", ") or "None"
-            local nodeTitle = (node ~= nil and node.title) or selectedPerkID
-            local nodeDescription = (node ~= nil and node.description) or "Tree node defined but no registered perk found yet."
-            perkDetail = {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textNormal,
-                props = {
-                    text = string.format("%s\nNode ID: %s\nRequires: %s\n\n%s", nodeTitle, selectedPerkID, nodeReqs, nodeDescription),
-                    autoSize = false,
-                    size = v2(detailWidth, 360),
-                },
-            }
-        end
-    end
+    local perkDetail = buildPerkDetailPane(selectedPerkID, selectedPerk, selectedNode, skillName, skillDescription, rightPaneWidth)
 
     return {
         type = ui.TYPE.Flex,

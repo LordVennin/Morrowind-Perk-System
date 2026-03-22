@@ -35,6 +35,9 @@ local defaults = {
     PERK_UI_FRAME_EDGE_COMPENSATION = 10,
     -- Additional right-side expansion for the main body box (tree + description + exit row).
     PERK_UI_BODY_RIGHT_EXPANSION = 18,
+    -- Maximum visible character count for perk tree node button labels.
+    -- Longer labels are truncated with an ellipsis.
+    PERK_UI_TREE_NODE_MAX_LABEL_CHARS = 20,
     POINT_SOURCES = {
         levelUpRewards = {
             enabled = false,

@@ -103,8 +103,38 @@ local effectModules = {
     },
 }
 
+local function registerEffectSafe(effectData, source)
+    local ok, err = pcall(api.registerEffect, effectData, source)
+    if ok then
+        return
+    end
+
+    local message = tostring(err)
+    local effectID = type(effectData) == "table" and effectData.id or "<unknown>"
+    local duplicateIDFragment = "duplicate effect id '" .. tostring(effectID) .. "'"
+    local duplicateSourceFragment = "source='" .. tostring(source) .. "'"
+    local duplicateConflictFragment = "conflicts with source='" .. tostring(source) .. "'"
+
+    if
+        message:find(duplicateIDFragment, 1, true)
+        and message:find(duplicateSourceFragment, 1, true)
+        and message:find(duplicateConflictFragment, 1, true)
+    then
+        print(
+            "[SkillPerkSystem_BasePack] duplicate effect registration ignored for id='"
+                .. tostring(effectID)
+                .. "' source='"
+                .. tostring(source)
+                .. "'"
+        )
+        return
+    end
+
+    error(err, 2)
+end
+
 for _, entry in ipairs(effectModules) do
-    api.registerEffect(entry.data, entry.source)
+    registerEffectSafe(entry.data, entry.source)
 end
 
 for _, entry in ipairs(modules) do

@@ -26,6 +26,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.longblade.longblade",
         data = require("scripts.SkillPerkSystem_BasePack.perks.longblade.longblade"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.security",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.security"),
+    },
 }
 
 for _, entry in ipairs(modules) do

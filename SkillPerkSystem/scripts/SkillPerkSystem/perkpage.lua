@@ -440,6 +440,22 @@ local function getParentRequirementLabel(parentID)
     return string.format("Parent perk: %s", tostring(parentID))
 end
 
+local function getAnyParentRequirementLabel(parentIDs)
+    local labels = {}
+    for _, parentID in ipairs(parentIDs or {}) do
+        local modApi = getModApi()
+        local label = tostring(parentID)
+        if modApi ~= nil and type(modApi.getTreeNode) == "function" then
+            local parentNode = modApi.getTreeNode(parentID)
+            if parentNode ~= nil and type(parentNode.title) == "string" and parentNode.title ~= "" then
+                label = parentNode.title
+            end
+        end
+        table.insert(labels, label)
+    end
+    return table.concat(labels, " or ")
+end
+
 local function getMissingParentPerks(perkID)
     local modApi = getModApi()
     if modApi == nil or type(modApi.getTreeNode) ~= "function" then
@@ -455,6 +471,20 @@ local function getMissingParentPerks(perkID)
     for _, requiredID in ipairs(node.requires or {}) do
         if not hasPerk(requiredID) then
             table.insert(missing, requiredID)
+        end
+    end
+
+    local requiresAny = node.requiresAny or {}
+    if #requiresAny > 0 then
+        local anyOwned = false
+        for _, requiredID in ipairs(requiresAny) do
+            if hasPerk(requiredID) then
+                anyOwned = true
+                break
+            end
+        end
+        if not anyOwned then
+            table.insert(missing, "ANY:" .. table.concat(requiresAny, "|"))
         end
     end
     return missing
@@ -1022,6 +1052,19 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             })
         end
     end
+    if node ~= nil and type(node.requiresAny) == "table" and #node.requiresAny > 0 then
+        local anyOwned = false
+        for _, parentID in ipairs(node.requiresAny) do
+            if hasPerk(parentID) then
+                anyOwned = true
+                break
+            end
+        end
+        table.insert(requirementRows, {
+            label = getAnyParentRequirementLabel(node.requiresAny),
+            met = anyOwned,
+        })
+    end
 
     if selectedPerk ~= nil and type(selectedPerk.requirements) == "table" and #selectedPerk.requirements > 0 then
         for index, requirement in ipairs(selectedPerk.requirements) do
@@ -1482,7 +1525,14 @@ local function buildPerkPane()
         for _, node in ipairs(treeNodes) do
             local childPos = toCanvasPos(node)
             local childTopY = childPos.y - math.floor(nodeHeight / 2)
+            local parentIDs = {}
             for _, reqID in ipairs(node.requires or {}) do
+                table.insert(parentIDs, reqID)
+            end
+            for _, reqID in ipairs(node.requiresAny or {}) do
+                table.insert(parentIDs, reqID)
+            end
+            for _, reqID in ipairs(parentIDs) do
                 local parentNode = nodeByID[reqID]
                 if parentNode ~= nil then
                     local parentPos = toCanvasPos(parentNode)

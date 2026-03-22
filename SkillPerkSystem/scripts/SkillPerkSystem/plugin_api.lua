@@ -154,6 +154,20 @@ local function registerTreeNode(data, source)
             )
         end
     end
+    if data.requiresAny == nil then
+        data.requiresAny = {}
+    end
+    if type(data.requiresAny) ~= "table" then
+        validationError("registerTreeNode(" .. tostring(data.id) .. ") field 'requiresAny' must be a list", 2)
+    end
+    for i, req in ipairs(data.requiresAny) do
+        if type(req) ~= "string" or req == "" then
+            validationError(
+                "registerTreeNode(" .. tostring(data.id) .. ") requiresAny[" .. tostring(i) .. "] must be a string",
+                2
+            )
+        end
+    end
 
     if data.title == nil then
         data.title = data.id
@@ -241,6 +255,7 @@ local function deriveNodeFromPerk(perk, sourceName)
         x = nodeData.x,
         y = nodeData.y,
         requires = nodeData.requires,
+        requiresAny = nodeData.requiresAny,
         title = nodeData.title,
         description = nodeData.description,
     }, nodeData.perkId or nodeData.perkID or perk.perkId or perk.perkID or perk.id

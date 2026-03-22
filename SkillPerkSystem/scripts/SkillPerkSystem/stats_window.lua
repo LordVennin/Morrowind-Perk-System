@@ -93,15 +93,14 @@ local function initStatsWindowIntegration()
         return
     end
 
-    local playerApi = interfaces[MOD_NAME .. "Player"]
-    if playerApi == nil or type(playerApi.getActivePerks) ~= "function" then
-        return
-    end
-
     local sc = interfaces.StatsWindow.Constants
 
     interfaces.StatsWindow.trackStat(MOD_NAME, function()
-        return normalizedPerkIDs(playerApi.getActivePerks() or {})
+        local playerApi = interfaces[MOD_NAME .. "Player"]
+        if playerApi ~= nil and type(playerApi.getActivePerks) == "function" then
+            return normalizedPerkIDs(playerApi.getActivePerks() or {})
+        end
+        return {}
     end)
 
     addPerksSection(sc)

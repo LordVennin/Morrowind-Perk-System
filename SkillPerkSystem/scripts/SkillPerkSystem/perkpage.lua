@@ -828,13 +828,11 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local requirementRowHeight = math.max(px(20), math.floor(twoColumnHeight * 0.12))
     local requirementRowGap = math.max(px(2), math.floor(twoColumnHeight * 0.022))
     local descriptionHeight = descriptionSectionHeight
-    local costHeight = math.max(px(42), math.floor(twoColumnHeight * 0.34))
+    local compactControlHeight = math.max(px(24), requirementRowHeight)
     local rightBoxGap = requirementRowGap
-    local effectHeight = twoColumnHeight - costHeight - rightBoxGap
 
     local title = selectedPerkID or skillName or "Perk Details"
     local descriptionText = skillDescription or "Perks registered under this tab."
-    local effectId = "--"
     local cost = 0
     local owned = false
     local effectEnabled = false
@@ -845,7 +843,6 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     end
 
     if selectedPerk ~= nil then
-        effectId = selectedPerk.effectId or "--"
         cost = selectedPerk.cost or 0
         owned = hasPerk(selectedPerkID)
         effectEnabled = owned and isPerkEffectEnabled(selectedPerkID)
@@ -1058,12 +1055,10 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         end, unlockEnabled, v2(104, 24))
     end
 
-    local toggleLabel = "Unlock First"
-    local toggleStatus = "Not owned"
+    local toggleLabel = "Enable"
     local toggleEnabled = false
     if selectedPerk ~= nil and owned then
-        toggleLabel = effectEnabled and "Disable Effect" or "Enable Effect"
-        toggleStatus = effectEnabled and "Enabled" or "Disabled"
+        toggleLabel = effectEnabled and "Disable" or "Enable"
         toggleEnabled = true
     end
 
@@ -1073,9 +1068,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             menu.layout = buildLayout()
             menu:update()
         end
-    end, toggleEnabled, v2(rightColumnWidth - 12, 26))
-    local toggleSectionHeight = math.max(px(24), effectHeight - math.max(px(34), math.floor(effectHeight * 0.7)))
-    local effectTextHeight = effectHeight - toggleSectionHeight - rightBoxGap
+    end, toggleEnabled, v2(rightColumnWidth - 12, compactControlHeight))
 
     local detailContent = {
         {
@@ -1149,16 +1142,16 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                     content = ui.content {
                         {
                             type = ui.TYPE.Container,
-                            template = interfaces.MWUI.templates.boxSolid,
-                            props = { autoSize = false, size = v2(rightColumnWidth, costHeight) },
+                            template = interfaces.MWUI.templates.borders,
+                            props = { autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
                             content = ui.content {
                                 {
                                     type = ui.TYPE.Text,
                                     template = interfaces.MWUI.templates.textNormal,
                                     props = {
-                                        text = string.format("Cost: %d\nStatus: %s", cost, owned and "Owned" or (canUnlock and "Available" or "Unavailable")),
+                                        text = string.format("Cost: %d", cost),
                                         autoSize = false,
-                                        size = v2(rightColumnWidth, costHeight),
+                                        size = v2(rightColumnWidth, compactControlHeight),
                                         textAlignH = ui.ALIGNMENT.Center,
                                         textAlignV = ui.ALIGNMENT.Center,
                                     },
@@ -1171,46 +1164,29 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                         },
                         {
                             type = ui.TYPE.Container,
-                            template = interfaces.MWUI.templates.boxSolid,
-                            props = { autoSize = false, size = v2(rightColumnWidth, effectHeight) },
+                            template = interfaces.MWUI.templates.borders,
+                            props = { autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
                             content = ui.content {
                                 {
                                     type = ui.TYPE.Flex,
-                                    props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, effectHeight) },
+                                    props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
                                     content = ui.content {
                                         {
-                                            type = ui.TYPE.Text,
-                                            template = interfaces.MWUI.templates.textNormal,
-                                            props = {
-                                                text = string.format("Effect: %s\nState: %s", tostring(effectId), toggleStatus),
-                                                autoSize = false,
-                                                size = v2(rightColumnWidth, effectTextHeight),
-                                                textAlignH = ui.ALIGNMENT.Center,
-                                                textAlignV = ui.ALIGNMENT.Center,
-                                            },
+                                            type = ui.TYPE.Widget,
+                                            external = { grow = 1 },
                                         },
+                                        toggleButton,
                                         {
                                             type = ui.TYPE.Widget,
-                                            props = { size = v2(1, rightBoxGap) },
-                                        },
-                                        {
-                                            type = ui.TYPE.Flex,
-                                            props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, toggleSectionHeight) },
-                                            content = ui.content {
-                                                {
-                                                    type = ui.TYPE.Widget,
-                                                    external = { grow = 1 },
-                                                },
-                                                toggleButton,
-                                                {
-                                                    type = ui.TYPE.Widget,
-                                                    external = { grow = 1 },
-                                                },
-                                            },
+                                            external = { grow = 1 },
                                         },
                                     },
                                 },
                             },
+                        },
+                        {
+                            type = ui.TYPE.Widget,
+                            external = { grow = 1 },
                         },
                     },
                 },

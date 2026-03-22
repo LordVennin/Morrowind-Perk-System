@@ -857,6 +857,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local rightBoxGap = requirementRowGap
     local descriptionHorizontalInsets = requirementInset * 4
     local descriptionWrapMaxChars = estimateWrapMaxChars(contentWidth, descriptionHorizontalInsets, 24)
+    local descriptionLineHeight = math.max(px(16), math.floor(contentHeight * 0.032))
 
     local title = selectedPerkID or skillName or "Perk Details"
     local descriptionText = skillDescription or "Perks registered under this tab."
@@ -884,6 +885,22 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
 
     if not showFullPerkDetails then
         local compactDescriptionHeight = math.max(px(150), math.floor(contentHeight * 0.36))
+        local compactDescriptionLines = wrapTextLines(skillDescription, descriptionWrapMaxChars)
+        local compactDescriptionRows = {}
+        for _, line in ipairs(compactDescriptionLines) do
+            table.insert(compactDescriptionRows, {
+                type = ui.TYPE.Text,
+                template = interfaces.MWUI.templates.textNormal,
+                props = {
+                    text = line,
+                    autoSize = false,
+                    size = v2(contentWidth - (requirementInset * 4), descriptionLineHeight),
+                    textAlignH = ui.ALIGNMENT.Left,
+                    textAlignV = ui.ALIGNMENT.Top,
+                },
+            })
+        end
+
         return {
             type = ui.TYPE.Flex,
             props = {
@@ -949,16 +966,15 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             },
                             content = ui.content {
                                 {
-                                    type = ui.TYPE.Text,
-                                    template = interfaces.MWUI.templates.textNormal,
+                                    type = ui.TYPE.Flex,
                                     props = {
-                                        text = table.concat(wrapTextLines(skillDescription, descriptionWrapMaxChars), "\n"),
+                                        horizontal = false,
                                         autoSize = false,
                                         size = v2(contentWidth - (requirementInset * 4), compactDescriptionHeight - (outerPad * 2)),
                                         position = v2(requirementInset, outerPad),
-                                        textAlignH = ui.ALIGNMENT.Center,
-                                        textAlignV = ui.ALIGNMENT.Center,
+                                        arrange = ui.ALIGNMENT.Start,
                                     },
+                                    content = ui.content(compactDescriptionRows),
                                 },
                             },
                         },
@@ -1186,6 +1202,22 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         external = { grow = 1 },
     })
 
+    local descriptionLines = wrapTextLines(descriptionText, descriptionWrapMaxChars)
+    local descriptionRows = {}
+    for _, line in ipairs(descriptionLines) do
+        table.insert(descriptionRows, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = line,
+                autoSize = false,
+                size = v2(contentWidth - (requirementInset * 4), descriptionLineHeight),
+                textAlignH = ui.ALIGNMENT.Left,
+                textAlignV = ui.ALIGNMENT.Top,
+            },
+        })
+    end
+
     local detailContent = {
         {
             type = ui.TYPE.Widget,
@@ -1278,14 +1310,15 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                     },
                     content = ui.content {
                         {
-                            type = ui.TYPE.Text,
-                            template = interfaces.MWUI.templates.textNormal,
+                            type = ui.TYPE.Flex,
                             props = {
-                                text = table.concat(wrapTextLines(descriptionText, descriptionWrapMaxChars), "\n"),
+                                horizontal = false,
                                 autoSize = false,
                                 size = v2(contentWidth - (requirementInset * 4), descriptionHeight - (outerPad * 2)),
                                 position = v2(requirementInset, outerPad),
+                                arrange = ui.ALIGNMENT.Start,
                             },
+                            content = ui.content(descriptionRows),
                         },
                     },
                 },

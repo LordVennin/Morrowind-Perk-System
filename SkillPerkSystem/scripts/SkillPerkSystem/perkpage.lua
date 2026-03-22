@@ -826,6 +826,14 @@ local function wrapTextLines(text, maxChars)
     return lines
 end
 
+local function estimateWrapMaxChars(contentWidth, horizontalInsets, minChars)
+    local safeMinChars = math.max(12, tonumber(minChars) or 24)
+    local usableWidth = math.max(1, (tonumber(contentWidth) or 0) - math.max(0, tonumber(horizontalInsets) or 0))
+    local usablePixelWidth = px(usableWidth)
+    local estimatedChars = math.floor(usablePixelWidth / px(7))
+    return math.max(safeMinChars, estimatedChars)
+end
+
 local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth, showFullPerkDetails)
     local contentWidth = math.max(220, rightPaneWidth - 14)
     local titleWidth = math.min(contentWidth, px(252))
@@ -847,6 +855,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local descriptionHeight = descriptionSectionHeight
     local compactControlHeight = math.max(px(24), requirementRowHeight)
     local rightBoxGap = requirementRowGap
+    local descriptionHorizontalInsets = requirementInset * 4
+    local descriptionWrapMaxChars = estimateWrapMaxChars(contentWidth, descriptionHorizontalInsets, 24)
 
     local title = selectedPerkID or skillName or "Perk Details"
     local descriptionText = skillDescription or "Perks registered under this tab."
@@ -941,7 +951,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                     type = ui.TYPE.Text,
                                     template = interfaces.MWUI.templates.textNormal,
                                     props = {
-                                        text = table.concat(wrapTextLines(skillDescription, 44), "\n"),
+                                        text = table.concat(wrapTextLines(skillDescription, descriptionWrapMaxChars), "\n"),
                                         autoSize = false,
                                         size = v2(contentWidth - (requirementInset * 4), compactDescriptionHeight - (outerPad * 2)),
                                         position = v2(requirementInset, outerPad),
@@ -1269,7 +1279,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             type = ui.TYPE.Text,
                             template = interfaces.MWUI.templates.textNormal,
                             props = {
-                                text = table.concat(wrapTextLines(descriptionText, 44), "\n"),
+                                text = table.concat(wrapTextLines(descriptionText, descriptionWrapMaxChars), "\n"),
                                 autoSize = false,
                                 size = v2(contentWidth - (requirementInset * 4), descriptionHeight - (outerPad * 2)),
                                 position = v2(requirementInset, outerPad),

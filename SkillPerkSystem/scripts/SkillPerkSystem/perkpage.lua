@@ -1079,7 +1079,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 menu.layout = buildLayout()
                 menu:update()
             end
-        end, true, v2(rightColumnWidth - 12, compactControlHeight))
+        end, true, v2(rightColumnWidth - 12, compactControlHeight - 2))
     end
 
     local toggleButtonContent = ui.content {
@@ -1094,13 +1094,86 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 type = ui.TYPE.Widget,
                 external = { grow = 1 },
             },
-            toggleButton,
+            {
+                type = ui.TYPE.Flex,
+                props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
+                content = ui.content {
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                    {
+                        type = ui.TYPE.Flex,
+                        props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, compactControlHeight - 2) },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                            toggleButton,
+                            {
+                                type = ui.TYPE.Widget,
+                                external = { grow = 1 },
+                            },
+                        },
+                    },
+                    {
+                        type = ui.TYPE.Widget,
+                        external = { grow = 1 },
+                    },
+                },
+            },
             {
                 type = ui.TYPE.Widget,
                 external = { grow = 1 },
             },
         }
     end
+
+    local rightColumnContent = {
+        {
+            type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.borders,
+            props = { autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Text,
+                    template = interfaces.MWUI.templates.textNormal,
+                    props = {
+                        text = string.format("Cost: %d", cost),
+                        autoSize = false,
+                        size = v2(rightColumnWidth, compactControlHeight),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Center,
+                    },
+                },
+            },
+        },
+    }
+
+    if owned then
+        table.insert(rightColumnContent, {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, rightBoxGap) },
+        })
+        table.insert(rightColumnContent, {
+            type = ui.TYPE.Container,
+            template = interfaces.MWUI.templates.borders,
+            props = { autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Flex,
+                    props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
+                    content = toggleButtonContent,
+                },
+            },
+        })
+    end
+
+    table.insert(rightColumnContent, {
+        type = ui.TYPE.Widget,
+        external = { grow = 1 },
+    })
 
     local detailContent = {
         {
@@ -1171,46 +1244,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 {
                     type = ui.TYPE.Flex,
                     props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, twoColumnHeight) },
-                    content = ui.content {
-                        {
-                            type = ui.TYPE.Container,
-                            template = interfaces.MWUI.templates.borders,
-                            props = { autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
-                            content = ui.content {
-                                {
-                                    type = ui.TYPE.Text,
-                                    template = interfaces.MWUI.templates.textNormal,
-                                    props = {
-                                        text = string.format("Cost: %d", cost),
-                                        autoSize = false,
-                                        size = v2(rightColumnWidth, compactControlHeight),
-                                        textAlignH = ui.ALIGNMENT.Center,
-                                        textAlignV = ui.ALIGNMENT.Center,
-                                    },
-                                },
-                            },
-                        },
-                        {
-                            type = ui.TYPE.Widget,
-                            props = { size = v2(1, rightBoxGap) },
-                        },
-                        {
-                            type = ui.TYPE.Container,
-                            template = interfaces.MWUI.templates.borders,
-                            props = { autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
-                            content = ui.content {
-                                {
-                                    type = ui.TYPE.Flex,
-                                    props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
-                                    content = toggleButtonContent,
-                                },
-                            },
-                        },
-                        {
-                            type = ui.TYPE.Widget,
-                            external = { grow = 1 },
-                        },
-                    },
+                    content = ui.content(rightColumnContent),
                 },
             },
         },

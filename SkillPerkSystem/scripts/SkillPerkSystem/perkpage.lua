@@ -536,13 +536,14 @@ local function createButton(label, onPress, enabled, size)
     return buttonLayout
 end
 
-local function createBoxedButton(label, onPress, size, textOffsetY)
+local function createBoxedButton(label, onPress, size, textOffsetY, textTemplate)
     local buttonSize = size or v2(140, 28)
     local yOffset = math.max(0, math.floor(textOffsetY or 0))
+    local idleTextTemplate = textTemplate or interfaces.MWUI.templates.textNormal
 
     local textLayout = {
         type = ui.TYPE.Text,
-        template = interfaces.MWUI.templates.textNormal,
+        template = idleTextTemplate,
         props = {
             text = label,
             textAlignH = ui.ALIGNMENT.Center,
@@ -594,7 +595,7 @@ local function createBoxedButton(label, onPress, size, textOffsetY)
         end),
         mouseRelease = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
-                textLayout.template = interfaces.MWUI.templates.textNormal
+                textLayout.template = idleTextTemplate
                 if menu ~= nil then menu:update() end
                 onPress()
             end
@@ -604,7 +605,7 @@ local function createBoxedButton(label, onPress, size, textOffsetY)
             if menu ~= nil then menu:update() end
         end),
         focusLoss = async:callback(function()
-            textLayout.template = interfaces.MWUI.templates.textNormal
+            textLayout.template = idleTextTemplate
             if menu ~= nil then menu:update() end
         end),
     }
@@ -1506,6 +1507,7 @@ local function buildPerkPane()
         for _, node in ipairs(treeNodes) do
             local perkIndex = findPerkIndexByID(node.id)
             local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
+            local owned = hasPerk(node.id)
             local title = node.title or node.id
             local nodeLabelMaxChars = settings.PERK_UI_TREE_NODE_MAX_LABEL_CHARS or 20
             local nodeLabel = truncateLabel(title, nodeLabelMaxChars)
@@ -1520,8 +1522,8 @@ local function buildPerkPane()
                 selectedPerkIndex = perkIndex
                 menu.layout = buildLayout()
                 menu:update()
-            end, buttonSize, 1)
-            nodeButton.template = interfaces.MWUI.templates.boxSolidThick
+            end, buttonSize, 1, owned and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal)
+            nodeButton.template = owned and interfaces.MWUI.templates.boxSolid or interfaces.MWUI.templates.boxSolidThick
 
             table.insert(treeCanvasContent, {
                 type = ui.TYPE.Container,
@@ -1564,12 +1566,13 @@ local function buildPerkPane()
         activeTreeCanvasSkillID = nil
         for i, perkID in ipairs(filteredPerkIDs) do
             local perk = perks[perkID]
-            local owned = hasPerk(perkID) and " [owned]" or ""
+            local owned = hasPerk(perkID)
             local isSelected = i == selectedPerkIndex
             if perk ~= nil then
                 table.insert(perksCol, {
                     type = ui.TYPE.Text,
-                    template = isSelected and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal,
+                    template = isSelected and interfaces.MWUI.templates.textHeader
+                        or (owned and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal),
                     events = {
                         mouseClick = async:callback(function()
                             selectedTreeNodeID = nil
@@ -1579,7 +1582,7 @@ local function buildPerkPane()
                         end),
                     },
                     props = {
-                        text = string.format("%s (cost %d)%s", perkID, perk.cost, owned),
+                        text = string.format("%s (cost %d)", perkID, perk.cost),
                     }
                 })
             end

@@ -849,7 +849,7 @@ end
 local function estimateWrapMaxChars(usableTextWidth, minChars)
     local safeMinChars = math.max(20, tonumber(minChars) or 20)
     local usablePixelWidth = math.max(1, px(tonumber(usableTextWidth) or 0))
-    local estimatedChars = math.floor(usablePixelWidth / px(7))
+    local estimatedChars = math.floor((usablePixelWidth + px(6)) / math.max(1, px(6)))
     return math.max(safeMinChars, estimatedChars)
 end
 

@@ -7,6 +7,24 @@ local MOD_NAME = settings.MOD_NAME
 local sectionName = "perks"
 local localization = core.l10n(MOD_NAME)
 local statsWindowInitialized = false
+local retryTimer = 0
+
+local function normalizedPerkIDs(rawPerks)
+    local out = {}
+
+    if type(rawPerks) == "table" then
+        for key, value in pairs(rawPerks) do
+            if type(key) == "number" and type(value) == "string" then
+                table.insert(out, value)
+            elseif type(key) == "string" and value == true then
+                table.insert(out, key)
+            end
+        end
+    end
+
+    table.sort(out)
+    return out
+end
 
 local function buildLine(perkID)
     local modApi = interfaces[MOD_NAME]
@@ -34,6 +52,32 @@ local function buildLine(perkID)
     }
 end
 
+local function addPerksSection(sc)
+    local placementTarget = sc.DefaultSections.BIRTHSIGN
+        or sc.DefaultSections.CLASS
+        or sc.DefaultSections.MAJOR_SKILLS
+        or sc.DefaultSections.REPUTATION
+
+    interfaces.StatsWindow.addSectionToBox(sectionName, sc.DefaultBoxes.RIGHT_SCROLL_BOX, {
+        l10n = MOD_NAME,
+        placement = {
+            type = sc.Placement.AFTER,
+            target = placementTarget,
+            priority = 1,
+        },
+        header = localization(sectionName),
+        indent = true,
+        sort = sc.Sort.LABEL_ASC,
+        trackedStats = { [MOD_NAME] = true },
+        builder = function()
+            local perkIDs = normalizedPerkIDs(interfaces.StatsWindow.getStat(MOD_NAME) or {})
+            for _, perkID in ipairs(perkIDs) do
+                interfaces.StatsWindow.addLineToSection(perkID, sectionName, buildLine(perkID))
+            end
+        end,
+    })
+end
+
 local function initStatsWindowIntegration()
     if statsWindowInitialized then
         return
@@ -44,39 +88,39 @@ local function initStatsWindowIntegration()
     end
 
     local playerApi = interfaces[MOD_NAME .. "Player"]
+    if playerApi == nil or type(playerApi.getActivePerks) ~= "function" then
+        return
+    end
+
     local sc = interfaces.StatsWindow.Constants
 
     interfaces.StatsWindow.trackStat(MOD_NAME, function()
-        if playerApi == nil or type(playerApi.getActivePerks) ~= "function" then
-            return {}
-        end
-        return playerApi.getActivePerks()
+        return normalizedPerkIDs(playerApi.getActivePerks() or {})
     end)
 
-    interfaces.StatsWindow.addSectionToBox(sectionName, sc.DefaultBoxes.RIGHT_SCROLL_BOX, {
-        l10n = MOD_NAME,
-        placement = {
-            type = sc.Placement.AFTER,
-            target = sc.DefaultSections.BIRTHSIGN,
-            priority = 1,
-        },
-        header = localization(sectionName),
-        indent = true,
-        sort = sc.Sort.LABEL_ASC,
-        trackedStats = { [MOD_NAME] = true },
-        builder = function()
-            for _, perkID in ipairs(interfaces.StatsWindow.getStat(MOD_NAME) or {}) do
-                interfaces.StatsWindow.addLineToSection(perkID, sectionName, buildLine(perkID))
-            end
-        end,
-    })
+    addPerksSection(sc)
 
     statsWindowInitialized = true
+end
+
+local function onUpdate(dt)
+    if statsWindowInitialized then
+        return
+    end
+
+    retryTimer = retryTimer - (dt or 0)
+    if retryTimer > 0 then
+        return
+    end
+
+    retryTimer = 1
+    initStatsWindowIntegration()
 end
 
 return {
     engineHandlers = {
         onInit = initStatsWindowIntegration,
         onLoad = initStatsWindowIntegration,
+        onUpdate = onUpdate,
     }
 }

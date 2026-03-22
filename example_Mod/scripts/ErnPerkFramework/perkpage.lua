@@ -189,20 +189,31 @@ end
 local pickButtonElement = ui.create {}
 
 local function updatePickButtonElement()
-    --pickButtonElement:destroy()
-    local color = 'normal'
-    local cost = 1
     local selectedPerk = getSelectedPerk()
-    if selectedPerk ~= nil then
-        cost = selectedPerk:cost()
+    local shouldHideControl = false
+
+    if selectedPerk == nil then
+        shouldHideControl = true
+    else
+        shouldHideControl = (not selectedPerk:active()) and (not perkAvailable(selectedPerk))
     end
-    if not perkAvailable(selectedPerk) then
-        color = 'disabled'
+
+    if shouldHideControl then
+        pickButtonElement.layout = {
+            type = ui.TYPE.Widget,
+            props = {
+                size = util.vector2(129, 17),
+            },
+        }
+        pickButtonElement:update()
+        return
     end
+
+    local cost = selectedPerk:cost()
     pickButtonElement.layout = myui.createTextButton(
         pickButtonElement,
         localization('pickButton', { cost = cost, available = remainingPoints }),
-        color,
+        'normal',
         'pickButton',
         {},
         util.vector2(129, 17),

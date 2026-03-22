@@ -37,13 +37,18 @@ local defaults = {
     PERK_UI_BODY_RIGHT_EXPANSION = 18,
     POINT_SOURCES = {
         levelUpRewards = {
-            enabled = true,
+            enabled = false,
             pointsPerLevel = 1,
             -- Level 1 is character creation; start rewards at 2 by default.
             firstRewardLevel = 2,
         },
         skillMilestoneRewards = {
-            enabled = true,
+            enabled = false,
+            milestoneEnabled = {
+                [1] = false,
+                [2] = false,
+                [3] = false,
+            },
             rewardsBySkillLevel = {
                 [50] = 1,
                 [75] = 1,
@@ -71,6 +76,14 @@ end
 local function getTextValue(key, fallback)
     local value = section:get(key)
     if type(value) ~= "string" or value == "" then
+        return fallback
+    end
+    return value
+end
+
+local function getBooleanValue(key, fallback)
+    local value = section:get(key)
+    if type(value) ~= "boolean" then
         return fallback
     end
     return value
@@ -107,6 +120,13 @@ local function init()
                 },
             },
             {
+                key = "enableLevelUpRewards",
+                name = "enableLevelUpRewardsName",
+                description = "enableLevelUpRewardsDescription",
+                default = defaults.POINT_SOURCES.levelUpRewards.enabled,
+                renderer = "checkbox",
+            },
+            {
                 key = "pointsPerLevel",
                 name = "pointsPerLevelName",
                 description = "pointsPerLevelDescription",
@@ -117,6 +137,13 @@ local function init()
                     min = 0,
                     max = 20,
                 },
+            },
+            {
+                key = "enableSkillMilestone1",
+                name = "enableSkillMilestone1Name",
+                description = "enableSkillMilestone1Description",
+                default = defaults.POINT_SOURCES.skillMilestoneRewards.milestoneEnabled[1],
+                renderer = "checkbox",
             },
             {
                 key = "skillMilestone1",
@@ -131,6 +158,13 @@ local function init()
                 },
             },
             {
+                key = "enableSkillMilestone2",
+                name = "enableSkillMilestone2Name",
+                description = "enableSkillMilestone2Description",
+                default = defaults.POINT_SOURCES.skillMilestoneRewards.milestoneEnabled[2],
+                renderer = "checkbox",
+            },
+            {
                 key = "skillMilestone2",
                 name = "skillMilestone2Name",
                 description = "skillMilestone2Description",
@@ -141,6 +175,13 @@ local function init()
                     min = 1,
                     max = 100,
                 },
+            },
+            {
+                key = "enableSkillMilestone3",
+                name = "enableSkillMilestone3Name",
+                description = "enableSkillMilestone3Description",
+                default = defaults.POINT_SOURCES.skillMilestoneRewards.milestoneEnabled[3],
+                renderer = "checkbox",
             },
             {
                 key = "skillMilestone3",
@@ -168,14 +209,26 @@ local function getPointsPerLevel()
     return math.max(0, math.floor(getNumberValue("pointsPerLevel", defaults.POINT_SOURCES.levelUpRewards.pointsPerLevel)))
 end
 
+local function getLevelUpRewardsEnabled()
+    return getBooleanValue("enableLevelUpRewards", defaults.POINT_SOURCES.levelUpRewards.enabled)
+end
+
+local function getSkillMilestoneEnabled(index)
+    local key = "enableSkillMilestone" .. tostring(index)
+    local fallback = defaults.POINT_SOURCES.skillMilestoneRewards.milestoneEnabled[index] == true
+    return getBooleanValue(key, fallback)
+end
+
 local function getSkillMilestoneRewards()
     local rewards = {}
     local milestoneKeys = { "skillMilestone1", "skillMilestone2", "skillMilestone3" }
     local fallbackThresholds = { 50, 75, 100 }
 
     for index, key in ipairs(milestoneKeys) do
-        local threshold = math.max(1, math.floor(getNumberValue(key, fallbackThresholds[index])))
-        rewards[threshold] = 1
+        if getSkillMilestoneEnabled(index) then
+            local threshold = math.max(1, math.floor(getNumberValue(key, fallbackThresholds[index])))
+            rewards[threshold] = 1
+        end
     end
 
     return rewards
@@ -186,6 +239,8 @@ local container = {
     init = init,
     getToggleUiKey = getToggleUiKey,
     getPointsPerLevel = getPointsPerLevel,
+    getLevelUpRewardsEnabled = getLevelUpRewardsEnabled,
+    getSkillMilestoneEnabled = getSkillMilestoneEnabled,
     getSkillMilestoneRewards = getSkillMilestoneRewards,
 }
 

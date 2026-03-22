@@ -213,6 +213,14 @@ local function hasPerk(perkID)
     return interfaces[MOD_NAME .. "Player"].hasPerk(perkID)
 end
 
+local function isPerkEffectEnabled(perkID)
+    local playerApi = interfaces[MOD_NAME .. "Player"]
+    if playerApi == nil or type(playerApi.isPerkEffectEnabled) ~= "function" then
+        return hasPerk(perkID)
+    end
+    return playerApi.isPerkEffectEnabled(perkID)
+end
+
 local function getSelectedSkillID()
     return skillIDs[selectedSkillIndex]
 end
@@ -820,6 +828,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local effectId = "--"
     local cost = 0
     local owned = false
+    local effectEnabled = false
     local canUnlock = false
 
     if node ~= nil and type(node.title) == "string" and node.title ~= "" then
@@ -830,6 +839,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         effectId = selectedPerk.effectId or "--"
         cost = selectedPerk.cost or 0
         owned = hasPerk(selectedPerkID)
+        effectEnabled = owned and isPerkEffectEnabled(selectedPerkID)
         canUnlock = canPurchasePerk(selectedPerkID)
     end
 
@@ -938,6 +948,23 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         end
     end, unlockEnabled, v2(128, 30))
 
+    local toggleLabel = "Unlock First"
+    local toggleStatus = "Not owned"
+    local toggleEnabled = false
+    if selectedPerk ~= nil and owned then
+        toggleLabel = effectEnabled and "Disable Effect" or "Enable Effect"
+        toggleStatus = effectEnabled and "Enabled" or "Disabled"
+        toggleEnabled = true
+    end
+
+    local toggleButton = createButton(toggleLabel, function()
+        if selectedPerkID ~= nil and owned then
+            pself:sendEvent(MOD_NAME .. "togglePerkEffect", { perkID = selectedPerkID, enabled = not effectEnabled })
+            menu.layout = buildLayout()
+            menu:update()
+        end
+    end, toggleEnabled, v2(rightColumnWidth - 12, 26))
+
     return {
         type = ui.TYPE.Flex,
         props = {
@@ -1040,17 +1067,42 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             {
                                 type = ui.TYPE.Container,
                                 template = interfaces.MWUI.templates.boxSolid,
-                                props = { autoSize = false, size = v2(rightColumnWidth, 66) },
+                                props = { autoSize = false, size = v2(rightColumnWidth, 86) },
                                 content = ui.content {
                                     {
-                                        type = ui.TYPE.Text,
-                                        template = interfaces.MWUI.templates.textNormal,
-                                        props = {
-                                            text = string.format("Effect: %s\nToggle: %s", tostring(effectId), owned and "ON" or "OFF"),
-                                            autoSize = false,
-                                            size = v2(rightColumnWidth, 66),
-                                            textAlignH = ui.ALIGNMENT.Center,
-                                            textAlignV = ui.ALIGNMENT.Center,
+                                        type = ui.TYPE.Flex,
+                                        props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, 86) },
+                                        content = ui.content {
+                                            {
+                                                type = ui.TYPE.Text,
+                                                template = interfaces.MWUI.templates.textNormal,
+                                                props = {
+                                                    text = string.format("Effect: %s\nState: %s", tostring(effectId), toggleStatus),
+                                                    autoSize = false,
+                                                    size = v2(rightColumnWidth, 48),
+                                                    textAlignH = ui.ALIGNMENT.Center,
+                                                    textAlignV = ui.ALIGNMENT.Center,
+                                                },
+                                            },
+                                            {
+                                                type = ui.TYPE.Widget,
+                                                props = { size = v2(1, 2) },
+                                            },
+                                            {
+                                                type = ui.TYPE.Flex,
+                                                props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, 30) },
+                                                content = ui.content {
+                                                    {
+                                                        type = ui.TYPE.Widget,
+                                                        external = { grow = 1 },
+                                                    },
+                                                    toggleButton,
+                                                    {
+                                                        type = ui.TYPE.Widget,
+                                                        external = { grow = 1 },
+                                                    },
+                                                },
+                                            },
                                         },
                                     },
                                 },

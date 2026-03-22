@@ -13,6 +13,7 @@ local DEBUG_LOGS = settings.DEBUG_LOGS == true
 local earnedMilestonesBySkill = {}
 local spentPointsBySkill = {}
 local activePerks = {}
+local effectEnabledByPerkId = {}
 local updateTimer = 0
 local pointSourcesInitialized = false
 
@@ -278,16 +279,47 @@ local function getActivePerks()
     return out
 end
 
+local function isPerkEffectEnabled(perkID)
+    if not hasPerk(perkID) then
+        return false
+    end
+
+    local savedState = effectEnabledByPerkId[perkID]
+    if type(savedState) == "boolean" then
+        return savedState
+    end
+    return true
+end
+
+local function setPerkEffectEnabledState(perkID, enabled)
+    if type(enabled) ~= "boolean" then
+        error("setPerkEffectEnabledState() requires enabled = boolean")
+    end
+
+    if enabled then
+        effectEnabledByPerkId[perkID] = true
+    else
+        effectEnabledByPerkId[perkID] = false
+    end
+end
+
 local function reconcileSaveState()
     local perks = interfaces[MOD_NAME].getPerks()
     local filteredActivePerks = {}
     local recomputedSpentBySkill = {}
+    local filteredEffectEnabledByPerkId = {}
 
     for _, perkID in ipairs(activePerks) do
         local perk = perks[perkID]
         if perk ~= nil then
             table.insert(filteredActivePerks, perkID)
             recomputedSpentBySkill[perk.tab] = (recomputedSpentBySkill[perk.tab] or 0) + perk.cost
+            local savedEffectEnabled = effectEnabledByPerkId[perkID]
+            if type(savedEffectEnabled) == "boolean" then
+                filteredEffectEnabledByPerkId[perkID] = savedEffectEnabled
+            else
+                filteredEffectEnabledByPerkId[perkID] = true
+            end
         else
             print("[" .. MOD_NAME .. "] Dropping missing active perk from save: " .. tostring(perkID))
         end
@@ -295,6 +327,7 @@ local function reconcileSaveState()
 
     activePerks = filteredActivePerks
     spentPointsBySkill = recomputedSpentBySkill
+    effectEnabledByPerkId = filteredEffectEnabledByPerkId
 
     local recomputedSpentTotal = 0
     for _, amount in pairs(spentPointsBySkill) do
@@ -350,6 +383,7 @@ local function addPerk(data)
 
     table.insert(activePerks, data.perkID)
     spentPointsBySkill[perk.tab] = spentPoints(perk.tab) + perk.cost
+    effectEnabledByPerkId[data.perkID] = true
     print(string.format(
         "[%s] Added perk=%s cost=%d available=%d totalAdded=%d totalSpent=%d",
         MOD_NAME,
@@ -377,10 +411,42 @@ local function removePerk(data)
             table.remove(activePerks, i)
             spentPointsBySkill[perk.tab] = math.max(0, spentPoints(perk.tab) - perk.cost)
             pointsLedger.addPoints(perk.cost, "Perk removed", data.perkID)
+            effectEnabledByPerkId[data.perkID] = nil
             effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
             return
         end
     end
+end
+
+local function togglePerkEffect(data)
+    if type(data) ~= "table" or type(data.perkID) ~= "string" then
+        error("togglePerkEffect() requires { perkID = string, enabled = boolean|nil }")
+    end
+
+    local perk = interfaces[MOD_NAME].getPerks()[data.perkID]
+    if perk == nil then
+        error("Unknown perk id: " .. tostring(data.perkID))
+    end
+    if not hasPerk(data.perkID) then
+        print("[" .. MOD_NAME .. "] Cannot toggle effect for unowned perk " .. data.perkID)
+        return false
+    end
+
+    local currentlyEnabled = isPerkEffectEnabled(data.perkID)
+    local targetEnabled = type(data.enabled) == "boolean" and data.enabled or (not currentlyEnabled)
+    if targetEnabled == currentlyEnabled then
+        return currentlyEnabled
+    end
+
+    setPerkEffectEnabledState(data.perkID, targetEnabled)
+    if targetEnabled then
+        effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself, reenabled = true })
+    else
+        effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself, disabled = true })
+    end
+
+    print(string.format("[%s] Perk effect toggled perk=%s enabled=%s", MOD_NAME, tostring(data.perkID), tostring(targetEnabled)))
+    return targetEnabled
 end
 
 local function printSkillMenu(filterSkill)
@@ -414,7 +480,10 @@ local function respecAllPerks()
         local perk = perks[perkID]
         if perk ~= nil then
             refundsBySkill[perk.tab] = (refundsBySkill[perk.tab] or 0) + perk.cost
-            effectsRegistry.onRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself })
+            if isPerkEffectEnabled(perkID) then
+                effectsRegistry.onRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself })
+            end
+            effectEnabledByPerkId[perkID] = nil
             removedCount = removedCount + 1
         else
             print("[" .. MOD_NAME .. "] Skipping unknown active perk during respec: " .. tostring(perkID))
@@ -565,6 +634,7 @@ local function onLoad(data)
     earnedMilestonesBySkill = (data and data.earnedMilestonesBySkill) or {}
     spentPointsBySkill = (data and data.spentPointsBySkill) or {}
     activePerks = (data and data.activePerks) or {}
+    effectEnabledByPerkId = (data and data.effectEnabledByPerkId) or {}
     pointsLedger.importState((data and data.pointsLedger) or nil)
 
     initializePointSources()
@@ -618,6 +688,7 @@ local function onSave()
         earnedMilestonesBySkill = earnedMilestonesBySkill,
         spentPointsBySkill = spentPointsBySkill,
         activePerks = activePerks,
+        effectEnabledByPerkId = effectEnabledByPerkId,
         pointsLedger = pointsLedger.exportState(),
     }
 end
@@ -630,6 +701,8 @@ return {
         availablePoints = availablePoints,
         globalAvailablePoints = globalAvailablePoints,
         hasPerk = hasPerk,
+        isPerkEffectEnabled = isPerkEffectEnabled,
+        setPerkEffectEnabled = togglePerkEffect,
         getActivePerks = getActivePerks,
         addPoints = pointsLedger.addPoints,
         spendPoints = pointsLedger.spendPoints,
@@ -640,6 +713,7 @@ return {
         UiModeChanged = UiModeChanged,
         [MOD_NAME .. "addPerk"] = addPerk,
         [MOD_NAME .. "removePerk"] = removePerk,
+        [MOD_NAME .. "togglePerkEffect"] = togglePerkEffect,
         [MOD_NAME .. "questCompleted"] = onQuestCompleted,
     },
     engineHandlers = {

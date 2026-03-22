@@ -157,6 +157,21 @@ Like `ErnExamplePerkPack.omwscripts -> PLAYER:scripts/ErnExamplePerkPack/dummy.l
 
 Register event-driven point sources with `registerPointSource(sourceId, handlers)`.
 
+## Effect toggle behavior for pack authors
+
+Owned perks now keep a persisted per-perk effect state (`enabled`/`disabled`) and players can toggle effects in the perk UI.
+
+- Unlocking a perk always enables its effect and calls the effect callback `onAcquire(context)`.
+- Disabling an owned perk effect calls `onRemove(context)` and keeps the perk owned.
+- Re-enabling an owned perk effect calls `onAcquire(context)` again.
+- Removing/refunding a perk calls `onRemove(context)` only when the effect is currently enabled.
+
+Because toggling can repeatedly invoke both callbacks over time, pack effect handlers must be **idempotent** and safe if called multiple times:
+
+- `onAcquire` should avoid stacking duplicate bonuses when called again for the same perk.
+- `onRemove` should safely no-op when the effect is already absent.
+- Prefer tracking your own applied state per actor/perk inside the effect script if your logic mutates actor data.
+
 ## Console commands
 
 - `skillperks`

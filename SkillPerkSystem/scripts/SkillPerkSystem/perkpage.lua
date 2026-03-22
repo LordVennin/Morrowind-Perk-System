@@ -12,6 +12,7 @@ local MOD_NAME = settings.MOD_NAME
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
 local toggleKeyWasPressed = false
+local hadOpenMenuModeLastFrame = false
 
 local function refreshToggleKeyBinding()
     local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
@@ -1404,6 +1405,14 @@ local function toggleMenu()
     end
 end
 
+local function hasOpenMenuMode()
+    local ok, mode = pcall(ui.getMode)
+    if not ok then
+        return false
+    end
+    return mode ~= nil and mode ~= ""
+end
+
 local function normalizeConsoleArgs(mode, command)
     if type(mode) == "table" then
         command = mode.command
@@ -1492,11 +1501,17 @@ local function onFrame(dt)
     end
 
     refreshToggleKeyBinding()
+    local hasOpenMenuModeNow = hasOpenMenuMode()
     local isPressed = input.isKeyPressed(activeToggleKeyCode)
     if isPressed and not toggleKeyWasPressed then
-        toggleMenu()
+        if menu ~= nil then
+            toggleMenu()
+        elseif not hasOpenMenuModeNow and not hadOpenMenuModeLastFrame then
+            toggleMenu()
+        end
     end
     toggleKeyWasPressed = isPressed
+    hadOpenMenuModeLastFrame = hasOpenMenuModeNow
 end
 
 return {

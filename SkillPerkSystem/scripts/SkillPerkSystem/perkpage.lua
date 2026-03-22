@@ -827,8 +827,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local requirementInset = math.max(px(4), math.floor(contentWidth * 0.012))
     local requirementRowHeight = math.max(px(20), math.floor(twoColumnHeight * 0.12))
     local requirementRowGap = math.max(px(2), math.floor(twoColumnHeight * 0.022))
-    local unlockContainerHeight = math.max(px(44), math.floor(descriptionSectionHeight * 0.33))
-    local descriptionHeight = descriptionSectionHeight - unlockContainerHeight - sectionGap
+    local descriptionHeight = descriptionSectionHeight
     local costHeight = math.max(px(42), math.floor(twoColumnHeight * 0.34))
     local rightBoxGap = requirementRowGap
     local effectHeight = twoColumnHeight - costHeight - rightBoxGap
@@ -1034,68 +1033,29 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local unlockLabel = "No Perk Selected"
     local unlockEnabled = false
     local showUnlockButton = false
-    local unlockReason = "Select a perk node to unlock it."
+    local showOwnedButton = false
     if selectedPerk ~= nil then
         if owned then
             unlockLabel = "Owned"
-            unlockReason = "Owned"
+            showOwnedButton = true
         elseif canUnlock then
             unlockLabel = "Unlock Perk"
             unlockEnabled = true
             showUnlockButton = true
-            unlockReason = string.format("Spend %d point%s to unlock.", cost, cost == 1 and "" or "s")
         else
-            local missingRequirements = not requirementSatisfied(selectedPerk)
-            local missingParents = #getMissingParentPerks(selectedPerkID) > 0
-            local availablePoints = getCurrentGlobalPoints(selectedPerk.tab)
-            local insufficientPoints = availablePoints < cost
-
-            if missingRequirements then
-                unlockReason = "Locked: missing requirements."
-            elseif missingParents then
-                unlockReason = "Locked: missing parent perks."
-            elseif insufficientPoints then
-                unlockReason = string.format("Locked: need %d point%s, have %d.", cost, cost == 1 and "" or "s", availablePoints)
-            else
-                unlockReason = "Locked: unavailable right now."
-            end
+            showUnlockButton = false
         end
     end
 
     local unlockButton = nil
-    if showUnlockButton then
+    if showUnlockButton or showOwnedButton then
         unlockButton = createButton(unlockLabel, function()
             if selectedPerkID ~= nil then
                 pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })
                 menu.layout = buildLayout()
                 menu:update()
             end
-        end, unlockEnabled, v2(128, 30))
-    end
-
-    local unlockSectionContent = {
-        {
-            type = ui.TYPE.Text,
-            template = (unlockEnabled or owned) and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled,
-            props = {
-                text = unlockReason,
-                autoSize = false,
-                size = showUnlockButton and v2(contentWidth - px(146), unlockContainerHeight) or v2(contentWidth - (requirementInset * 2), unlockContainerHeight),
-                position = v2(requirementInset + px(2), 0),
-                textAlignV = ui.ALIGNMENT.Center,
-            },
-        },
-    }
-    if showUnlockButton then
-        table.insert(unlockSectionContent, {
-            type = ui.TYPE.Container,
-            props = {
-                autoSize = false,
-                size = v2(132, unlockContainerHeight - 8),
-                position = v2(contentWidth - px(150), outerPad),
-            },
-            content = ui.content { unlockButton },
-        })
+        end, unlockEnabled, v2(104, 24))
     end
 
     local toggleLabel = "Unlock First"
@@ -1117,202 +1077,217 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local toggleSectionHeight = math.max(px(24), effectHeight - math.max(px(34), math.floor(effectHeight * 0.7)))
     local effectTextHeight = effectHeight - toggleSectionHeight - rightBoxGap
 
+    local detailContent = {
+        {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, outerPad) },
+        },
+        {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = true,
+                autoSize = false,
+                size = v2(contentWidth, topRowHeight),
+            },
+            content = ui.content {
+                { type = ui.TYPE.Widget, external = { grow = 1 } },
+                {
+                    type = ui.TYPE.Container,
+                    template = interfaces.MWUI.templates.boxSolidThick,
+                    props = { autoSize = false, size = v2(titleWidth, topRowHeight) },
+                    content = ui.content {
+                        {
+                            type = ui.TYPE.Text,
+                            template = interfaces.MWUI.templates.textHeader,
+                            props = {
+                                text = title,
+                                autoSize = false,
+                                size = v2(titleWidth, topRowHeight),
+                                textAlignH = ui.ALIGNMENT.Center,
+                                textAlignV = ui.ALIGNMENT.Center,
+                            },
+                        },
+                    },
+                },
+                { type = ui.TYPE.Widget, external = { grow = 1 } },
+            },
+        },
+        {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, sectionGap) },
+        },
+        {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = true,
+                autoSize = false,
+                size = v2(contentWidth, twoColumnHeight),
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Container,
+                    template = interfaces.MWUI.templates.borders,
+                    props = {
+                        autoSize = false,
+                        size = v2(leftColumnWidth, twoColumnHeight),
+                    },
+                    content = ui.content {
+                        {
+                            type = ui.TYPE.Flex,
+                            props = { horizontal = false, autoSize = false, size = v2(leftColumnWidth, twoColumnHeight) },
+                            content = ui.content(requirementContent),
+                        },
+                    },
+                },
+                {
+                    type = ui.TYPE.Widget,
+                    props = { size = v2(sectionGap, 1) },
+                },
+                {
+                    type = ui.TYPE.Flex,
+                    props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, twoColumnHeight) },
+                    content = ui.content {
+                        {
+                            type = ui.TYPE.Container,
+                            template = interfaces.MWUI.templates.boxSolid,
+                            props = { autoSize = false, size = v2(rightColumnWidth, costHeight) },
+                            content = ui.content {
+                                {
+                                    type = ui.TYPE.Text,
+                                    template = interfaces.MWUI.templates.textNormal,
+                                    props = {
+                                        text = string.format("Cost: %d\nStatus: %s", cost, owned and "Owned" or (canUnlock and "Available" or "Unavailable")),
+                                        autoSize = false,
+                                        size = v2(rightColumnWidth, costHeight),
+                                        textAlignH = ui.ALIGNMENT.Center,
+                                        textAlignV = ui.ALIGNMENT.Center,
+                                    },
+                                },
+                            },
+                        },
+                        {
+                            type = ui.TYPE.Widget,
+                            props = { size = v2(1, rightBoxGap) },
+                        },
+                        {
+                            type = ui.TYPE.Container,
+                            template = interfaces.MWUI.templates.boxSolid,
+                            props = { autoSize = false, size = v2(rightColumnWidth, effectHeight) },
+                            content = ui.content {
+                                {
+                                    type = ui.TYPE.Flex,
+                                    props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, effectHeight) },
+                                    content = ui.content {
+                                        {
+                                            type = ui.TYPE.Text,
+                                            template = interfaces.MWUI.templates.textNormal,
+                                            props = {
+                                                text = string.format("Effect: %s\nState: %s", tostring(effectId), toggleStatus),
+                                                autoSize = false,
+                                                size = v2(rightColumnWidth, effectTextHeight),
+                                                textAlignH = ui.ALIGNMENT.Center,
+                                                textAlignV = ui.ALIGNMENT.Center,
+                                            },
+                                        },
+                                        {
+                                            type = ui.TYPE.Widget,
+                                            props = { size = v2(1, rightBoxGap) },
+                                        },
+                                        {
+                                            type = ui.TYPE.Flex,
+                                            props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, toggleSectionHeight) },
+                                            content = ui.content {
+                                                {
+                                                    type = ui.TYPE.Widget,
+                                                    external = { grow = 1 },
+                                                },
+                                                toggleButton,
+                                                {
+                                                    type = ui.TYPE.Widget,
+                                                    external = { grow = 1 },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, sectionGap) },
+        },
+        {
+            type = ui.TYPE.Container,
+            props = { autoSize = false, size = v2(contentWidth, descriptionSectionHeight) },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Container,
+                    template = interfaces.MWUI.templates.borders,
+                    props = {
+                        autoSize = false,
+                        size = v2(contentWidth - (requirementInset * 2), descriptionHeight),
+                        position = v2(requirementInset, 0),
+                    },
+                    content = ui.content {
+                        {
+                            type = ui.TYPE.Text,
+                            template = interfaces.MWUI.templates.textNormal,
+                            props = {
+                                text = table.concat(wrapTextLines(descriptionText, 44), "\n"),
+                                autoSize = false,
+                                size = v2(contentWidth - (requirementInset * 4), descriptionHeight - (outerPad * 2)),
+                                position = v2(requirementInset, outerPad),
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        {
+            type = ui.TYPE.Widget,
+            external = { grow = 1 },
+        },
+        {
+            type = ui.TYPE.Widget,
+            props = { size = v2(1, outerPad) },
+        },
+    }
+
+    local rootContent = {
+        {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                autoSize = false,
+                size = v2(rightPaneWidth, contentHeight),
+            },
+            content = ui.content(detailContent),
+        },
+    }
+
+    if unlockButton ~= nil then
+        table.insert(rootContent, {
+            type = ui.TYPE.Container,
+            props = {
+                autoSize = false,
+                size = v2(112, 28),
+                position = v2(px(10), contentHeight - px(38)),
+            },
+            content = ui.content { unlockButton },
+        })
+    end
+
     return {
-        type = ui.TYPE.Flex,
+        type = ui.TYPE.Container,
         props = {
-            horizontal = false,
             autoSize = false,
             size = v2(rightPaneWidth, contentHeight),
         },
-        content = ui.content {
-            {
-                type = ui.TYPE.Widget,
-                props = { size = v2(1, outerPad) },
-            },
-            {
-                type = ui.TYPE.Flex,
-                props = {
-                    horizontal = true,
-                    autoSize = false,
-                    size = v2(contentWidth, topRowHeight),
-                },
-                content = ui.content {
-                    { type = ui.TYPE.Widget, external = { grow = 1 } },
-                    {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.boxSolidThick,
-                        props = { autoSize = false, size = v2(titleWidth, topRowHeight) },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Text,
-                                template = interfaces.MWUI.templates.textHeader,
-                                props = {
-                                    text = title,
-                                    autoSize = false,
-                                    size = v2(titleWidth, topRowHeight),
-                                    textAlignH = ui.ALIGNMENT.Center,
-                                    textAlignV = ui.ALIGNMENT.Center,
-                                },
-                            },
-                        },
-                    },
-                    { type = ui.TYPE.Widget, external = { grow = 1 } },
-                },
-            },
-            {
-                type = ui.TYPE.Widget,
-                props = { size = v2(1, sectionGap) },
-            },
-            {
-                type = ui.TYPE.Flex,
-                props = {
-                    horizontal = true,
-                    autoSize = false,
-                    size = v2(contentWidth, twoColumnHeight),
-                },
-                content = ui.content {
-                    {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
-                        props = {
-                            autoSize = false,
-                            size = v2(leftColumnWidth, twoColumnHeight),
-                        },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Flex,
-                                props = { horizontal = false, autoSize = false, size = v2(leftColumnWidth, twoColumnHeight) },
-                                content = ui.content(requirementContent),
-                            },
-                        },
-                    },
-                    {
-                        type = ui.TYPE.Widget,
-                        props = { size = v2(sectionGap, 1) },
-                    },
-                    {
-                        type = ui.TYPE.Flex,
-                        props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, twoColumnHeight) },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Container,
-                                template = interfaces.MWUI.templates.boxSolid,
-                                props = { autoSize = false, size = v2(rightColumnWidth, costHeight) },
-                                content = ui.content {
-                                    {
-                                        type = ui.TYPE.Text,
-                                        template = interfaces.MWUI.templates.textNormal,
-                                        props = {
-                                            text = string.format("Cost: %d\nStatus: %s", cost, owned and "Owned" or (canUnlock and "Available" or "Unavailable")),
-                                            autoSize = false,
-                                            size = v2(rightColumnWidth, costHeight),
-                                            textAlignH = ui.ALIGNMENT.Center,
-                                            textAlignV = ui.ALIGNMENT.Center,
-                                        },
-                                    },
-                                },
-                            },
-                            {
-                                type = ui.TYPE.Widget,
-                                props = { size = v2(1, rightBoxGap) },
-                            },
-                            {
-                                type = ui.TYPE.Container,
-                                template = interfaces.MWUI.templates.boxSolid,
-                                props = { autoSize = false, size = v2(rightColumnWidth, effectHeight) },
-                                content = ui.content {
-                                    {
-                                        type = ui.TYPE.Flex,
-                                        props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, effectHeight) },
-                                        content = ui.content {
-                                            {
-                                                type = ui.TYPE.Text,
-                                                template = interfaces.MWUI.templates.textNormal,
-                                                props = {
-                                                    text = string.format("Effect: %s\nState: %s", tostring(effectId), toggleStatus),
-                                                    autoSize = false,
-                                                    size = v2(rightColumnWidth, effectTextHeight),
-                                                    textAlignH = ui.ALIGNMENT.Center,
-                                                    textAlignV = ui.ALIGNMENT.Center,
-                                                },
-                                            },
-                                            {
-                                                type = ui.TYPE.Widget,
-                                                props = { size = v2(1, rightBoxGap) },
-                                            },
-                                            {
-                                                type = ui.TYPE.Flex,
-                                                props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, toggleSectionHeight) },
-                                                content = ui.content {
-                                                    {
-                                                        type = ui.TYPE.Widget,
-                                                        external = { grow = 1 },
-                                                    },
-                                                    toggleButton,
-                                                    {
-                                                        type = ui.TYPE.Widget,
-                                                        external = { grow = 1 },
-                                                    },
-                                                },
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                type = ui.TYPE.Widget,
-                props = { size = v2(1, sectionGap) },
-            },
-            {
-                type = ui.TYPE.Container,
-                props = { autoSize = false, size = v2(contentWidth, descriptionSectionHeight) },
-                content = ui.content {
-                    {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
-                        props = {
-                            autoSize = false,
-                            size = v2(contentWidth - (requirementInset * 2), descriptionHeight),
-                            position = v2(requirementInset, 0),
-                        },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Text,
-                                template = interfaces.MWUI.templates.textNormal,
-                                props = {
-                                    text = table.concat(wrapTextLines(descriptionText, 44), "\n"),
-                                    autoSize = false,
-                                    size = v2(contentWidth - (requirementInset * 4), descriptionHeight - (outerPad * 2)),
-                                    position = v2(requirementInset, outerPad),
-                                },
-                            },
-                        },
-                    },
-                    {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
-                        props = {
-                            autoSize = false,
-                            size = v2(contentWidth - (requirementInset * 2), unlockContainerHeight),
-                            position = v2(requirementInset, descriptionSectionHeight - unlockContainerHeight),
-                        },
-                        content = ui.content(unlockSectionContent),
-                    },
-                },
-            },
-            {
-                type = ui.TYPE.Widget,
-                external = { grow = 1 },
-            },
-            {
-                type = ui.TYPE.Widget,
-                props = { size = v2(1, outerPad) },
-            },
-        },
+        content = ui.content(rootContent),
     }
 end
 local function buildPerkPane()

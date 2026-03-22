@@ -2,23 +2,23 @@ local storage = require("openmw.storage")
 
 local EFFECTS_SECTION = storage.playerSection("SkillPerkSystem_BasePack_Effects")
 local ENABLED_KEY = "security.steady_hands.enabled"
-local DURABILITY_MULTIPLIER_KEY = "security.steady_hands.durability_multiplier"
-local DURABILITY_MULTIPLIER = 0.75
+local NO_CONSUME_CHANCE_KEY = "security.steady_hands.no_consume_chance"
+local NO_CONSUME_CHANCE = 0.15
 
 local function applySteadyHandsState()
     EFFECTS_SECTION:set(ENABLED_KEY, true)
-    EFFECTS_SECTION:set(DURABILITY_MULTIPLIER_KEY, DURABILITY_MULTIPLIER)
+    EFFECTS_SECTION:set(NO_CONSUME_CHANCE_KEY, NO_CONSUME_CHANCE)
 end
 
 local function clearSteadyHandsState()
     EFFECTS_SECTION:set(ENABLED_KEY, false)
-    EFFECTS_SECTION:set(DURABILITY_MULTIPLIER_KEY, 1.0)
+    EFFECTS_SECTION:set(NO_CONSUME_CHANCE_KEY, 0.0)
 end
 
 return {
     id = "security_steady_hands_effect",
     name = "Steady Hands",
-    description = "Reduces lockpick/probe durability loss while the perk effect is enabled.",
+    description = "Adds a 15% chance for lockpick/probe uses to not be consumed while enabled.",
     onAcquire = function(_context)
         applySteadyHandsState()
     end,

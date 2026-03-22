@@ -103,6 +103,10 @@ local effectModules = {
     },
 }
 
+for _, entry in ipairs(effectModules) do
+    api.registerEffect(entry.data, entry.source)
+end
+
 for _, entry in ipairs(modules) do
     for _, perk in ipairs(entry.data.perks or {}) do
         api.registerPerk({

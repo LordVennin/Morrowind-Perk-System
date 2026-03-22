@@ -4,7 +4,12 @@ local pself = require("openmw.self")
 local types = require("openmw.types")
 
 local api = interfaces.SkillPerkSystem
-if api == nil or type(api.registerPerk) ~= "function" or type(api.registerTreeNode) ~= "function" then
+if
+    api == nil
+    or type(api.registerPerk) ~= "function"
+    or type(api.registerTreeNode) ~= "function"
+    or type(api.registerEffect) ~= "function"
+then
     local keys = {}
     for key, _ in pairs(interfaces) do
         table.insert(keys, tostring(key))
@@ -91,6 +96,13 @@ local modules = {
     },
 }
 
+local effectModules = {
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect"),
+    },
+}
+
 for _, entry in ipairs(modules) do
     for _, perk in ipairs(entry.data.perks or {}) do
         api.registerPerk({
@@ -114,6 +126,10 @@ for _, entry in ipairs(modules) do
             description = perk.description,
         }, entry.source)
     end
+end
+
+for _, entry in ipairs(effectModules) do
+    api.registerEffect(entry.data, entry.source)
 end
 
 return {}

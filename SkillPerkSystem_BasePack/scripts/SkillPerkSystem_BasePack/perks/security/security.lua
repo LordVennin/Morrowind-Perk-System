@@ -6,7 +6,7 @@ return {
             tab = "Security",
             tabDescription = "Security skill allows one to open locked doors and containers with lockpicks and disarm traps with probes.",
             minimumSkill = 10,
-            effectId = "demo_noop",
+            effectId = "security_steady_hands_effect",
             requires = {},
             cost = 1,
             x = -120,

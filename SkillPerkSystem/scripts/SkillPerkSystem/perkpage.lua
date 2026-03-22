@@ -819,8 +819,9 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local twoColumnHeight = px(188)
     local leftColumnWidth = math.floor(contentWidth * 0.6)
     local rightColumnWidth = contentWidth - leftColumnWidth - px(10)
-    local unlockContainerHeight = px(48)
-    local descriptionHeight = px(122)
+    local unlockContainerHeight = px(58)
+    local descriptionSectionHeight = px(178)
+    local descriptionHeight = descriptionSectionHeight - unlockContainerHeight - px(8)
     local topRowHeight = px(34)
 
     local title = selectedPerkID or skillName or "Perk Details"
@@ -931,13 +932,34 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         })
     end
 
-    local unlockLabel = "No Perk"
+    local unlockLabel = "No Perk Selected"
     local unlockEnabled = false
-    if selectedPerk ~= nil and owned then
-        unlockLabel = "Owned"
-    elseif selectedPerk ~= nil then
-        unlockLabel = canUnlock and "Unlock" or "Locked"
-        unlockEnabled = canUnlock
+    local unlockReason = "Select a perk node to unlock it."
+    if selectedPerk ~= nil then
+        if owned then
+            unlockLabel = "Owned"
+            unlockReason = "You already own this perk."
+        elseif canUnlock then
+            unlockLabel = "Unlock Perk"
+            unlockEnabled = true
+            unlockReason = string.format("Spend %d point%s to unlock.", cost, cost == 1 and "" or "s")
+        else
+            unlockLabel = "Unlock Perk"
+            local missingRequirements = not requirementSatisfied(selectedPerk)
+            local missingParents = #getMissingParentPerks(selectedPerkID) > 0
+            local availablePoints = getCurrentGlobalPoints(selectedPerk.tab)
+            local insufficientPoints = availablePoints < cost
+
+            if missingRequirements then
+                unlockReason = "Locked: missing requirements."
+            elseif missingParents then
+                unlockReason = "Locked: missing parent perks."
+            elseif insufficientPoints then
+                unlockReason = string.format("Locked: need %d point%s, have %d.", cost, cost == 1 and "" or "s", availablePoints)
+            else
+                unlockReason = "Locked: unavailable right now."
+            end
+        end
     end
 
     local unlockButton = createButton(unlockLabel, function()
@@ -1116,14 +1138,13 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 props = { size = v2(1, 8) },
             },
             {
-                type = ui.TYPE.Flex,
-                props = { horizontal = true, autoSize = false, size = v2(contentWidth, descriptionHeight) },
+                type = ui.TYPE.Container,
+                props = { autoSize = false, size = v2(contentWidth, descriptionSectionHeight) },
                 content = ui.content {
-                    { type = ui.TYPE.Widget, external = { grow = 1 } },
                     {
                         type = ui.TYPE.Container,
                         template = interfaces.MWUI.templates.borders,
-                        props = { autoSize = false, size = v2(contentWidth - 12, descriptionHeight) },
+                        props = { autoSize = false, size = v2(contentWidth - 12, descriptionHeight), position = v2(6, 0) },
                         content = ui.content {
                             {
                                 type = ui.TYPE.Text,
@@ -1137,24 +1158,42 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             },
                         },
                     },
-                    { type = ui.TYPE.Widget, external = { grow = 1 } },
+                    {
+                        type = ui.TYPE.Container,
+                        template = interfaces.MWUI.templates.borders,
+                        props = {
+                            autoSize = false,
+                            size = v2(contentWidth - 12, unlockContainerHeight),
+                            position = v2(6, descriptionSectionHeight - unlockContainerHeight),
+                        },
+                        content = ui.content {
+                            {
+                                type = ui.TYPE.Text,
+                                template = unlockEnabled and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled,
+                                props = {
+                                    text = unlockReason,
+                                    autoSize = false,
+                                    size = v2(contentWidth - 148, unlockContainerHeight),
+                                    position = v2(8, 0),
+                                    textAlignV = ui.ALIGNMENT.Center,
+                                },
+                            },
+                            {
+                                type = ui.TYPE.Container,
+                                props = {
+                                    autoSize = false,
+                                    size = v2(132, unlockContainerHeight - 8),
+                                    position = v2(contentWidth - 152, 4),
+                                },
+                                content = ui.content { unlockButton },
+                            },
+                        },
+                    },
                 },
             },
             {
                 type = ui.TYPE.Widget,
                 external = { grow = 1 },
-            },
-            {
-                type = ui.TYPE.Container,
-                props = { autoSize = false, size = v2(contentWidth, unlockContainerHeight) },
-                content = ui.content {
-                    {
-                        type = ui.TYPE.Container,
-                        template = interfaces.MWUI.templates.borders,
-                        props = { autoSize = false, size = v2(140, unlockContainerHeight), position = v2(0, 0) },
-                        content = ui.content { unlockButton },
-                    },
-                },
             },
             {
                 type = ui.TYPE.Widget,

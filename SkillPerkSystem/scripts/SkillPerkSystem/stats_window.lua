@@ -53,15 +53,21 @@ local function buildLine(perkID)
 end
 
 local function addPerksSection(sc)
-    local placementTarget = sc.DefaultSections.BIRTHSIGN
-        or sc.DefaultSections.CLASS
-        or sc.DefaultSections.MAJOR_SKILLS
-        or sc.DefaultSections.REPUTATION
+    -- Keep perks in the right-side skills list, specifically between Misc Skills and Reputation.
+    local placementType = sc.Placement.BEFORE
+    local placementTarget = sc.DefaultSections.REPUTATION
+
+    if placementTarget == nil then
+        placementType = sc.Placement.AFTER
+        placementTarget = sc.DefaultSections.MISC_SKILLS
+            or sc.DefaultSections.MINOR_SKILLS
+            or sc.DefaultSections.MAJOR_SKILLS
+    end
 
     interfaces.StatsWindow.addSectionToBox(sectionName, sc.DefaultBoxes.RIGHT_SCROLL_BOX, {
         l10n = MOD_NAME,
         placement = {
-            type = sc.Placement.AFTER,
+            type = placementType,
             target = placementTarget,
             priority = 1,
         },

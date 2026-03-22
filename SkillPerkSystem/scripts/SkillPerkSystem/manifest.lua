@@ -66,6 +66,20 @@ local function validateMergedTreeGraph()
                 )
             end
         end
+        for _, parentID in ipairs(node.requiresAny or {}) do
+            if nodeByID[parentID] == nil then
+                table.insert(
+                    missingParents,
+                    "node='"
+                        .. tostring(nodeID)
+                        .. "' source='"
+                        .. tostring(source)
+                        .. "' missing_parent='"
+                        .. tostring(parentID)
+                        .. "'"
+                )
+            end
+        end
     end
 
     table.sort(missingParents)
@@ -103,6 +117,12 @@ local function validateMergedTreeGraph()
 
         local node = nodeByID[nodeID]
         for _, parentID in ipairs(node.requires or {}) do
+            local cycle = detect(parentID)
+            if cycle ~= nil then
+                return cycle
+            end
+        end
+        for _, parentID in ipairs(node.requiresAny or {}) do
             local cycle = detect(parentID)
             if cycle ~= nil then
                 return cycle

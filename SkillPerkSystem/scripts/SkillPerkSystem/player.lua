@@ -268,6 +268,20 @@ local function getMissingParentPerks(perkID)
             table.insert(missing, requiredID)
         end
     end
+
+    local requiresAny = node.requiresAny or {}
+    if #requiresAny > 0 then
+        local anyOwned = false
+        for _, requiredID in ipairs(requiresAny) do
+            if hasPerk(requiredID) then
+                anyOwned = true
+                break
+            end
+        end
+        if not anyOwned then
+            table.insert(missing, "ANY:" .. table.concat(requiresAny, "|"))
+        end
+    end
     return missing
 end
 

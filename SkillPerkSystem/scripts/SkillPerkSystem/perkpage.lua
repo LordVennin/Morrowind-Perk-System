@@ -1059,20 +1059,37 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         end, unlockEnabled, v2(104, 24))
     end
 
-    local toggleLabel = "Enable"
-    local toggleEnabled = false
+    local toggleButton = nil
     if selectedPerk ~= nil and owned then
-        toggleLabel = effectEnabled and "Disable" or "Enable"
-        toggleEnabled = true
+        local toggleLabel = effectEnabled and "Disable" or "Enable"
+        toggleButton = createButton(toggleLabel, function()
+            if selectedPerkID ~= nil and owned then
+                pself:sendEvent(MOD_NAME .. "togglePerkEffect", { perkID = selectedPerkID, enabled = not effectEnabled })
+                menu.layout = buildLayout()
+                menu:update()
+            end
+        end, true, v2(rightColumnWidth - 12, compactControlHeight))
     end
 
-    local toggleButton = createButton(toggleLabel, function()
-        if selectedPerkID ~= nil and owned then
-            pself:sendEvent(MOD_NAME .. "togglePerkEffect", { perkID = selectedPerkID, enabled = not effectEnabled })
-            menu.layout = buildLayout()
-            menu:update()
-        end
-    end, toggleEnabled, v2(rightColumnWidth - 12, compactControlHeight))
+    local toggleButtonContent = ui.content {
+        {
+            type = ui.TYPE.Widget,
+            external = { grow = 1 },
+        },
+    }
+    if toggleButton ~= nil then
+        toggleButtonContent = ui.content {
+            {
+                type = ui.TYPE.Widget,
+                external = { grow = 1 },
+            },
+            toggleButton,
+            {
+                type = ui.TYPE.Widget,
+                external = { grow = 1 },
+            },
+        }
+    end
 
     local detailContent = {
         {
@@ -1174,17 +1191,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                 {
                                     type = ui.TYPE.Flex,
                                     props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, compactControlHeight) },
-                                    content = ui.content {
-                                        {
-                                            type = ui.TYPE.Widget,
-                                            external = { grow = 1 },
-                                        },
-                                        toggleButton,
-                                        {
-                                            type = ui.TYPE.Widget,
-                                            external = { grow = 1 },
-                                        },
-                                    },
+                                    content = toggleButtonContent,
                                 },
                             },
                         },

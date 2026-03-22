@@ -1034,12 +1034,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local unlockLabel = "No Perk Selected"
     local unlockEnabled = false
     local showUnlockButton = false
-    local showOwnedButton = false
     if selectedPerk ~= nil then
-        if owned then
-            unlockLabel = "Owned"
-            showOwnedButton = true
-        elseif canUnlock then
+        if canUnlock then
             unlockLabel = "Unlock Perk"
             unlockEnabled = true
             showUnlockButton = true
@@ -1049,7 +1045,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     end
 
     local unlockButton = nil
-    if showUnlockButton or showOwnedButton then
+    if showUnlockButton then
         unlockButton = createButton(unlockLabel, function()
             if selectedPerkID ~= nil then
                 pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })

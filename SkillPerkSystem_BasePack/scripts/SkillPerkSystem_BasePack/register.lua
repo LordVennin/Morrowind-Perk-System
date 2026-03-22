@@ -132,4 +132,8 @@ for _, entry in ipairs(modules) do
     end
 end
 
+for _, entry in ipairs(effectModules) do
+    api.registerEffect(entry.data, entry.source)
+end
+
 return {}

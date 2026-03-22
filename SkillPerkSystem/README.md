@@ -128,7 +128,14 @@ api.registerPerk({
     tabDescription = "Optional text shown in the tab detail pane.",
     effectId = "mypack_bonus_damage",
     cost = 1,
-    requirements = {},
+    requirements = {
+        {
+            label = "Character Level 10+",
+            check = function()
+                return true
+            end,
+        },
+    },
 }, "scripts.MyPack.perks.longblade.01_core")
 
 api.registerTreeNode({

@@ -222,9 +222,20 @@ local function initializePointSources()
     pointSourcesInitialized = true
 end
 
+local function getRequirementCheck(requirement)
+    if type(requirement) == "function" then
+        return requirement
+    end
+    if type(requirement) == "table" and type(requirement.check) == "function" then
+        return requirement.check
+    end
+    return nil
+end
+
 local function requirementSatisfied(perk)
     for _, requirement in ipairs(perk.requirements or {}) do
-        if type(requirement.check) == "function" and not requirement.check() then
+        local check = getRequirementCheck(requirement)
+        if check ~= nil and not check() then
             return false
         end
     end

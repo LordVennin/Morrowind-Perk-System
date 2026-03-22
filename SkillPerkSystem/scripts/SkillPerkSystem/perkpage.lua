@@ -374,13 +374,49 @@ local function updateFilteredPerks()
     end
 end
 
+local function getRequirementCheck(requirement)
+    if type(requirement) == "function" then
+        return requirement
+    end
+    if type(requirement) == "table" and type(requirement.check) == "function" then
+        return requirement.check
+    end
+    return nil
+end
+
+local function isRequirementMet(requirement)
+    local check = getRequirementCheck(requirement)
+    if check == nil then
+        return true
+    end
+    return check()
+end
+
+local function getRequirementLabel(requirement, index)
+    if type(requirement) == "table" and type(requirement.label) == "string" and requirement.label ~= "" then
+        return requirement.label
+    end
+    return "Requirement " .. tostring(index)
+end
+
 local function requirementSatisfied(perk)
     for _, requirement in ipairs(perk.requirements or {}) do
-        if type(requirement.check) == "function" and not requirement.check() then
+        if not isRequirementMet(requirement) then
             return false
         end
     end
     return true
+end
+
+local function getParentRequirementLabel(parentID)
+    local modApi = getModApi()
+    if modApi ~= nil and type(modApi.getTreeNode) == "function" then
+        local parentNode = modApi.getTreeNode(parentID)
+        if parentNode ~= nil and type(parentNode.title) == "string" and parentNode.title ~= "" then
+            return string.format("Parent perk: %s", parentNode.title)
+        end
+    end
+    return string.format("Parent perk: %s", tostring(parentID))
 end
 
 local function getMissingParentPerks(perkID)
@@ -809,26 +845,25 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         for _, parentID in ipairs(node.requires) do
             local parentOwned = hasPerk(parentID)
             table.insert(requirementRows, {
-                label = tostring(parentID),
-                state = parentOwned and "Met" or "Missing",
+                label = getParentRequirementLabel(parentID),
                 met = parentOwned,
             })
         end
     end
 
     if selectedPerk ~= nil and type(selectedPerk.requirements) == "table" and #selectedPerk.requirements > 0 then
-        local checksMet = requirementSatisfied(selectedPerk)
-        table.insert(requirementRows, {
-            label = "Custom checks",
-            state = checksMet and "Met" or "Missing",
-            met = checksMet,
-        })
+        for index, requirement in ipairs(selectedPerk.requirements) do
+            local requirementMet = isRequirementMet(requirement)
+            table.insert(requirementRows, {
+                label = getRequirementLabel(requirement, index),
+                met = requirementMet,
+            })
+        end
     end
 
     if #requirementRows == 0 then
         table.insert(requirementRows, {
             label = "No requirements",
-            state = "Ready",
             met = true,
         })
     end
@@ -863,21 +898,14 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                         },
                         {
                             type = ui.TYPE.Text,
-                            template = interfaces.MWUI.templates.textNormal,
+                            template = req.met and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled,
                             props = {
-                                text = req.label,
+                                text = string.format("%s (%s)", req.label, req.met and "Met" or "Missing"),
                             },
                         },
                         {
                             type = ui.TYPE.Widget,
                             external = { grow = 1 },
-                        },
-                        {
-                            type = ui.TYPE.Text,
-                            template = req.met and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textDisabled,
-                            props = {
-                                text = req.state,
-                            },
                         },
                         {
                             type = ui.TYPE.Widget,

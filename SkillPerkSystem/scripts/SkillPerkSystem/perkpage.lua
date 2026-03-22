@@ -63,6 +63,7 @@ local treePanInitializedBySkill = {}
 local isDraggingTree = false
 local lastMousePos = nil
 local apiUnavailableWarned = false
+local optimisticPerkEffectEnabledByID = {}
 
 local uiScale = 1
 
@@ -219,6 +220,18 @@ local function isPerkEffectEnabled(perkID)
         return hasPerk(perkID)
     end
     return playerApi.isPerkEffectEnabled(perkID)
+end
+
+local function getPerkEffectEnabledForUI(perkID)
+    local optimisticEnabled = optimisticPerkEffectEnabledByID[perkID]
+    if optimisticEnabled ~= nil then
+        local actualEnabled = isPerkEffectEnabled(perkID)
+        if actualEnabled == optimisticEnabled then
+            optimisticPerkEffectEnabledByID[perkID] = nil
+        end
+        return optimisticEnabled
+    end
+    return isPerkEffectEnabled(perkID)
 end
 
 local function getSelectedSkillID()
@@ -849,7 +862,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     if selectedPerk ~= nil then
         cost = selectedPerk.cost or 0
         owned = hasPerk(selectedPerkID)
-        effectEnabled = owned and isPerkEffectEnabled(selectedPerkID)
+        effectEnabled = owned and getPerkEffectEnabledForUI(selectedPerkID)
         canUnlock = canPurchasePerk(selectedPerkID)
     end
 
@@ -1060,7 +1073,9 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         local toggleLabel = effectEnabled and "Disable" or "Enable"
         toggleButton = createButton(toggleLabel, function()
             if selectedPerkID ~= nil and owned then
-                pself:sendEvent(MOD_NAME .. "togglePerkEffect", { perkID = selectedPerkID, enabled = not effectEnabled })
+                local nextEffectEnabled = not effectEnabled
+                optimisticPerkEffectEnabledByID[selectedPerkID] = nextEffectEnabled
+                pself:sendEvent(MOD_NAME .. "togglePerkEffect", { perkID = selectedPerkID, enabled = nextEffectEnabled })
                 menu.layout = buildLayout()
                 menu:update()
             end
@@ -1784,6 +1799,7 @@ local function closeMenu()
         interfaces.UI.removeMode("Interface")
         openedInterfaceForPerkMenu = false
     end
+    optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
 end
 

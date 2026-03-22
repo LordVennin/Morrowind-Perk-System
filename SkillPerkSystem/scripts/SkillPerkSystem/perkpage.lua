@@ -945,6 +945,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             props = {
                                 autoSize = false,
                                 size = v2(contentWidth - (requirementInset * 2), compactDescriptionHeight),
+                                clip = true,
                             },
                             content = ui.content {
                                 {
@@ -1273,6 +1274,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                         autoSize = false,
                         size = v2(contentWidth - (requirementInset * 2), descriptionHeight),
                         position = v2(requirementInset, 0),
+                        clip = true,
                     },
                     content = ui.content {
                         {

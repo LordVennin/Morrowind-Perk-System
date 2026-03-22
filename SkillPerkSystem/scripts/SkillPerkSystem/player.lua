@@ -128,7 +128,11 @@ end
 local function registerBuiltInPointSources()
     local pointSourceSettings = settings.POINT_SOURCES or {}
     local levelUpConfig = pointSourceSettings.levelUpRewards or {}
-    if levelUpConfig.enabled ~= false then
+    local levelUpRewardsEnabled = settings.getLevelUpRewardsEnabled and settings.getLevelUpRewardsEnabled()
+    if levelUpRewardsEnabled == nil then
+        levelUpRewardsEnabled = (levelUpConfig.enabled ~= false)
+    end
+    if levelUpRewardsEnabled then
         pointsLedger.registerPointSource("level-up", {
             onUpdate = function(_)
                 local pointsPerLevel = settings.getPointsPerLevel and settings.getPointsPerLevel() or (tonumber(levelUpConfig.pointsPerLevel) or 1)
@@ -150,7 +154,7 @@ local function registerBuiltInPointSources()
     end
 
     local milestoneConfig = pointSourceSettings.skillMilestoneRewards or {}
-    if milestoneConfig.enabled ~= false then
+    if settings.getSkillMilestoneRewards ~= nil or milestoneConfig.enabled ~= false then
         pointsLedger.registerPointSource("skill-milestones", {
             onUpdate = function(_)
                 local rewardsByLevel = settings.getSkillMilestoneRewards and settings.getSkillMilestoneRewards()

@@ -826,6 +826,15 @@ local function wrapTextLines(text, maxChars)
     return lines
 end
 
+local function truncateLabel(text, maxChars)
+    local source = tostring(text or "")
+    local limit = math.max(4, math.floor(tonumber(maxChars) or 0))
+    if #source <= limit then
+        return source
+    end
+    return source:sub(1, limit - 3) .. "..."
+end
+
 local function buildMultilineTextRows(lines, rowWidth, rowHeight, maxVisibleRows)
     local rows = {}
     local visibleRows = math.max(1, tonumber(maxVisibleRows) or 1)
@@ -1498,12 +1507,8 @@ local function buildPerkPane()
             local perkIndex = findPerkIndexByID(node.id)
             local isSelected = selectedTreeNodeID == node.id or (selectedTreeNodeID == nil and perkIndex > 0 and perkIndex == selectedPerkIndex)
             local title = node.title or node.id
-            local nodeLabel = title
-            if perkIndex > 0 and hasPerk(node.id) then
-                nodeLabel = nodeLabel .. " [owned]"
-            elseif perkIndex == 0 then
-                nodeLabel = nodeLabel .. " [node]"
-            end
+            local nodeLabelMaxChars = settings.PERK_UI_TREE_NODE_MAX_LABEL_CHARS or 20
+            local nodeLabel = truncateLabel(title, nodeLabelMaxChars)
 
             local buttonSize = util.vector2(isSelected and 174 or 162, 22)
             local borderPadding = 2

@@ -1010,7 +1010,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             type = ui.TYPE.Text,
                             template = req.met and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled,
                             props = {
-                                text = string.format("%s (%s)", req.label, req.met and "Met" or "Missing"),
+                                text = req.label,
                             },
                         },
                         {

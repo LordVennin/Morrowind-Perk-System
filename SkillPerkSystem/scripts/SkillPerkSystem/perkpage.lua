@@ -1404,6 +1404,14 @@ local function toggleMenu()
     end
 end
 
+local function hasOpenMenuMode()
+    local ok, mode = pcall(ui.getMode)
+    if not ok then
+        return false
+    end
+    return mode ~= nil and mode ~= ""
+end
+
 local function normalizeConsoleArgs(mode, command)
     if type(mode) == "table" then
         command = mode.command
@@ -1494,7 +1502,9 @@ local function onFrame(dt)
     refreshToggleKeyBinding()
     local isPressed = input.isKeyPressed(activeToggleKeyCode)
     if isPressed and not toggleKeyWasPressed then
-        toggleMenu()
+        if menu ~= nil or not hasOpenMenuMode() then
+            toggleMenu()
+        end
     end
     toggleKeyWasPressed = isPressed
 end

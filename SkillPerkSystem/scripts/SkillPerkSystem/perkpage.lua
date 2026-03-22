@@ -12,7 +12,7 @@ local MOD_NAME = settings.MOD_NAME
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
 local toggleKeyWasPressed = false
-local hadOpenMenuModeLastFrame = false
+local suppressToggleUntilRelease = false
 
 local function refreshToggleKeyBinding()
     local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
@@ -1442,6 +1442,18 @@ local function onConsoleCommand(mode, command, selectedObject)
     end
 end
 
+local function onUiModeChanged(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    -- If any non-nil mode just closed, wait until the toggle key is released
+    -- before allowing the perk menu to open from keyboard input again.
+    if data.oldMode ~= nil and data.newMode == nil then
+        suppressToggleUntilRelease = true
+    end
+end
+
 local function onFrame(dt)
     if menu ~= nil then
         local playerApi = interfaces[MOD_NAME .. "Player"]
@@ -1503,10 +1515,13 @@ local function onFrame(dt)
     refreshToggleKeyBinding()
     local hasOpenMenuModeNow = hasOpenMenuMode()
     local isPressed = input.isKeyPressed(activeToggleKeyCode)
+    if not isPressed then
+        suppressToggleUntilRelease = false
+    end
     if isPressed and not toggleKeyWasPressed then
         if menu ~= nil then
             toggleMenu()
-        elseif not hasOpenMenuModeNow and not hadOpenMenuModeLastFrame then
+        elseif not hasOpenMenuModeNow and not suppressToggleUntilRelease then
             toggleMenu()
         end
     end
@@ -1516,6 +1531,7 @@ end
 
 return {
     eventHandlers = {
+        UiModeChanged = onUiModeChanged,
         [MOD_NAME .. "togglePerkUI"] = toggleMenu,
         [MOD_NAME .. "showPerkUI"] = showMenu,
         [MOD_NAME .. "closePerkUI"] = closeMenu,

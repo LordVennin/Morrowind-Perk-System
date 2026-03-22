@@ -1,3 +1,4 @@
 PLAYER:scripts/SkillPerkSystem/manifest.lua
 PLAYER:scripts/SkillPerkSystem/player.lua
 PLAYER:scripts/SkillPerkSystem/perkpage.lua
+PLAYER:scripts/SkillPerkSystem/stats_window.lua

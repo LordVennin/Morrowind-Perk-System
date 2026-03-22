@@ -29,3 +29,4 @@ enableSkillMilestone3Description: "Enable perk points from the third skill thres
 
 skillMilestone3Name: "Skill Threshold #3"
 skillMilestone3Description: "Third skill level threshold that grants one perk point."
+perks: "Perks"

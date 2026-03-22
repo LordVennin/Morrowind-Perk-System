@@ -813,7 +813,7 @@ local function wrapTextLines(text, maxChars)
     return lines
 end
 
-local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth)
+local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth, showFullPerkDetails)
     local contentWidth = math.max(220, rightPaneWidth - 14)
     local titleWidth = math.min(contentWidth, px(252))
     local twoColumnHeight = px(188)
@@ -848,6 +848,96 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         descriptionText = node.description
     elseif selectedPerk ~= nil then
         descriptionText = string.format("Perk ID: %s\nTab: %s", tostring(selectedPerkID), tostring(selectedPerk.tab))
+    end
+
+    if not showFullPerkDetails then
+        local compactDescriptionHeight = px(196)
+        return {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                autoSize = false,
+                size = v2(rightPaneWidth, PERK_UI_CONTENT_HEIGHT),
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Widget,
+                    external = { grow = 1 },
+                },
+                {
+                    type = ui.TYPE.Flex,
+                    props = {
+                        horizontal = true,
+                        autoSize = false,
+                        size = v2(contentWidth, topRowHeight),
+                    },
+                    content = ui.content {
+                        { type = ui.TYPE.Widget, external = { grow = 1 } },
+                        {
+                            type = ui.TYPE.Container,
+                            template = interfaces.MWUI.templates.boxSolidThick,
+                            props = { autoSize = false, size = v2(titleWidth, topRowHeight) },
+                            content = ui.content {
+                                {
+                                    type = ui.TYPE.Text,
+                                    template = interfaces.MWUI.templates.textHeader,
+                                    props = {
+                                        text = skillName,
+                                        autoSize = false,
+                                        size = v2(titleWidth, topRowHeight),
+                                        textAlignH = ui.ALIGNMENT.Center,
+                                        textAlignV = ui.ALIGNMENT.Center,
+                                    },
+                                },
+                            },
+                        },
+                        { type = ui.TYPE.Widget, external = { grow = 1 } },
+                    },
+                },
+                {
+                    type = ui.TYPE.Widget,
+                    props = { size = v2(1, 12) },
+                },
+                {
+                    type = ui.TYPE.Flex,
+                    props = {
+                        horizontal = true,
+                        autoSize = false,
+                        size = v2(contentWidth, compactDescriptionHeight),
+                    },
+                    content = ui.content {
+                        { type = ui.TYPE.Widget, external = { grow = 1 } },
+                        {
+                            type = ui.TYPE.Container,
+                            template = interfaces.MWUI.templates.borders,
+                            props = {
+                                autoSize = false,
+                                size = v2(contentWidth - 12, compactDescriptionHeight),
+                            },
+                            content = ui.content {
+                                {
+                                    type = ui.TYPE.Text,
+                                    template = interfaces.MWUI.templates.textNormal,
+                                    props = {
+                                        text = table.concat(wrapTextLines(skillDescription, 44), "\n"),
+                                        autoSize = false,
+                                        size = v2(contentWidth - 20, compactDescriptionHeight - 8),
+                                        position = v2(4, 4),
+                                        textAlignH = ui.ALIGNMENT.Center,
+                                        textAlignV = ui.ALIGNMENT.Center,
+                                    },
+                                },
+                            },
+                        },
+                        { type = ui.TYPE.Widget, external = { grow = 1 } },
+                    },
+                },
+                {
+                    type = ui.TYPE.Widget,
+                    external = { grow = 1 },
+                },
+            },
+        }
     end
 
     local requirementRows = {}
@@ -1415,7 +1505,8 @@ local function buildPerkPane()
         and modApi.getTreeNode(selectedPerkID)
         or nil
 
-    local perkDetail = buildPerkDetailPane(selectedPerkID, selectedPerk, selectedNode, skillName, skillDescription, rightPaneWidth)
+    local showFullPerkDetails = selectedTreeNodeID ~= nil or #treeNodes == 0
+    local perkDetail = buildPerkDetailPane(selectedPerkID, selectedPerk, selectedNode, skillName, skillDescription, rightPaneWidth, showFullPerkDetails)
 
     return {
         type = ui.TYPE.Flex,

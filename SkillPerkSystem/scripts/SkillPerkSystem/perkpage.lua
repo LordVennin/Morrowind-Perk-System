@@ -826,10 +826,29 @@ local function wrapTextLines(text, maxChars)
     return lines
 end
 
-local function estimateWrapMaxChars(contentWidth, horizontalInsets, minChars)
-    local safeMinChars = math.max(12, tonumber(minChars) or 24)
-    local usableWidth = math.max(1, (tonumber(contentWidth) or 0) - math.max(0, tonumber(horizontalInsets) or 0))
-    local usablePixelWidth = px(usableWidth)
+local function buildMultilineTextRows(lines, rowWidth, rowHeight, maxVisibleRows)
+    local rows = {}
+    local visibleRows = math.max(1, tonumber(maxVisibleRows) or 1)
+    local rowLimit = math.min(#lines, visibleRows)
+    for index = 1, rowLimit do
+        table.insert(rows, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = lines[index],
+                autoSize = false,
+                size = v2(rowWidth, rowHeight),
+                textAlignH = ui.ALIGNMENT.Start,
+                textAlignV = ui.ALIGNMENT.Start,
+            },
+        })
+    end
+    return rows
+end
+
+local function estimateWrapMaxChars(usableTextWidth, minChars)
+    local safeMinChars = math.max(20, tonumber(minChars) or 20)
+    local usablePixelWidth = math.max(1, px(tonumber(usableTextWidth) or 0))
     local estimatedChars = math.floor(usablePixelWidth / px(7))
     return math.max(safeMinChars, estimatedChars)
 end
@@ -855,8 +874,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local descriptionHeight = descriptionSectionHeight
     local compactControlHeight = math.max(px(24), requirementRowHeight)
     local rightBoxGap = requirementRowGap
-    local descriptionHorizontalInsets = requirementInset * 4
-    local descriptionWrapMaxChars = estimateWrapMaxChars(contentWidth, descriptionHorizontalInsets, 24)
+    local descriptionTextWidth = contentWidth - (requirementInset * 4)
+    local descriptionWrapMaxChars = estimateWrapMaxChars(descriptionTextWidth, 20)
     local descriptionLineHeight = math.max(px(16), math.floor(contentHeight * 0.032))
 
     local title = selectedPerkID or skillName or "Perk Details"
@@ -886,20 +905,13 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     if not showFullPerkDetails then
         local compactDescriptionHeight = math.max(px(150), math.floor(contentHeight * 0.36))
         local compactDescriptionLines = wrapTextLines(skillDescription, descriptionWrapMaxChars)
-        local compactDescriptionRows = {}
-        for _, line in ipairs(compactDescriptionLines) do
-            table.insert(compactDescriptionRows, {
-                type = ui.TYPE.Text,
-                template = interfaces.MWUI.templates.textNormal,
-                props = {
-                    text = line,
-                    autoSize = false,
-                    size = v2(contentWidth - (requirementInset * 4), descriptionLineHeight),
-                    textAlignH = ui.ALIGNMENT.Left,
-                    textAlignV = ui.ALIGNMENT.Top,
-                },
-            })
-        end
+        local compactVisibleRows = math.max(1, math.floor((compactDescriptionHeight - (outerPad * 2)) / descriptionLineHeight))
+        local compactDescriptionRows = buildMultilineTextRows(
+            compactDescriptionLines,
+            descriptionTextWidth,
+            descriptionLineHeight,
+            compactVisibleRows
+        )
 
         return {
             type = ui.TYPE.Flex,
@@ -970,7 +982,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                     props = {
                                         horizontal = false,
                                         autoSize = false,
-                                        size = v2(contentWidth - (requirementInset * 4), compactDescriptionHeight - (outerPad * 2)),
+                                        size = v2(descriptionTextWidth, compactDescriptionHeight - (outerPad * 2)),
                                         position = v2(requirementInset, outerPad),
                                         arrange = ui.ALIGNMENT.Start,
                                     },
@@ -1203,20 +1215,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     })
 
     local descriptionLines = wrapTextLines(descriptionText, descriptionWrapMaxChars)
-    local descriptionRows = {}
-    for _, line in ipairs(descriptionLines) do
-        table.insert(descriptionRows, {
-            type = ui.TYPE.Text,
-            template = interfaces.MWUI.templates.textNormal,
-            props = {
-                text = line,
-                autoSize = false,
-                size = v2(contentWidth - (requirementInset * 4), descriptionLineHeight),
-                textAlignH = ui.ALIGNMENT.Left,
-                textAlignV = ui.ALIGNMENT.Top,
-            },
-        })
-    end
+    local fullVisibleRows = math.max(1, math.floor((descriptionHeight - (outerPad * 2)) / descriptionLineHeight))
+    local descriptionRows = buildMultilineTextRows(descriptionLines, descriptionTextWidth, descriptionLineHeight, fullVisibleRows)
 
     local detailContent = {
         {
@@ -1314,7 +1314,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             props = {
                                 horizontal = false,
                                 autoSize = false,
-                                size = v2(contentWidth - (requirementInset * 4), descriptionHeight - (outerPad * 2)),
+                                size = v2(descriptionTextWidth, descriptionHeight - (outerPad * 2)),
                                 position = v2(requirementInset, outerPad),
                                 arrange = ui.ALIGNMENT.Start,
                             },

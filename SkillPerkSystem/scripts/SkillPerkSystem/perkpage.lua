@@ -466,7 +466,7 @@ local function canPurchasePerk(perkID)
 end
 
 local function createButton(label, onPress, enabled, size)
-    local buttonTemplate = enabled and interfaces.MWUI.templates.boxButton or interfaces.MWUI.templates.boxDisabled
+    local buttonTemplate = interfaces.MWUI.templates.boxTransparentThick
     local fontTemplate = enabled and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled
 
     local textLayout = {
@@ -501,7 +501,7 @@ local function createButton(label, onPress, enabled, size)
             end),
             mouseRelease = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
-                    buttonLayout.template = interfaces.MWUI.templates.boxButton
+                    buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                     textLayout.template = interfaces.MWUI.templates.textNormal
                     if menu ~= nil then menu:update() end
                     onPress()
@@ -513,7 +513,7 @@ local function createButton(label, onPress, enabled, size)
                 if menu ~= nil then menu:update() end
             end),
             focusLoss = async:callback(function()
-                buttonLayout.template = interfaces.MWUI.templates.boxButton
+                buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                 textLayout.template = interfaces.MWUI.templates.textNormal
                 if menu ~= nil then menu:update() end
             end),

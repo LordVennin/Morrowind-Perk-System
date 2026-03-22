@@ -285,6 +285,22 @@ local function getMissingParentPerks(perkID)
     return missing
 end
 
+local function applyEffectAcquire(effectID, context)
+    local modApi = interfaces[MOD_NAME]
+    if modApi ~= nil and type(modApi.applyEffectOnAcquire) == "function" then
+        return modApi.applyEffectOnAcquire(effectID, context)
+    end
+    return effectsRegistry.onAcquire(effectID, context)
+end
+
+local function applyEffectRemove(effectID, context)
+    local modApi = interfaces[MOD_NAME]
+    if modApi ~= nil and type(modApi.applyEffectOnRemove) == "function" then
+        return modApi.applyEffectOnRemove(effectID, context)
+    end
+    return effectsRegistry.onRemove(effectID, context)
+end
+
 local function getActivePerks()
     local out = {}
     for _, perkID in ipairs(activePerks) do
@@ -407,7 +423,7 @@ local function addPerk(data)
         pointsLedger.getTotalAdded(),
         pointsLedger.getTotalSpent()
     ))
-    effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
+    applyEffectAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
 end
 
 local function removePerk(data)
@@ -426,7 +442,7 @@ local function removePerk(data)
             spentPointsBySkill[perk.tab] = math.max(0, spentPoints(perk.tab) - perk.cost)
             pointsLedger.addPoints(perk.cost, "Perk removed", data.perkID)
             effectEnabledByPerkId[data.perkID] = nil
-            effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
+            applyEffectRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
             return
         end
     end
@@ -454,9 +470,9 @@ local function togglePerkEffect(data)
 
     setPerkEffectEnabledState(data.perkID, targetEnabled)
     if targetEnabled then
-        effectsRegistry.onAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself, reenabled = true })
+        applyEffectAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself, reenabled = true })
     else
-        effectsRegistry.onRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself, disabled = true })
+        applyEffectRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself, disabled = true })
     end
 
     print(string.format("[%s] Perk effect toggled perk=%s enabled=%s", MOD_NAME, tostring(data.perkID), tostring(targetEnabled)))
@@ -495,7 +511,7 @@ local function respecAllPerks()
         if perk ~= nil then
             refundsBySkill[perk.tab] = (refundsBySkill[perk.tab] or 0) + perk.cost
             if isPerkEffectEnabled(perkID) then
-                effectsRegistry.onRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself })
+                applyEffectRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself })
             end
             effectEnabledByPerkId[perkID] = nil
             removedCount = removedCount + 1

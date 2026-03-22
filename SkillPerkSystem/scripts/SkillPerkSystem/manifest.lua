@@ -33,6 +33,14 @@ local function registerPointSource(sourceId, handlers, source)
     return pluginAPI.registerPointSource(sourceId, handlers, source or SOURCE_MANIFEST)
 end
 
+local function applyEffectOnAcquire(effectID, context)
+    return effectsRegistry.onAcquire(effectID, context)
+end
+
+local function applyEffectOnRemove(effectID, context)
+    return effectsRegistry.onRemove(effectID, context)
+end
+
 local function validationError(message)
     error(VALIDATION_ERROR_TAG .. ": " .. tostring(message), 2)
 end
@@ -306,6 +314,8 @@ return {
         registerTreeNode = registerTreeNode,
         registerPerkModule = registerPerkModule,
         registerEffect = registerEffect,
+        applyEffectOnAcquire = applyEffectOnAcquire,
+        applyEffectOnRemove = applyEffectOnRemove,
         registerPointSource = registerPointSource,
         beginPackRegistration = packRegistry.beginPackRegistration,
         completePackRegistration = packRegistry.completePackRegistration,

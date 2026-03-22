@@ -1033,17 +1033,18 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
 
     local unlockLabel = "No Perk Selected"
     local unlockEnabled = false
+    local showUnlockButton = false
     local unlockReason = "Select a perk node to unlock it."
     if selectedPerk ~= nil then
         if owned then
             unlockLabel = "Owned"
-            unlockReason = "You already own this perk."
+            unlockReason = "Owned"
         elseif canUnlock then
             unlockLabel = "Unlock Perk"
             unlockEnabled = true
+            showUnlockButton = true
             unlockReason = string.format("Spend %d point%s to unlock.", cost, cost == 1 and "" or "s")
         else
-            unlockLabel = "Unlock Perk"
             local missingRequirements = not requirementSatisfied(selectedPerk)
             local missingParents = #getMissingParentPerks(selectedPerkID) > 0
             local availablePoints = getCurrentGlobalPoints(selectedPerk.tab)
@@ -1061,13 +1062,41 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         end
     end
 
-    local unlockButton = createButton(unlockLabel, function()
-        if selectedPerkID ~= nil then
-            pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })
-            menu.layout = buildLayout()
-            menu:update()
-        end
-    end, unlockEnabled, v2(128, 30))
+    local unlockButton = nil
+    if showUnlockButton then
+        unlockButton = createButton(unlockLabel, function()
+            if selectedPerkID ~= nil then
+                pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })
+                menu.layout = buildLayout()
+                menu:update()
+            end
+        end, unlockEnabled, v2(128, 30))
+    end
+
+    local unlockSectionContent = {
+        {
+            type = ui.TYPE.Text,
+            template = (unlockEnabled or owned) and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled,
+            props = {
+                text = unlockReason,
+                autoSize = false,
+                size = showUnlockButton and v2(contentWidth - px(146), unlockContainerHeight) or v2(contentWidth - (requirementInset * 2), unlockContainerHeight),
+                position = v2(requirementInset + px(2), 0),
+                textAlignV = ui.ALIGNMENT.Center,
+            },
+        },
+    }
+    if showUnlockButton then
+        table.insert(unlockSectionContent, {
+            type = ui.TYPE.Container,
+            props = {
+                autoSize = false,
+                size = v2(132, unlockContainerHeight - 8),
+                position = v2(contentWidth - px(150), outerPad),
+            },
+            content = ui.content { unlockButton },
+        })
+    end
 
     local toggleLabel = "Unlock First"
     local toggleStatus = "Not owned"
@@ -1271,28 +1300,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             size = v2(contentWidth - (requirementInset * 2), unlockContainerHeight),
                             position = v2(requirementInset, descriptionSectionHeight - unlockContainerHeight),
                         },
-                        content = ui.content {
-                            {
-                                type = ui.TYPE.Text,
-                                template = unlockEnabled and interfaces.MWUI.templates.textNormal or interfaces.MWUI.templates.textDisabled,
-                                props = {
-                                    text = unlockReason,
-                                    autoSize = false,
-                                    size = v2(contentWidth - px(146), unlockContainerHeight),
-                                    position = v2(requirementInset + px(2), 0),
-                                    textAlignV = ui.ALIGNMENT.Center,
-                                },
-                            },
-                            {
-                                type = ui.TYPE.Container,
-                                props = {
-                                    autoSize = false,
-                                    size = v2(132, unlockContainerHeight - 8),
-                                    position = v2(contentWidth - px(150), outerPad),
-                                },
-                                content = ui.content { unlockButton },
-                            },
-                        },
+                        content = ui.content(unlockSectionContent),
                     },
                 },
             },

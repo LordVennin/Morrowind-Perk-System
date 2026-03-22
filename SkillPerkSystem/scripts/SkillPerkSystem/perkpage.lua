@@ -821,7 +821,11 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local sectionGap = math.max(px(4), math.floor(contentHeight * 0.014))
     local topRowHeight = math.max(px(24), math.floor(contentHeight * 0.052))
     local twoColumnHeight = math.max(px(130), math.floor(contentHeight * 0.305))
-    local descriptionSectionHeight = math.max(px(132), math.floor(contentHeight * 0.315))
+    local unlockAnchorReserveHeight = px(42)
+    local descriptionSectionHeight = math.max(
+        px(132),
+        contentHeight - (outerPad + topRowHeight + sectionGap + twoColumnHeight + sectionGap + unlockAnchorReserveHeight)
+    )
     local leftColumnWidth = math.floor(contentWidth * 0.6)
     local rightColumnWidth = contentWidth - leftColumnWidth - sectionGap
     local requirementInset = math.max(px(4), math.floor(contentWidth * 0.012))
@@ -1225,11 +1229,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         },
         {
             type = ui.TYPE.Widget,
-            external = { grow = 1 },
-        },
-        {
-            type = ui.TYPE.Widget,
-            props = { size = v2(1, outerPad) },
+            props = { size = v2(1, math.max(px(2), unlockAnchorReserveHeight - outerPad)) },
         },
     }
 

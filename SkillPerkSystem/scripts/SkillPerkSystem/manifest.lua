@@ -33,6 +33,14 @@ local function registerPointSource(sourceId, handlers, source)
     return pluginAPI.registerPointSource(sourceId, handlers, source or SOURCE_MANIFEST)
 end
 
+local function applyEffectOnAcquire(effectID, context)
+    return effectsRegistry.onAcquire(effectID, context)
+end
+
+local function applyEffectOnRemove(effectID, context)
+    return effectsRegistry.onRemove(effectID, context)
+end
+
 local function validationError(message)
     error(VALIDATION_ERROR_TAG .. ": " .. tostring(message), 2)
 end
@@ -53,6 +61,20 @@ local function validateMergedTreeGraph()
     for nodeID, node in pairs(nodeByID) do
         local source = registryState.getTreeNodeSource(nodeID) or "unknown"
         for _, parentID in ipairs(node.requires or {}) do
+            if nodeByID[parentID] == nil then
+                table.insert(
+                    missingParents,
+                    "node='"
+                        .. tostring(nodeID)
+                        .. "' source='"
+                        .. tostring(source)
+                        .. "' missing_parent='"
+                        .. tostring(parentID)
+                        .. "'"
+                )
+            end
+        end
+        for _, parentID in ipairs(node.requiresAny or {}) do
             if nodeByID[parentID] == nil then
                 table.insert(
                     missingParents,
@@ -103,6 +125,12 @@ local function validateMergedTreeGraph()
 
         local node = nodeByID[nodeID]
         for _, parentID in ipairs(node.requires or {}) do
+            local cycle = detect(parentID)
+            if cycle ~= nil then
+                return cycle
+            end
+        end
+        for _, parentID in ipairs(node.requiresAny or {}) do
             local cycle = detect(parentID)
             if cycle ~= nil then
                 return cycle
@@ -286,6 +314,8 @@ return {
         registerTreeNode = registerTreeNode,
         registerPerkModule = registerPerkModule,
         registerEffect = registerEffect,
+        applyEffectOnAcquire = applyEffectOnAcquire,
+        applyEffectOnRemove = applyEffectOnRemove,
         registerPointSource = registerPointSource,
         beginPackRegistration = packRegistry.beginPackRegistration,
         completePackRegistration = packRegistry.completePackRegistration,

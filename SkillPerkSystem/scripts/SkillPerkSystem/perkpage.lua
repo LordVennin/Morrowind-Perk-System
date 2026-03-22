@@ -1406,7 +1406,9 @@ local function toggleMenu()
 end
 
 local function hasOpenMenuMode()
-    local ok, mode = pcall(ui.getMode)
+    local ok, mode = pcall(function()
+        return interfaces.UI.getMode()
+    end)
     if not ok then
         return false
     end

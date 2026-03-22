@@ -816,13 +816,22 @@ end
 local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth, showFullPerkDetails)
     local contentWidth = math.max(220, rightPaneWidth - 14)
     local titleWidth = math.min(contentWidth, px(252))
-    local twoColumnHeight = px(188)
+    local contentHeight = PERK_UI_CONTENT_HEIGHT
+    local outerPad = math.max(px(4), math.floor(contentHeight * 0.012))
+    local sectionGap = math.max(px(4), math.floor(contentHeight * 0.014))
+    local topRowHeight = math.max(px(24), math.floor(contentHeight * 0.052))
+    local twoColumnHeight = math.max(px(130), math.floor(contentHeight * 0.305))
+    local descriptionSectionHeight = math.max(px(132), math.floor(contentHeight * 0.315))
     local leftColumnWidth = math.floor(contentWidth * 0.6)
-    local rightColumnWidth = contentWidth - leftColumnWidth - px(10)
-    local unlockContainerHeight = px(58)
-    local descriptionSectionHeight = px(178)
-    local descriptionHeight = descriptionSectionHeight - unlockContainerHeight - px(8)
-    local topRowHeight = px(34)
+    local rightColumnWidth = contentWidth - leftColumnWidth - sectionGap
+    local requirementInset = math.max(px(4), math.floor(contentWidth * 0.012))
+    local requirementRowHeight = math.max(px(20), math.floor(twoColumnHeight * 0.12))
+    local requirementRowGap = math.max(px(2), math.floor(twoColumnHeight * 0.022))
+    local unlockContainerHeight = math.max(px(44), math.floor(descriptionSectionHeight * 0.33))
+    local descriptionHeight = descriptionSectionHeight - unlockContainerHeight - sectionGap
+    local costHeight = math.max(px(42), math.floor(twoColumnHeight * 0.34))
+    local rightBoxGap = requirementRowGap
+    local effectHeight = twoColumnHeight - costHeight - rightBoxGap
 
     local title = selectedPerkID or skillName or "Perk Details"
     local descriptionText = skillDescription or "Perks registered under this tab."
@@ -851,13 +860,13 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     end
 
     if not showFullPerkDetails then
-        local compactDescriptionHeight = px(196)
+        local compactDescriptionHeight = math.max(px(150), math.floor(contentHeight * 0.36))
         return {
             type = ui.TYPE.Flex,
             props = {
                 horizontal = false,
                 autoSize = false,
-                size = v2(rightPaneWidth, PERK_UI_CONTENT_HEIGHT),
+                size = v2(rightPaneWidth, contentHeight),
             },
             content = ui.content {
                 {
@@ -896,7 +905,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 },
                 {
                     type = ui.TYPE.Widget,
-                    props = { size = v2(1, 12) },
+                    props = { size = v2(1, sectionGap) },
                 },
                 {
                     type = ui.TYPE.Flex,
@@ -912,7 +921,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             template = interfaces.MWUI.templates.borders,
                             props = {
                                 autoSize = false,
-                                size = v2(contentWidth - 12, compactDescriptionHeight),
+                                size = v2(contentWidth - (requirementInset * 2), compactDescriptionHeight),
                             },
                             content = ui.content {
                                 {
@@ -921,8 +930,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                     props = {
                                         text = table.concat(wrapTextLines(skillDescription, 44), "\n"),
                                         autoSize = false,
-                                        size = v2(contentWidth - 20, compactDescriptionHeight - 8),
-                                        position = v2(4, 4),
+                                        size = v2(contentWidth - (requirementInset * 4), compactDescriptionHeight - (outerPad * 2)),
+                                        position = v2(requirementInset, outerPad),
                                         textAlignH = ui.ALIGNMENT.Center,
                                         textAlignV = ui.ALIGNMENT.Center,
                                     },
@@ -982,7 +991,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             template = interfaces.MWUI.templates.borders,
             props = {
                 autoSize = false,
-                size = v2(leftColumnWidth - 14, 24),
+                size = v2(leftColumnWidth - (requirementInset * 2), requirementRowHeight),
             },
             content = ui.content {
                 {
@@ -990,12 +999,12 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                     props = {
                         horizontal = true,
                         autoSize = false,
-                        size = v2(leftColumnWidth - 14, 24),
+                        size = v2(leftColumnWidth - (requirementInset * 2), requirementRowHeight),
                     },
                     content = ui.content {
                         {
                             type = ui.TYPE.Widget,
-                            props = { size = v2(5, 1) },
+                            props = { size = v2(requirementInset, 1) },
                         },
                         {
                             type = ui.TYPE.Text,
@@ -1010,7 +1019,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                         },
                         {
                             type = ui.TYPE.Widget,
-                            props = { size = v2(5, 1) },
+                            props = { size = v2(requirementInset, 1) },
                         },
                     },
                 },
@@ -1018,7 +1027,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         })
         table.insert(requirementContent, {
             type = ui.TYPE.Widget,
-            props = { size = v2(1, 4) },
+            props = { size = v2(1, requirementRowGap) },
         })
     end
 
@@ -1076,18 +1085,20 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             menu:update()
         end
     end, toggleEnabled, v2(rightColumnWidth - 12, 26))
+    local toggleSectionHeight = math.max(px(24), effectHeight - math.max(px(34), math.floor(effectHeight * 0.7)))
+    local effectTextHeight = effectHeight - toggleSectionHeight - rightBoxGap
 
     return {
         type = ui.TYPE.Flex,
         props = {
             horizontal = false,
             autoSize = false,
-            size = v2(rightPaneWidth, PERK_UI_CONTENT_HEIGHT),
+            size = v2(rightPaneWidth, contentHeight),
         },
         content = ui.content {
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(1, 8) },
+                props = { size = v2(1, outerPad) },
             },
             {
                 type = ui.TYPE.Flex,
@@ -1121,7 +1132,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(1, 8) },
+                props = { size = v2(1, sectionGap) },
             },
             {
                 type = ui.TYPE.Flex,
@@ -1148,7 +1159,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                     },
                     {
                         type = ui.TYPE.Widget,
-                        props = { size = v2(10, 1) },
+                        props = { size = v2(sectionGap, 1) },
                     },
                     {
                         type = ui.TYPE.Flex,
@@ -1157,7 +1168,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             {
                                 type = ui.TYPE.Container,
                                 template = interfaces.MWUI.templates.boxSolid,
-                                props = { autoSize = false, size = v2(rightColumnWidth, 66) },
+                                props = { autoSize = false, size = v2(rightColumnWidth, costHeight) },
                                 content = ui.content {
                                     {
                                         type = ui.TYPE.Text,
@@ -1165,7 +1176,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                         props = {
                                             text = string.format("Cost: %d\nStatus: %s", cost, owned and "Owned" or (canUnlock and "Available" or "Unavailable")),
                                             autoSize = false,
-                                            size = v2(rightColumnWidth, 66),
+                                            size = v2(rightColumnWidth, costHeight),
                                             textAlignH = ui.ALIGNMENT.Center,
                                             textAlignV = ui.ALIGNMENT.Center,
                                         },
@@ -1174,16 +1185,16 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             },
                             {
                                 type = ui.TYPE.Widget,
-                                props = { size = v2(1, 8) },
+                                props = { size = v2(1, rightBoxGap) },
                             },
                             {
                                 type = ui.TYPE.Container,
                                 template = interfaces.MWUI.templates.boxSolid,
-                                props = { autoSize = false, size = v2(rightColumnWidth, 86) },
+                                props = { autoSize = false, size = v2(rightColumnWidth, effectHeight) },
                                 content = ui.content {
                                     {
                                         type = ui.TYPE.Flex,
-                                        props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, 86) },
+                                        props = { horizontal = false, autoSize = false, size = v2(rightColumnWidth, effectHeight) },
                                         content = ui.content {
                                             {
                                                 type = ui.TYPE.Text,
@@ -1191,18 +1202,18 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                                 props = {
                                                     text = string.format("Effect: %s\nState: %s", tostring(effectId), toggleStatus),
                                                     autoSize = false,
-                                                    size = v2(rightColumnWidth, 48),
+                                                    size = v2(rightColumnWidth, effectTextHeight),
                                                     textAlignH = ui.ALIGNMENT.Center,
                                                     textAlignV = ui.ALIGNMENT.Center,
                                                 },
                                             },
                                             {
                                                 type = ui.TYPE.Widget,
-                                                props = { size = v2(1, 2) },
+                                                props = { size = v2(1, rightBoxGap) },
                                             },
                                             {
                                                 type = ui.TYPE.Flex,
-                                                props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, 30) },
+                                                props = { horizontal = true, autoSize = false, size = v2(rightColumnWidth, toggleSectionHeight) },
                                                 content = ui.content {
                                                     {
                                                         type = ui.TYPE.Widget,
@@ -1225,7 +1236,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(1, 8) },
+                props = { size = v2(1, sectionGap) },
             },
             {
                 type = ui.TYPE.Container,
@@ -1234,7 +1245,11 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                     {
                         type = ui.TYPE.Container,
                         template = interfaces.MWUI.templates.borders,
-                        props = { autoSize = false, size = v2(contentWidth - 12, descriptionHeight), position = v2(6, 0) },
+                        props = {
+                            autoSize = false,
+                            size = v2(contentWidth - (requirementInset * 2), descriptionHeight),
+                            position = v2(requirementInset, 0),
+                        },
                         content = ui.content {
                             {
                                 type = ui.TYPE.Text,
@@ -1242,8 +1257,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                 props = {
                                     text = table.concat(wrapTextLines(descriptionText, 44), "\n"),
                                     autoSize = false,
-                                    size = v2(contentWidth - 20, descriptionHeight - 8),
-                                    position = v2(4, 4),
+                                    size = v2(contentWidth - (requirementInset * 4), descriptionHeight - (outerPad * 2)),
+                                    position = v2(requirementInset, outerPad),
                                 },
                             },
                         },
@@ -1253,8 +1268,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                         template = interfaces.MWUI.templates.borders,
                         props = {
                             autoSize = false,
-                            size = v2(contentWidth - 12, unlockContainerHeight),
-                            position = v2(6, descriptionSectionHeight - unlockContainerHeight),
+                            size = v2(contentWidth - (requirementInset * 2), unlockContainerHeight),
+                            position = v2(requirementInset, descriptionSectionHeight - unlockContainerHeight),
                         },
                         content = ui.content {
                             {
@@ -1263,8 +1278,8 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                 props = {
                                     text = unlockReason,
                                     autoSize = false,
-                                    size = v2(contentWidth - 148, unlockContainerHeight),
-                                    position = v2(8, 0),
+                                    size = v2(contentWidth - px(146), unlockContainerHeight),
+                                    position = v2(requirementInset + px(2), 0),
                                     textAlignV = ui.ALIGNMENT.Center,
                                 },
                             },
@@ -1273,7 +1288,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                 props = {
                                     autoSize = false,
                                     size = v2(132, unlockContainerHeight - 8),
-                                    position = v2(contentWidth - 152, 4),
+                                    position = v2(contentWidth - px(150), outerPad),
                                 },
                                 content = ui.content { unlockButton },
                             },
@@ -1287,7 +1302,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             },
             {
                 type = ui.TYPE.Widget,
-                props = { size = v2(1, 8) },
+                props = { size = v2(1, outerPad) },
             },
         },
     }

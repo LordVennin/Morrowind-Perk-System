@@ -1526,6 +1526,7 @@ local function onFrame(dt)
         end
     end
     toggleKeyWasPressed = isPressed
+    hadOpenMenuModeLastFrame = hasOpenMenuModeNow
 end
 
 return {

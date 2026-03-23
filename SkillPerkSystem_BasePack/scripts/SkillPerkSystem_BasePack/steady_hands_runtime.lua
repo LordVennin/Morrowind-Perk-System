@@ -128,19 +128,50 @@ local function itemCondition(item)
     return toolMaxCondition(item)
 end
 
+local TRACKED_SLOTS = {
+    {
+        slot = EQUIPMENT_SLOT.CarriedRight,
+        label = "CarriedRight",
+    },
+    {
+        slot = EQUIPMENT_SLOT.CarriedLeft,
+        label = "CarriedLeft",
+    },
+}
+
+local function getEquippedItemForSlot(slotInfo)
+    if type(slotInfo) ~= "table" then
+        return nil
+    end
+
+    local slot = slotInfo.slot
+    if slot == nil then
+        return nil
+    end
+
+    local ok, item = pcall(types.Actor.getEquipment, pself, slot)
+    if not ok then
+        return nil
+    end
+
+    return item
+end
+
 local function findEquippedSecurityTool()
-    local equipment = types.Actor.getEquipment(pself)
-    for slot, item in pairs(equipment) do
+    for _, slotInfo in ipairs(TRACKED_SLOTS) do
+        local item = getEquippedItemForSlot(slotInfo)
         local toolType = classifyTool(item)
         if toolType ~= nil then
             return {
-                slot = slot,
+                slot = slotInfo.slot,
+                slotName = slotInfo.label,
                 item = item,
                 toolType = toolType,
                 condition = itemCondition(item),
             }
         end
     end
+
     return nil
 end
 
@@ -151,7 +182,11 @@ local function sameItem(a, b)
     return a.item == b.item and a.slot == b.slot
 end
 
-local function slotLabel(slot)
+local function slotLabel(slot, slotName)
+    if type(slotName) == "string" and slotName ~= "" then
+        return slotName
+    end
+
     for name, value in pairs(EQUIPMENT_SLOT) do
         if value == slot then
             return name
@@ -169,7 +204,7 @@ local function logToolState(prefix, state)
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] %s slot=%s type=%s condition=%s",
         prefix,
-        slotLabel(state.slot),
+        slotLabel(state.slot, state.slotName),
         tostring(state.toolType),
         tostring(state.condition)
     ))
@@ -196,7 +231,7 @@ local function rollAndRefund(toolState, contextLabel)
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] refund roll source=%s slot=%s type=%s chance=%.2f result=%s",
         tostring(contextLabel),
-        slotLabel(toolState.slot),
+        slotLabel(toolState.slot, toolState.slotName),
         tostring(toolType),
         chance,
         proc and "PROC" or "NO_PROC"
@@ -215,7 +250,7 @@ local function rollAndRefund(toolState, contextLabel)
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=1",
         tostring(contextLabel),
-        slotLabel(toolState.slot),
+        slotLabel(toolState.slot, toolState.slotName),
         tostring(toolType)
     ))
 end
@@ -233,6 +268,7 @@ local function handleToolDrainEvent(data)
 
     local toolState = {
         slot = data.slot,
+        slotName = data.slotName,
         item = item,
         toolType = toolType,
         condition = itemCondition(item),
@@ -240,7 +276,7 @@ local function handleToolDrainEvent(data)
 
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] tool drain event received slot=%s type=%s condition=%s",
-        slotLabel(toolState.slot),
+        slotLabel(toolState.slot, toolState.slotName),
         tostring(toolType),
         tostring(toolState.condition)
     ))
@@ -268,7 +304,7 @@ local function maybeRefundCondition(previousState, currentState)
 
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] tool use detected slot=%s type=%s conditionBefore=%d conditionAfter=%d",
-        slotLabel(currentState.slot),
+        slotLabel(currentState.slot, currentState.slotName),
         tostring(currentState.toolType),
         oldCondition,
         newCondition

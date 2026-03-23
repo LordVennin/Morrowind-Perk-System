@@ -8,6 +8,7 @@ Use this template for new SkillPerkSystem implementation tasks so repository pol
 - Files/modules expected to change (must be under `SkillPerkSystem/`):
 - Out-of-scope areas:
   - `example_Mod/` (reference-only)
+    - `ExampleModBF/` (reference-only)
   - `Advanced world map mod example/` (reference-only)
 
 ## Implementation Plan

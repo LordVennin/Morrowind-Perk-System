@@ -71,6 +71,13 @@ local function itemData(item)
         end
     end
 
+    if item.type ~= nil and type(item.type.itemData) == "function" then
+        local ok, data = pcall(item.type.itemData, item)
+        if ok and type(data) == "table" then
+            return data
+        end
+    end
+
     if type(item.itemData) == "table" then
         return item.itemData
     end
@@ -78,17 +85,36 @@ local function itemData(item)
     return nil
 end
 
-local function itemCondition(item)
-    local data = itemData(item)
-    if type(data) ~= "table" then
+local function toolMaxCondition(item)
+    if item == nil then
         return nil
     end
 
-    local condition = data.condition
-    if type(condition) ~= "number" then
-        return nil
+    if types.Lockpick.objectIsInstance(item) then
+        local ok, record = pcall(types.Lockpick.record, item)
+        if ok and type(record) == "table" and type(record.maxCondition) == "number" then
+            return record.maxCondition
+        end
+    elseif types.Probe.objectIsInstance(item) then
+        local ok, record = pcall(types.Probe.record, item)
+        if ok and type(record) == "table" and type(record.maxCondition) == "number" then
+            return record.maxCondition
+        end
     end
-    return condition
+
+    return nil
+end
+
+local function itemCondition(item)
+    local data = itemData(item)
+    if type(data) == "table" then
+        local condition = data.condition
+        if type(condition) == "number" then
+            return condition
+        end
+    end
+
+    return toolMaxCondition(item)
 end
 
 local function findEquippedSecurityTool()

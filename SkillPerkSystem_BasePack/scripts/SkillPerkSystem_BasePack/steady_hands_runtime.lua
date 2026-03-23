@@ -128,19 +128,27 @@ local function toolMaxCondition(item)
         return nil
     end
 
-    local record = nil
+    -- Primary fallback source for max condition:
+    -- item.recordId + types.Lockpick.records[...] / types.Probe.records[...]
+    -- Defensive guards remain in place for absent recordId or missing record entries.
+    local recordTable = nil
     if types.Lockpick.objectIsInstance(item) then
         local records = types.Lockpick.records
         if type(records) == "table" then
-            record = records[recordId]
+            recordTable = records
         end
     elseif types.Probe.objectIsInstance(item) then
         local records = types.Probe.records
         if type(records) == "table" then
-            record = records[recordId]
+            recordTable = records
         end
     end
 
+    if recordTable == nil then
+        return nil
+    end
+
+    local record = recordTable[recordId]
     if type(record) == "table" and type(record.maxCondition) == "number" then
         return record.maxCondition
     end

@@ -3,6 +3,8 @@ local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
 
+local alreadyRegistered = false
+
 local api = interfaces.SkillPerkSystem
 if
     api == nil
@@ -103,15 +105,15 @@ local effectModules = {
     },
 }
 
-local function registerEffectSafe(effectData, source)
-    local ok, err = pcall(api.registerEffect, effectData, source)
+local function registerSafe(registerFn, kindLabel, payload, source)
+    local ok, err = pcall(registerFn, payload, source)
     if ok then
         return
     end
 
     local message = tostring(err)
-    local effectID = type(effectData) == "table" and effectData.id or "<unknown>"
-    local duplicateIDFragment = "duplicate effect id '" .. tostring(effectID) .. "'"
+    local entryID = type(payload) == "table" and payload.id or "<unknown>"
+    local duplicateIDFragment = "duplicate " .. kindLabel .. " id '" .. tostring(entryID) .. "'"
     local duplicateSourceFragment = "source='" .. tostring(source) .. "'"
     local duplicateConflictFragment = "conflicts with source='" .. tostring(source) .. "'"
 
@@ -121,8 +123,10 @@ local function registerEffectSafe(effectData, source)
         and message:find(duplicateConflictFragment, 1, true)
     then
         print(
-            "[SkillPerkSystem_BasePack] duplicate effect registration ignored for id='"
-                .. tostring(effectID)
+            "[SkillPerkSystem_BasePack] duplicate "
+                .. kindLabel
+                .. " registration ignored for id='"
+                .. tostring(entryID)
                 .. "' source='"
                 .. tostring(source)
                 .. "'"
@@ -133,13 +137,32 @@ local function registerEffectSafe(effectData, source)
     error(err, 2)
 end
 
+local function registerEffectSafe(effectData, source)
+    registerSafe(api.registerEffect, "effect", effectData, source)
+end
+
+local function registerPerkSafe(perkData, source)
+    registerSafe(api.registerPerk, "perk", perkData, source)
+end
+
+local function registerTreeNodeSafe(nodeData, source)
+    registerSafe(api.registerTreeNode, "tree node", nodeData, source)
+end
+
+if alreadyRegistered then
+    print("[SkillPerkSystem_BasePack] register.lua already executed; skipping duplicate registration")
+    return {}
+end
+
+alreadyRegistered = true
+
 for _, entry in ipairs(effectModules) do
     registerEffectSafe(entry.data, entry.source)
 end
 
 for _, entry in ipairs(modules) do
     for _, perk in ipairs(entry.data.perks or {}) do
-        api.registerPerk({
+        registerPerkSafe({
             id = perk.id,
             tab = perk.tab,
             tabDescription = perk.tabDescription,
@@ -148,7 +171,7 @@ for _, entry in ipairs(modules) do
             requirements = buildPerkRequirements(perk),
         }, entry.source)
 
-        api.registerTreeNode({
+        registerTreeNodeSafe({
             id = perk.id,
             tab = perk.tab,
             tabDescription = perk.tabDescription,

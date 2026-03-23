@@ -15,6 +15,10 @@ local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 local trackedToolState = nil
 local conditionDebugFramesRemaining = 1
 local conditionSourceDebugFramesRemaining = 60
+-- Fallback condition tracking can miss intermediate onUpdate frames. When that
+-- happens we treat each lost condition point as one consumed-use attempt, but
+-- cap rolls per update to avoid runaway refunds after large desyncs.
+local MAX_CONDITION_ROLLS_PER_UPDATE = 8
 
 local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
@@ -317,7 +321,7 @@ local function logToolState(prefix, state)
     ))
 end
 
-local function rollAndRefund(toolState, contextLabel)
+local function rollAndRefund(toolState, contextLabel, attempts)
     if toolState == nil or toolState.item == nil then
         return
     end
@@ -332,33 +336,45 @@ local function rollAndRefund(toolState, contextLabel)
         return
     end
 
+    local rollAttempts = tonumber(attempts) or 1
+    if rollAttempts < 1 then
+        return
+    end
+
     local chance = steadyHandsNoConsumeChance()
-    local proc = math.random() < chance
+    local refundCount = 0
+    for _ = 1, rollAttempts do
+        if math.random() < chance then
+            refundCount = refundCount + 1
+        end
+    end
 
     print(string.format(
-        "[SkillPerkSystem_BasePack][SteadyHands] refund roll source=%s slot=%s type=%s chance=%.2f result=%s",
+        "[SkillPerkSystem_BasePack][SteadyHands] refund roll source=%s slot=%s type=%s attempts=%d chance=%.2f refunded=%d",
         tostring(contextLabel),
         slotLabel(toolState.slot, toolState.slotName),
         tostring(toolType),
+        rollAttempts,
         chance,
-        proc and "PROC" or "NO_PROC"
+        refundCount
     ))
 
-    if not proc then
+    if refundCount <= 0 then
         return
     end
 
     core.sendGlobalEvent("ModifyItemCondition", {
         actor = pself,
         item = toolState.item,
-        amount = 1,
+        amount = refundCount,
     })
 
     print(string.format(
-        "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=1",
+        "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=%d",
         tostring(contextLabel),
         slotLabel(toolState.slot, toolState.slotName),
-        tostring(toolType)
+        tostring(toolType),
+        refundCount
     ))
 end
 
@@ -472,7 +488,38 @@ local function maybeRefundCondition(previousState, currentState)
         newCondition
     ))
 
-    rollAndRefund(currentState, "onUpdate-fallback")
+    local delta = oldCondition - newCondition
+    if delta <= 0 then
+        return
+    end
+
+    local spentPoints = math.floor(delta)
+    if spentPoints < 1 then
+        spentPoints = 1
+    end
+
+    -- Chosen policy: one roll per lost condition point (consumed use), with a
+    -- per-update cap. This preserves expected value for multi-point drops while
+    -- still bounding refunds if several updates were skipped.
+    local rollAttempts = math.min(spentPoints, MAX_CONDITION_ROLLS_PER_UPDATE)
+    if spentPoints > rollAttempts then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] multi-point drop detected source=onUpdate-fallback slot=%s type=%s delta=%d policy=per-point-with-cap cap=%d",
+            slotLabel(currentState.slot, currentState.slotName),
+            tostring(currentState.toolType),
+            spentPoints,
+            MAX_CONDITION_ROLLS_PER_UPDATE
+        ))
+    elseif spentPoints > 1 then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] multi-point drop detected source=onUpdate-fallback slot=%s type=%s delta=%d policy=per-point",
+            slotLabel(currentState.slot, currentState.slotName),
+            tostring(currentState.toolType),
+            spentPoints
+        ))
+    end
+
+    rollAndRefund(currentState, "onUpdate-fallback", rollAttempts)
 end
 
 local function onUpdate()

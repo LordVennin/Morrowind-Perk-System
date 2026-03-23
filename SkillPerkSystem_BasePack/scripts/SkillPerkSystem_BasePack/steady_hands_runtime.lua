@@ -102,6 +102,22 @@ local function itemData(item)
     return nil
 end
 
+local function itemDataCondition(item)
+    local data = itemData(item)
+    if data == nil then
+        return nil
+    end
+
+    local ok, condition = pcall(function()
+        return data.condition
+    end)
+    if ok and type(condition) == "number" then
+        return condition
+    end
+
+    return nil
+end
+
 local function toolMaxCondition(item)
     if item == nil then
         return nil
@@ -133,12 +149,9 @@ local function toolMaxCondition(item)
 end
 
 local function itemCondition(item)
-    local data = itemData(item)
-    if type(data) == "table" then
-        local condition = data.condition
-        if type(condition) == "number" then
-            return condition
-        end
+    local condition = itemDataCondition(item)
+    if condition ~= nil then
+        return condition
     end
 
     return toolMaxCondition(item)

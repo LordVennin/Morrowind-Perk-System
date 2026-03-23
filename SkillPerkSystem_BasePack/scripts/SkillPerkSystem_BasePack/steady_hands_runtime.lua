@@ -59,28 +59,43 @@ local function itemData(item)
         return nil
     end
 
+    local function isReadableItemData(data)
+        if data == nil then
+            return false
+        end
+
+        if type(data) == "table" then
+            return true
+        end
+
+        local ok = pcall(function()
+            return data.condition
+        end)
+        return ok
+    end
+
     if type(item.type) == "table" and type(item.type.itemData) == "function" then
         local ok, data = pcall(item.type.itemData, item)
-        if ok and type(data) == "table" then
+        if ok and isReadableItemData(data) then
             return data
         end
     end
 
     if types.Item ~= nil and type(types.Item.itemData) == "function" then
         local ok, data = pcall(types.Item.itemData, item)
-        if ok and type(data) == "table" then
+        if ok and isReadableItemData(data) then
             return data
         end
     end
 
     if item.type ~= nil and type(item.type.itemData) == "function" then
         local ok, data = pcall(item.type.itemData, item)
-        if ok and type(data) == "table" then
+        if ok and isReadableItemData(data) then
             return data
         end
     end
 
-    if type(item.itemData) == "table" then
+    if isReadableItemData(item.itemData) then
         return item.itemData
     end
 

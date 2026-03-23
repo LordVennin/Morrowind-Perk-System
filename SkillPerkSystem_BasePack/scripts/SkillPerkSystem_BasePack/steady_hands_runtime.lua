@@ -8,6 +8,7 @@ local ENABLED_KEY = "security.steady_hands.enabled"
 local NO_CONSUME_CHANCE_KEY = "security.steady_hands.no_consume_chance"
 local DEFAULT_NO_CONSUME_CHANCE = 0.15
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_SteadyHands_Toggle"
+local TOOL_DRAIN_EVENT = "SkillPerkSystem_BasePack_SteadyHands_ToolDrain"
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
@@ -174,6 +175,79 @@ local function logToolState(prefix, state)
     ))
 end
 
+local function rollAndRefund(toolState, contextLabel)
+    if toolState == nil or toolState.item == nil then
+        return
+    end
+
+    local toolType = classifyTool(toolState.item)
+    if toolType == nil then
+        return
+    end
+
+    if not steadyHandsEnabled() then
+        print(string.format("[SkillPerkSystem_BasePack][SteadyHands] perk disabled; skipping refund roll (%s)", tostring(contextLabel)))
+        return
+    end
+
+    local chance = steadyHandsNoConsumeChance()
+    local proc = math.random() < chance
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][SteadyHands] refund roll source=%s slot=%s type=%s chance=%.2f result=%s",
+        tostring(contextLabel),
+        slotLabel(toolState.slot),
+        tostring(toolType),
+        chance,
+        proc and "PROC" or "NO_PROC"
+    ))
+
+    if not proc then
+        return
+    end
+
+    core.sendGlobalEvent("ModifyItemCondition", {
+        actor = pself,
+        item = toolState.item,
+        amount = 1,
+    })
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=1",
+        tostring(contextLabel),
+        slotLabel(toolState.slot),
+        tostring(toolType)
+    ))
+end
+
+local function handleToolDrainEvent(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local item = data.item
+    local toolType = classifyTool(item)
+    if toolType == nil then
+        return
+    end
+
+    local toolState = {
+        slot = data.slot,
+        item = item,
+        toolType = toolType,
+        condition = itemCondition(item),
+    }
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][SteadyHands] tool drain event received slot=%s type=%s condition=%s",
+        slotLabel(toolState.slot),
+        tostring(toolType),
+        tostring(toolState.condition)
+    ))
+
+    rollAndRefund(toolState, "event")
+end
+
 local function maybeRefundCondition(previousState, currentState)
     if previousState == nil or currentState == nil then
         return
@@ -200,35 +274,7 @@ local function maybeRefundCondition(previousState, currentState)
         newCondition
     ))
 
-    if not steadyHandsEnabled() then
-        print("[SkillPerkSystem_BasePack][SteadyHands] perk disabled; no refund roll")
-        return
-    end
-
-    local chance = steadyHandsNoConsumeChance()
-    local proc = math.random() < chance
-
-    print(string.format(
-        "[SkillPerkSystem_BasePack][SteadyHands] proc roll chance=%.2f result=%s",
-        chance,
-        proc and "PROC" or "NO_PROC"
-    ))
-
-    if not proc then
-        return
-    end
-
-    core.sendGlobalEvent("ModifyItemCondition", {
-        actor = pself,
-        item = currentState.item,
-        amount = 1,
-    })
-
-    print(string.format(
-        "[SkillPerkSystem_BasePack][SteadyHands] refund fired slot=%s type=%s amount=1",
-        slotLabel(currentState.slot),
-        tostring(currentState.toolType)
-    ))
+    rollAndRefund(currentState, "onUpdate-fallback")
 end
 
 local function onUpdate()
@@ -268,5 +314,6 @@ return {
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleSteadyHandsToggle,
+        [TOOL_DRAIN_EVENT] = handleToolDrainEvent,
     },
 }

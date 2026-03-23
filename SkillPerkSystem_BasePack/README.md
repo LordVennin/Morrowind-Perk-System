@@ -6,6 +6,7 @@ Bundled default perk content pack for SkillPerkSystem.
 
 - Default Long Blade and Block perk modules under `scripts/SkillPerkSystem_BasePack/perks/`.
 - Direct registration script at `scripts/SkillPerkSystem_BasePack/register.lua`.
+- GLOBAL runtime bootstrap at `scripts/SkillPerkSystem_BasePack/global.lua` for non-consume item handlers.
 
 ## How it loads
 
@@ -15,10 +16,13 @@ Bundled default perk content pack for SkillPerkSystem.
 `SkillPerkSystem_BasePack.omwscripts` explicitly loads:
 
 ```text
+GLOBAL:scripts/SkillPerkSystem_BasePack/global.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 ```
 
-`register.lua` runs in PLAYER context and directly calls `openmw.interfaces.SkillPerkSystem.registerPerk` / `registerTreeNode`, matching the `example_Mod` direct registration style.
+`global.lua` runs in GLOBAL context and initializes Steady Hands runtime item usage hooks.
+
+`register.lua` runs in PLAYER context and directly calls `openmw.interfaces.SkillPerkSystem.registerPerk` / `registerTreeNode`, matching the `example_Mod` direct registration style. Effect state toggling remains authored in `perks/security/steady_hands_effect.lua` through `onAcquire`/`onRemove`.
 
 ## Authoring guidance for addon packs
 

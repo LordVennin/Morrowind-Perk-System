@@ -57,6 +57,13 @@ local function itemData(item)
         return nil
     end
 
+    if type(item.type) == "table" and type(item.type.itemData) == "function" then
+        local ok, data = pcall(item.type.itemData, item)
+        if ok and type(data) == "table" then
+            return data
+        end
+    end
+
     if types.Item ~= nil and type(types.Item.itemData) == "function" then
         local ok, data = pcall(types.Item.itemData, item)
         if ok and type(data) == "table" then

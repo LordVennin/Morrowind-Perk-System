@@ -13,6 +13,8 @@ local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
 local trackedToolState = nil
 
+local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
+
 local function clampChance(value)
     if type(value) ~= "number" then
         return DEFAULT_NO_CONSUME_CHANCE
@@ -50,11 +52,32 @@ local function classifyTool(item)
     return nil
 end
 
-local function itemCondition(item)
-    if item == nil or type(item.itemData) ~= "table" then
+local function itemData(item)
+    if item == nil then
         return nil
     end
-    local condition = item.itemData.condition
+
+    if types.Item ~= nil and type(types.Item.itemData) == "function" then
+        local ok, data = pcall(types.Item.itemData, item)
+        if ok and type(data) == "table" then
+            return data
+        end
+    end
+
+    if type(item.itemData) == "table" then
+        return item.itemData
+    end
+
+    return nil
+end
+
+local function itemCondition(item)
+    local data = itemData(item)
+    if type(data) ~= "table" then
+        return nil
+    end
+
+    local condition = data.condition
     if type(condition) ~= "number" then
         return nil
     end
@@ -84,6 +107,15 @@ local function sameItem(a, b)
     return a.item == b.item and a.slot == b.slot
 end
 
+local function slotLabel(slot)
+    for name, value in pairs(EQUIPMENT_SLOT) do
+        if value == slot then
+            return name
+        end
+    end
+    return tostring(slot)
+end
+
 local function logToolState(prefix, state)
     if state == nil then
         print("[SkillPerkSystem_BasePack][SteadyHands] " .. prefix .. " no equipped lockpick/probe detected")
@@ -93,7 +125,7 @@ local function logToolState(prefix, state)
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] %s slot=%s type=%s condition=%s",
         prefix,
-        tostring(state.slot),
+        slotLabel(state.slot),
         tostring(state.toolType),
         tostring(state.condition)
     ))
@@ -119,7 +151,7 @@ local function maybeRefundCondition(previousState, currentState)
 
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] tool use detected slot=%s type=%s conditionBefore=%d conditionAfter=%d",
-        tostring(currentState.slot),
+        slotLabel(currentState.slot),
         tostring(currentState.toolType),
         oldCondition,
         newCondition
@@ -151,7 +183,7 @@ local function maybeRefundCondition(previousState, currentState)
 
     print(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] refund fired slot=%s type=%s amount=1",
-        tostring(currentState.slot),
+        slotLabel(currentState.slot),
         tostring(currentState.toolType)
     ))
 end

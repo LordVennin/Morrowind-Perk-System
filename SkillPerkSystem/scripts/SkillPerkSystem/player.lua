@@ -146,7 +146,6 @@ local function registerBuiltInPointSources()
                     pointsPerLevel,
                     pointsLedger.getAvailablePoints()
                 ))
-                print("[SkillPerkSystem][LEVEL_DEBUG] playerLevel=" .. tostring(playerLevel()))
                 for level = firstRewardLevel, currentLevel do
                     awardFromSource("level-up", "level:" .. tostring(level), pointsPerLevel, "Level up reward")
                 end

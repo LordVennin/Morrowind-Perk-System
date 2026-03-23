@@ -90,16 +90,26 @@ local function toolMaxCondition(item)
         return nil
     end
 
+    local recordId = item.recordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    local record = nil
     if types.Lockpick.objectIsInstance(item) then
-        local ok, record = pcall(types.Lockpick.record, item)
-        if ok and type(record) == "table" and type(record.maxCondition) == "number" then
-            return record.maxCondition
+        local records = types.Lockpick.records
+        if type(records) == "table" then
+            record = records[recordId]
         end
     elseif types.Probe.objectIsInstance(item) then
-        local ok, record = pcall(types.Probe.record, item)
-        if ok and type(record) == "table" and type(record.maxCondition) == "number" then
-            return record.maxCondition
+        local records = types.Probe.records
+        if type(records) == "table" then
+            record = records[recordId]
         end
+    end
+
+    if type(record) == "table" and type(record.maxCondition) == "number" then
+        return record.maxCondition
     end
 
     return nil

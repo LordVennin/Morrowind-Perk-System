@@ -13,6 +13,7 @@ local TOOL_DRAIN_EVENT = "SkillPerkSystem_BasePack_SteadyHands_ToolDrain"
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
 local trackedToolState = nil
+local conditionDebugFramesRemaining = 1
 
 local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
@@ -175,6 +176,29 @@ local function findEquippedSecurityTool()
     return nil
 end
 
+local function logConditionDebugForFrame(iteratedState)
+    if conditionDebugFramesRemaining <= 0 then
+        return
+    end
+
+    local carriedRight = getEquippedItemForSlot({
+        slot = EQUIPMENT_SLOT.CarriedRight,
+        label = "CarriedRight",
+    })
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][SteadyHands][debug] frame compare iteratedCondition=%s iteratedSlot=%s explicitCarriedRightCondition=%s",
+        tostring(iteratedState ~= nil and iteratedState.condition or nil),
+        tostring(iteratedState ~= nil and slotLabel(iteratedState.slot, iteratedState.slotName) or nil),
+        tostring(itemCondition(carriedRight))
+    ))
+
+    conditionDebugFramesRemaining = conditionDebugFramesRemaining - 1
+    if conditionDebugFramesRemaining == 0 then
+        print("[SkillPerkSystem_BasePack][SteadyHands][debug] condition comparison diagnostics complete; disabling debug output")
+    end
+end
+
 local function sameItem(a, b)
     if a == nil or b == nil then
         return false
@@ -315,6 +339,7 @@ end
 
 local function onUpdate()
     local currentState = findEquippedSecurityTool()
+    logConditionDebugForFrame(currentState)
 
     if trackedToolState == nil and currentState ~= nil then
         logToolState("tracking started", currentState)

@@ -14,6 +14,7 @@ local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
 local trackedToolState = nil
 local conditionDebugFramesRemaining = 1
+local conditionSourceDebugFramesRemaining = 60
 
 local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
@@ -163,15 +164,29 @@ local function normalizeCondition(value)
     return nil
 end
 
+local function resolveItemCondition(item)
+    local rawCondition = normalizeCondition(itemDataCondition(item))
+    local maxConditionFallback = nil
+    local effectiveCondition = rawCondition
+    if effectiveCondition == nil then
+        maxConditionFallback = normalizeCondition(toolMaxCondition(item))
+        effectiveCondition = maxConditionFallback
+    end
+
+    return effectiveCondition, {
+        rawCondition = rawCondition,
+        maxConditionFallback = maxConditionFallback,
+        effectiveCondition = effectiveCondition,
+        recordId = item ~= nil and item.recordId or nil,
+        toolType = classifyTool(item),
+    }
+end
+
 local function itemCondition(item)
     -- Keep condition normalization and fallback logic in one place so callers
     -- only see nil when no numeric condition can be derived at all.
-    local condition = normalizeCondition(itemDataCondition(item))
-    if condition ~= nil then
-        return condition
-    end
-
-    return normalizeCondition(toolMaxCondition(item))
+    local effectiveCondition = resolveItemCondition(item)
+    return effectiveCondition
 end
 
 local TRACKED_SLOTS = {
@@ -208,12 +223,14 @@ local function findEquippedSecurityTool()
         local item = getEquippedItemForSlot(slotInfo)
         local toolType = classifyTool(item)
         if toolType ~= nil then
+            local condition, conditionDebug = resolveItemCondition(item)
             return {
                 slot = slotInfo.slot,
                 slotName = slotInfo.label,
                 item = item,
                 toolType = toolType,
-                condition = itemCondition(item),
+                condition = condition,
+                conditionDebug = conditionDebug,
             }
         end
     end
@@ -241,6 +258,27 @@ local function logConditionDebugForFrame(iteratedState)
     conditionDebugFramesRemaining = conditionDebugFramesRemaining - 1
     if conditionDebugFramesRemaining == 0 then
         print("[SkillPerkSystem_BasePack][SteadyHands][debug] condition comparison diagnostics complete; disabling debug output")
+    end
+end
+
+local function logConditionSourceDebugForFrame(iteratedState)
+    if conditionSourceDebugFramesRemaining <= 0 then
+        return
+    end
+
+    local debugInfo = iteratedState ~= nil and iteratedState.conditionDebug or nil
+    print(string.format(
+        "[SkillPerkSystem_BasePack][SteadyHands][debug] condition source rawCondition=%s maxConditionFallback=%s effectiveCondition=%s recordId=%s toolType=%s",
+        tostring(debugInfo ~= nil and debugInfo.rawCondition or nil),
+        tostring(debugInfo ~= nil and debugInfo.maxConditionFallback or nil),
+        tostring(debugInfo ~= nil and debugInfo.effectiveCondition or nil),
+        tostring(debugInfo ~= nil and debugInfo.recordId or nil),
+        tostring(debugInfo ~= nil and debugInfo.toolType or nil)
+    ))
+
+    conditionSourceDebugFramesRemaining = conditionSourceDebugFramesRemaining - 1
+    if conditionSourceDebugFramesRemaining == 0 then
+        print("[SkillPerkSystem_BasePack][SteadyHands][debug] condition source diagnostics complete; disabling debug output")
     end
 end
 
@@ -385,6 +423,7 @@ end
 local function onUpdate()
     local currentState = findEquippedSecurityTool()
     logConditionDebugForFrame(currentState)
+    logConditionSourceDebugForFrame(currentState)
 
     if trackedToolState == nil and currentState ~= nil then
         logToolState("tracking started", currentState)

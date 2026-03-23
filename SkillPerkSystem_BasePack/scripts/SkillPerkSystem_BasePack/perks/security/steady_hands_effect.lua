@@ -1,6 +1,6 @@
 local core = require("openmw.core")
 
-local NO_CONSUME_CHANCE = 0.15
+local CONDITION_REFUND_CHANCE = 0.15
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_SteadyHands_Toggle"
 
 local function setSteadyHandsEnabled(enable, chance)
@@ -13,9 +13,9 @@ end
 return {
     id = "security_steady_hands_effect",
     name = "Steady Hands",
-    description = "Adds a 15% chance for lockpick/probe uses to not be consumed while enabled.",
+    description = "Adds a 15% chance to refund 1 lockpick/probe use while enabled.",
     onAcquire = function(_context)
-        setSteadyHandsEnabled(true, NO_CONSUME_CHANCE)
+        setSteadyHandsEnabled(true, CONDITION_REFUND_CHANCE)
     end,
     onRemove = function(_context)
         setSteadyHandsEnabled(false, 0.0)

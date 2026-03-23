@@ -442,9 +442,39 @@ local function withLastComparableCondition(previousState, currentState)
 end
 
 local function maybeRefundCondition(previousState, currentState)
-    if previousState == nil or currentState == nil then
+    if previousState == nil then
         return
     end
+
+    if currentState == nil then
+        -- Fallback for edge cases where the equipped tool disappears before the
+        -- next frame comparison (e.g., final durability consumed and item removed).
+        -- We only treat this as a break/consume event when we had a comparable
+        -- condition value and it was at or below one use remaining.
+        local previousCondition = previousState.lastComparableCondition
+        if type(previousCondition) ~= "number" then
+            return
+        end
+
+        if previousCondition <= 1 then
+            print(string.format(
+                "[SkillPerkSystem_BasePack][SteadyHands] tool disappeared before compare; treating as break-consume event slot=%s type=%s previousCondition=%s",
+                slotLabel(previousState.slot, previousState.slotName),
+                tostring(previousState.toolType),
+                tostring(previousCondition)
+            ))
+            rollAndRefund(previousState, "onUpdate-disappeared-tool", 1)
+        else
+            print(string.format(
+                "[SkillPerkSystem_BasePack][SteadyHands] tool disappeared before compare; no break refund (previousCondition=%s > 1) slot=%s type=%s",
+                tostring(previousCondition),
+                slotLabel(previousState.slot, previousState.slotName),
+                tostring(previousState.toolType)
+            ))
+        end
+        return
+    end
+
     if not sameItem(previousState, currentState) then
         return
     end

@@ -391,6 +391,40 @@ local function handleToolDrainEvent(data)
     rollAndRefund(toolState, "event")
 end
 
+local function withLastComparableCondition(previousState, currentState)
+    if currentState == nil then
+        return nil
+    end
+
+    local state = {
+        slot = currentState.slot,
+        slotName = currentState.slotName,
+        item = currentState.item,
+        toolType = currentState.toolType,
+        condition = currentState.condition,
+        conditionDebug = currentState.conditionDebug,
+        lastComparableCondition = nil,
+    }
+
+    if type(currentState.condition) == "number" then
+        state.lastComparableCondition = currentState.condition
+        return state
+    end
+
+    if previousState ~= nil and sameItem(previousState, currentState) and type(previousState.lastComparableCondition) == "number" then
+        state.lastComparableCondition = previousState.lastComparableCondition
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] condition read nil; keeping previous comparable condition slot=%s type=%s previousCondition=%s",
+            slotLabel(currentState.slot, currentState.slotName),
+            tostring(currentState.toolType),
+            tostring(previousState.lastComparableCondition)
+        ))
+        return state
+    end
+
+    return state
+end
+
 local function maybeRefundCondition(previousState, currentState)
     if previousState == nil or currentState == nil then
         return
@@ -399,8 +433,29 @@ local function maybeRefundCondition(previousState, currentState)
         return
     end
 
-    local oldCondition = previousState.condition
+    local oldCondition = previousState.lastComparableCondition
     local newCondition = currentState.condition
+
+    if type(oldCondition) == "number" and type(newCondition) ~= "number" then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] condition transitioned number->nil slot=%s type=%s previousCondition=%s",
+            slotLabel(currentState.slot, currentState.slotName),
+            tostring(currentState.toolType),
+            tostring(oldCondition)
+        ))
+        return
+    end
+
+    if type(oldCondition) ~= "number" and type(newCondition) == "number" then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] condition transitioned nil->number slot=%s type=%s condition=%s",
+            slotLabel(currentState.slot, currentState.slotName),
+            tostring(currentState.toolType),
+            tostring(newCondition)
+        ))
+        return
+    end
+
     if type(oldCondition) ~= "number" or type(newCondition) ~= "number" then
         return
     end
@@ -425,16 +480,19 @@ local function onUpdate()
     logConditionDebugForFrame(currentState)
     logConditionSourceDebugForFrame(currentState)
 
-    if trackedToolState == nil and currentState ~= nil then
-        logToolState("tracking started", currentState)
-    elseif trackedToolState ~= nil and currentState == nil then
+    local previousState = trackedToolState
+    local normalizedCurrentState = withLastComparableCondition(previousState, currentState)
+
+    if previousState == nil and normalizedCurrentState ~= nil then
+        logToolState("tracking started", normalizedCurrentState)
+    elseif previousState ~= nil and normalizedCurrentState == nil then
         logToolState("tracking stopped", nil)
-    elseif trackedToolState ~= nil and currentState ~= nil and not sameItem(trackedToolState, currentState) then
-        logToolState("tracking switched", currentState)
+    elseif previousState ~= nil and normalizedCurrentState ~= nil and not sameItem(previousState, normalizedCurrentState) then
+        logToolState("tracking switched", normalizedCurrentState)
     end
 
-    maybeRefundCondition(trackedToolState, currentState)
-    trackedToolState = currentState
+    maybeRefundCondition(previousState, normalizedCurrentState)
+    trackedToolState = normalizedCurrentState
 end
 
 local function handleSteadyHandsToggle(data)

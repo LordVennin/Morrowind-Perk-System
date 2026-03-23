@@ -1,7 +1,7 @@
 local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
-local world = require("openmw.world")
 
 local EFFECTS_SECTION = storage.playerSection("SkillPerkSystem_BasePack_Effects")
 local ENABLED_KEY = "security.steady_hands.enabled"
@@ -10,15 +10,7 @@ local NO_CONSUME_CHANCE = 0.15
 local handlersRegistered = false
 
 local function isPlayerActor(actor)
-    if actor == nil then
-        return false
-    end
-    for _, player in ipairs(world.players) do
-        if actor == player then
-            return true
-        end
-    end
-    return false
+    return actor ~= nil and actor == pself
 end
 
 local function steadyHandsEnabled()

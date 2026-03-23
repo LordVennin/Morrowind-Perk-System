@@ -156,13 +156,22 @@ local function toolMaxCondition(item)
     return nil
 end
 
+local function normalizeCondition(value)
+    if type(value) == "number" then
+        return value
+    end
+    return nil
+end
+
 local function itemCondition(item)
-    local condition = itemDataCondition(item)
+    -- Keep condition normalization and fallback logic in one place so callers
+    -- only see nil when no numeric condition can be derived at all.
+    local condition = normalizeCondition(itemDataCondition(item))
     if condition ~= nil then
         return condition
     end
 
-    return toolMaxCondition(item)
+    return normalizeCondition(toolMaxCondition(item))
 end
 
 local TRACKED_SLOTS = {

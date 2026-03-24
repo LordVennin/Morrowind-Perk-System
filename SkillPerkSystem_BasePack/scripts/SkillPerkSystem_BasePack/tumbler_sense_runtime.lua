@@ -1,6 +1,8 @@
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
 local storage = require("openmw.storage")
+local types = require("openmw.types")
 
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
 local ENABLED_KEY = "security.tumbler_sense.enabled"
@@ -22,6 +24,10 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local trackedToolCondition = nil
+local trackedToolRef = nil
+
+local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
@@ -226,6 +232,54 @@ end
 
 local function onUpdate()
     clearExpiredStacks("onUpdate")
+
+    local equipped = nil
+    if EQUIPMENT_SLOT.CarriedRight ~= nil then
+        local ok, item = pcall(types.Actor.getEquipment, pself, EQUIPMENT_SLOT.CarriedRight)
+        if ok then
+            equipped = item
+        end
+    end
+
+    local isLockpick = equipped ~= nil and types.Lockpick.objectIsInstance(equipped)
+    local currentCondition = nil
+    if isLockpick then
+        local okData, data = pcall(types.Item.itemData, equipped)
+        if okData and data ~= nil then
+            local okCond, condition = pcall(function()
+                return data.condition
+            end)
+            if okCond and type(condition) == "number" then
+                currentCondition = condition
+            end
+        end
+    end
+
+    if equipped == nil or not isLockpick or type(currentCondition) ~= "number" then
+        trackedToolRef = nil
+        trackedToolCondition = nil
+        return
+    end
+
+    if trackedToolRef ~= equipped then
+        trackedToolRef = equipped
+        trackedToolCondition = currentCondition
+        return
+    end
+
+    local previous = trackedToolCondition
+    trackedToolCondition = currentCondition
+    if type(previous) ~= "number" then
+        return
+    end
+
+    if currentCondition < previous then
+        -- Fallback integration path: for vanilla lockpicking we don't get an
+        -- explicit failed-attempt event, so treat lockpick condition drain as
+        -- an attempt signal to keep Tumbler Sense functional.
+        handleFailure({ source = "onUpdate-fallback", probe = false })
+        handleRefreshChance({ source = "onUpdate-fallback", probe = false })
+    end
 end
 
 return {

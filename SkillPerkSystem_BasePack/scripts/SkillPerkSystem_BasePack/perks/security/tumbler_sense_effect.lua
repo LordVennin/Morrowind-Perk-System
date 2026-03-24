@@ -1,6 +1,6 @@
 local core = require("openmw.core")
 
-local BONUS_PER_FAILED_ATTEMPT = 0.01
+local BONUS_PER_FAILED_ATTEMPT = 1
 local MAX_STACKS = 5
 local SHARED_DECAY_SECONDS = 10
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Toggle"

@@ -24,7 +24,7 @@ return {
             x = 120,
             y = 0,
             title = "Tumbler Sense",
-            description = "Failed lockpick attempts grant +2% lockpick chance per stack (max 5) with a shared 10s decay timer.",
+            description = "TEMP TEST: Failed lockpick attempts grant +20% lockpick chance per stack (max 5) with a shared 10s decay timer.",
         },
         {
             id = "security_treasure_sense",

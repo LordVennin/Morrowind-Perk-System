@@ -13,7 +13,10 @@ local SHARED_DECAY_SECONDS_KEY = "security.tumbler_sense.shared_decay_seconds"
 local EXPIRY_TIMESTAMP_KEY = "security.tumbler_sense.expiry_timestamp"
 local ACTIVE_BONUS_KEY = "security.tumbler_sense.active_bonus"
 
-local DEFAULT_BONUS_PER_STACK = 0.02
+-- TEMP TEST TUNING:
+-- Raised from 0.02 (2%) to 0.20 (20%) per stack so fallback recovery state
+-- and missing-toggle scenarios still use the same test value.
+local DEFAULT_BONUS_PER_STACK = 0.20
 local DEFAULT_MAX_STACKS = 5
 local DEFAULT_DECAY_SECONDS = 10
 

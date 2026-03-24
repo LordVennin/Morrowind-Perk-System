@@ -5,11 +5,11 @@ Use this template for new SkillPerkSystem implementation tasks so repository pol
 ## Scope
 
 - Feature area:
-- Files/modules expected to change (must be under `SkillPerkSystem/`):
+- Files/modules expected to change (must be under `SkillPerkSystem/` & `SkillPerkSystem_BasePack/`):
 - Out-of-scope areas:
   - `example_Mod/` (reference-only)
   - `ExampleModBF/` (reference-only)
-  - ExampleModlockpicking/' (reference-only)
+  - `ExampleModlockpicking/` (reference-only)
   - `Advanced world map mod example/` (reference-only)
 
 ## Implementation Plan

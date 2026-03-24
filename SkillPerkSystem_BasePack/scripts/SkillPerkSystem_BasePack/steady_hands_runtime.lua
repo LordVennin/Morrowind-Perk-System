@@ -367,7 +367,6 @@ local function applyToolConditionRefund(toolState, refundCount)
     return handleModifyToolConditionEvent({
         actor = pself,
         slot = toolState.slot,
-        item = toolState.item,
         amount = refundCount,
     })
 end

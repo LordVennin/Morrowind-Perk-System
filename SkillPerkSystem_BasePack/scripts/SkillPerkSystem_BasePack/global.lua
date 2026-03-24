@@ -34,7 +34,7 @@ local function writeToolCondition(data)
     local toolType = classifySecurityTool(tool)
     if toolType == nil then
         print(string.format(
-            "[SkillPerkSystem_BasePack][SteadyHands][debug] refund skipped (no security tool resolved) slot=%s player=%s amount=%s",
+            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (no security tool resolved) slot=%s player=%s amount=%s",
             tostring(slot),
             tostring(player),
             tostring(data.amount)
@@ -50,7 +50,7 @@ local function writeToolCondition(data)
     local itemData = types.Item.itemData(tool)
     if itemData == nil or type(itemData.condition) ~= "number" then
         print(string.format(
-            "[SkillPerkSystem_BasePack][SteadyHands][debug] refund skipped (no numeric itemData.condition) slot=%s type=%s amount=%s",
+            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (no numeric itemData.condition) slot=%s type=%s amount=%s",
             tostring(slot),
             tostring(toolType),
             tostring(amount)

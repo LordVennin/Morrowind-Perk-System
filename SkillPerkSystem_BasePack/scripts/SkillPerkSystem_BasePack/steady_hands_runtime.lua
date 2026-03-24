@@ -397,7 +397,7 @@ local function rollAndRefund(toolState, contextLabel, attempts)
 
     if applied then
         print(string.format(
-            "[SkillPerkSystem_BasePack][SteadyHands] refund applied source=%s slot=%s type=%s amount=%d",
+            "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=%d",
             tostring(contextLabel),
             slotLabel(toolState.slot, toolState.slotName),
             tostring(toolType),

@@ -6,16 +6,67 @@ local FORWARD_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local BRIDGE_INTERFACE_NAME = "SkillPerkSystem_BasePack_SecurityFailureBridge"
 local SOURCE = "drain_lockpick_event"
 
-local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
+local EQUIPMENT_SLOT = (types.Actor ~= nil and types.Actor.EQUIPMENT_SLOT) or {}
 
-local tracked = {
-    item = nil,
-    slot = nil,
-    condition = nil,
-    probe = false,
+local TRACKED_SLOTS = {
+    {
+        slot = EQUIPMENT_SLOT.CarriedRight,
+        label = "CarriedRight",
+    },
+    {
+        slot = EQUIPMENT_SLOT.CarriedLeft,
+        label = "CarriedLeft",
+    },
 }
 
-local function getCondition(item)
+local trackedToolState = nil
+
+local function classifyTool(item)
+    if item == nil then
+        return nil
+    end
+
+    if types.Lockpick.objectIsInstance(item) then
+        return "Lockpick"
+    end
+
+    if types.Probe.objectIsInstance(item) then
+        return "Probe"
+    end
+
+    return nil
+end
+
+local function toolMaxCondition(item)
+    if item == nil then
+        return nil
+    end
+
+    local recordId = item.recordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    local recordTable = nil
+    if types.Lockpick.objectIsInstance(item) and type(types.Lockpick.records) == "table" then
+        recordTable = types.Lockpick.records
+    elseif types.Probe.objectIsInstance(item) and type(types.Probe.records) == "table" then
+        recordTable = types.Probe.records
+    end
+
+    if recordTable == nil then
+        return nil
+    end
+
+    local record = recordTable[recordId]
+    if type(record) == "table" and type(record.maxCondition) == "number" then
+        return record.maxCondition
+    end
+
+    return nil
+end
+
+local function resolveItemCondition(item)
     if item == nil then
         return nil
     end
@@ -34,31 +85,69 @@ local function getCondition(item)
         end
     end
 
+    return toolMaxCondition(item)
+end
+
+local function getEquippedItem(slot)
+    if types.Actor == nil or type(types.Actor.getEquipment) ~= "function" then
+        return nil
+    end
+
+    if slot == nil then
+        return nil
+    end
+
+    local ok, item = pcall(types.Actor.getEquipment, pself, slot)
+    if not ok then
+        return nil
+    end
+
+    return item
+end
+
+local function findEquippedSecurityTool()
+    for _, slotInfo in ipairs(TRACKED_SLOTS) do
+        local item = getEquippedItem(slotInfo.slot)
+        local toolType = classifyTool(item)
+        if toolType ~= nil then
+            return {
+                item = item,
+                slot = slotInfo.slot,
+                slotName = slotInfo.label,
+                toolType = toolType,
+                condition = resolveItemCondition(item),
+                lastComparableCondition = nil,
+            }
+        end
+    end
+
     return nil
 end
 
-local function getEquippedSecurityTool()
-    local right = types.Actor.getEquipment(pself, EQUIPMENT_SLOT.CarriedRight)
-    if right ~= nil then
-        if types.Lockpick.objectIsInstance(right) then
-            return right, EQUIPMENT_SLOT.CarriedRight, false
-        end
-        if types.Probe.objectIsInstance(right) then
-            return right, EQUIPMENT_SLOT.CarriedRight, true
-        end
+local function sameItem(a, b)
+    if a == nil or b == nil then
+        return false
     end
 
-    local left = types.Actor.getEquipment(pself, EQUIPMENT_SLOT.CarriedLeft)
-    if left ~= nil then
-        if types.Lockpick.objectIsInstance(left) then
-            return left, EQUIPMENT_SLOT.CarriedLeft, false
-        end
-        if types.Probe.objectIsInstance(left) then
-            return left, EQUIPMENT_SLOT.CarriedLeft, true
-        end
+    return a.item == b.item and a.slot == b.slot
+end
+
+local function withLastComparableCondition(previousState, currentState)
+    if currentState == nil then
+        return nil
     end
 
-    return nil, nil, false
+    if type(currentState.condition) == "number" then
+        currentState.lastComparableCondition = currentState.condition
+        return currentState
+    end
+
+    if previousState ~= nil and sameItem(previousState, currentState) and type(previousState.lastComparableCondition) == "number" then
+        currentState.lastComparableCondition = previousState.lastComparableCondition
+        return currentState
+    end
+
+    return currentState
 end
 
 local function emitFailure(isProbe)
@@ -68,96 +157,51 @@ local function emitFailure(isProbe)
     })
 end
 
-local function onUpdate()
-    local item, slot, isProbe = getEquippedSecurityTool()
-    local condition = getCondition(item)
-
-    local sameTool = tracked.item ~= nil and tracked.item == item and tracked.slot == slot
-    if sameTool and type(tracked.condition) == "number" and type(condition) == "number" and condition < tracked.condition then
-        local pointsLost = math.floor(tracked.condition - condition)
-        if pointsLost < 1 then
-            pointsLost = 1
-        end
-
-        for _ = 1, pointsLost do
-            emitFailure(isProbe)
-        end
-
-        print(string.format(
-            "[SkillPerkSystem_BasePack][TumblerSenseBridge] durability drop detected before=%d after=%d emitted=%d",
-            tracked.condition,
-            condition,
-            pointsLost
-        ))
-    end
-
-    tracked.item = item
-    tracked.slot = slot
-    tracked.condition = condition
-    tracked.probe = isProbe
-end
-
-local function findTrackedSecurityTool()
-    for _, slotInfo in ipairs(TRACKED_SLOTS) do
-        if slotInfo.slot ~= nil then
-            local item = types.Actor.getEquipment(pself, slotInfo.slot)
-            local toolType = classifySecurityTool(item)
-            if toolType ~= nil then
-                return {
-                    item = item,
-                    slot = slotInfo.slot,
-                    slotName = slotInfo.label,
-                    toolType = toolType,
-                    condition = itemCondition(item),
-                }
-            end
-        end
-    end
-
-    return nil
-end
-
-local function sameTool(previousState, currentState)
+local function emitFailuresForToolUse(previousState, currentState)
     if previousState == nil or currentState == nil then
-        return false
+        return
     end
 
-    return previousState.item == currentState.item and previousState.slot == currentState.slot
+    if not sameItem(previousState, currentState) then
+        return
+    end
+
+    local oldCondition = previousState.lastComparableCondition
+    local newCondition = currentState.condition
+    if type(oldCondition) ~= "number" or type(newCondition) ~= "number" then
+        return
+    end
+
+    if newCondition >= oldCondition then
+        return
+    end
+
+    local spentPoints = math.floor(oldCondition - newCondition)
+    if spentPoints < 1 then
+        spentPoints = 1
+    end
+
+    for _ = 1, spentPoints do
+        emitFailure(currentState.toolType == "Probe")
+    end
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][TumblerSenseBridge] tool use detected slot=%s type=%s conditionBefore=%d conditionAfter=%d emitted=%d",
+        tostring(currentState.slotName),
+        tostring(currentState.toolType),
+        oldCondition,
+        newCondition,
+        spentPoints
+    ))
 end
 
 local function onUpdate()
-    local currentState = findTrackedSecurityTool()
+    local currentState = findEquippedSecurityTool()
     local previousState = trackedToolState
+    local normalizedCurrentState = withLastComparableCondition(previousState, currentState)
 
-    if previousState ~= nil and currentState ~= nil and sameTool(previousState, currentState) then
-        local oldCondition = previousState.condition
-        local newCondition = currentState.condition
-
-        if type(oldCondition) == "number" and type(newCondition) == "number" and newCondition < oldCondition then
-            local loss = math.floor(oldCondition - newCondition)
-            if loss < 1 then
-                loss = 1
-            end
-
-            for _ = 1, loss do
-                emitFailure({
-                    source = DEFAULT_SOURCE,
-                    probe = currentState.toolType == "probe",
-                })
-            end
-
-            print(string.format(
-                "[SkillPerkSystem_BasePack][TumblerSenseBridge] fallback condition drain detected slot=%s type=%s before=%d after=%d emitted=%d",
-                tostring(currentState.slotName),
-                tostring(currentState.toolType),
-                oldCondition,
-                newCondition,
-                loss
-            ))
-        end
-    end
-
-    trackedToolState = currentState
+    emitFailuresForToolUse(previousState, normalizedCurrentState)
+    trackedToolState = normalizedCurrentState
 end
 
 return {

@@ -3,6 +3,7 @@ local types = require("openmw.types")
 
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local FORWARD_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
+local BRIDGE_INTERFACE_NAME = "SkillPerkSystem_BasePack_SecurityFailureBridge"
 local DEFAULT_SOURCE = "drain_lockpick_event"
 
 local function inferProbeFromEquipment(player)
@@ -37,7 +38,7 @@ local function normalizeProbe(data)
     return false
 end
 
-local function onDrainLockpick(data)
+local function emitFailure(data)
     local source = normalizeSource(data)
     local probe = normalizeProbe(data)
 
@@ -53,7 +54,15 @@ local function onDrainLockpick(data)
     ))
 end
 
+local function onDrainLockpick(data)
+    emitFailure(data)
+end
+
 return {
+    interfaceName = BRIDGE_INTERFACE_NAME,
+    interface = {
+        emitFailure = emitFailure,
+    },
     eventHandlers = {
         [DRAIN_LOCKPICK_EVENT] = onDrainLockpick,
     },

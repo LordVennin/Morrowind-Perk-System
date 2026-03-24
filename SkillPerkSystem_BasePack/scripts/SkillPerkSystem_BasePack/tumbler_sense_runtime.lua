@@ -35,12 +35,14 @@ local FAILURE_SOURCE_ALIASES = {
     auto_attempt_roll = "auto_attempt_skill_roll",
     drain_lockpick_event = "drain_lockpick_event",
     drain_lockpick = "drain_lockpick_event",
+    too_complex_gate = "too_complex_gate",
 }
 
 local ACCEPTED_FAILURE_SOURCES = {
     pin_skill_roll = true,
     auto_attempt_skill_roll = true,
     drain_lockpick_event = true,
+    too_complex_gate = true,
 }
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)

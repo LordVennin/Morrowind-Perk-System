@@ -13,7 +13,6 @@ local INITIAL_STACKS_KEY = "security.tumbler_sense.initial_stacks"
 local SHARED_DECAY_SECONDS_KEY = "security.tumbler_sense.shared_decay_seconds"
 local EXPIRY_TIMESTAMP_KEY = "security.tumbler_sense.expiry_timestamp"
 local ACTIVE_BONUS_KEY = "security.tumbler_sense.active_bonus"
-local APPLIED_SKILL_BONUS_KEY = "security.tumbler_sense.applied_skill_bonus"
 
 local DEFAULT_BONUS_PER_STACK = 0.01
 local DEFAULT_MAX_STACKS = 5
@@ -27,6 +26,7 @@ local RUNTIME_INTERFACE_NAME = "SkillPerkSystem_BasePack_TumblerSenseRuntime"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
 local DEFAULT_FAILURE_SOURCE = "unknown"
+local CONDITION_FAILURE_SOURCE = "drain_lockpick_event"
 
 local FAILURE_SOURCE_ALIASES = {
     pin_skill_roll = "pin_skill_roll",
@@ -47,6 +47,20 @@ local ACCEPTED_FAILURE_SOURCES = {
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 print("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
+local trackedToolState = nil
+local appliedSkillBonus = 0
+
+local EQUIPMENT_SLOT = (types.Actor ~= nil and types.Actor.EQUIPMENT_SLOT) or {}
+local TRACKED_SLOTS = {
+    {
+        slot = EQUIPMENT_SLOT.CarriedRight,
+        label = "CarriedRight",
+    },
+    {
+        slot = EQUIPMENT_SLOT.CarriedLeft,
+        label = "CarriedLeft",
+    },
+}
 
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
@@ -73,6 +87,123 @@ end
 
 local function nowTimestamp()
     return core.getSimulationTime()
+end
+
+local function classifySecurityTool(item)
+    if item == nil then
+        return nil
+    end
+    if types.Lockpick.objectIsInstance(item) then
+        return "Lockpick"
+    end
+    if types.Probe.objectIsInstance(item) then
+        return "Probe"
+    end
+    return nil
+end
+
+local function toolMaxCondition(item)
+    if item == nil then
+        return nil
+    end
+
+    local recordId = item.recordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    if types.Lockpick.objectIsInstance(item) and type(types.Lockpick.records) == "table" then
+        local record = types.Lockpick.records[recordId]
+        if type(record) == "table" and type(record.maxCondition) == "number" then
+            return record.maxCondition
+        end
+    end
+
+    if types.Probe.objectIsInstance(item) and type(types.Probe.records) == "table" then
+        local record = types.Probe.records[recordId]
+        if type(record) == "table" and type(record.maxCondition) == "number" then
+            return record.maxCondition
+        end
+    end
+
+    return nil
+end
+
+local function resolveItemCondition(item)
+    if item == nil then
+        return nil
+    end
+
+    if types.Item ~= nil and type(types.Item.itemData) == "function" then
+        local ok, data = pcall(types.Item.itemData, item)
+        if ok and data ~= nil and type(data.condition) == "number" then
+            return data.condition
+        end
+    end
+
+    if type(item.type) == "table" and type(item.type.itemData) == "function" then
+        local ok, data = pcall(item.type.itemData, item)
+        if ok and data ~= nil and type(data.condition) == "number" then
+            return data.condition
+        end
+    end
+
+    return toolMaxCondition(item)
+end
+
+local function getEquippedItem(slot)
+    if types.Actor == nil or type(types.Actor.getEquipment) ~= "function" or slot == nil then
+        return nil
+    end
+
+    local ok, item = pcall(types.Actor.getEquipment, pself, slot)
+    if not ok then
+        return nil
+    end
+    return item
+end
+
+local function findEquippedSecurityTool()
+    for _, slotInfo in ipairs(TRACKED_SLOTS) do
+        local item = getEquippedItem(slotInfo.slot)
+        local toolType = classifySecurityTool(item)
+        if toolType ~= nil then
+            return {
+                item = item,
+                slot = slotInfo.slot,
+                slotName = slotInfo.label,
+                toolType = toolType,
+                condition = resolveItemCondition(item),
+                lastComparableCondition = nil,
+            }
+        end
+    end
+    return nil
+end
+
+local function sameItem(a, b)
+    if a == nil or b == nil then
+        return false
+    end
+    return a.item == b.item and a.slot == b.slot
+end
+
+local function withLastComparableCondition(previousState, currentState)
+    if currentState == nil then
+        return nil
+    end
+
+    if type(currentState.condition) == "number" then
+        currentState.lastComparableCondition = currentState.condition
+        return currentState
+    end
+
+    if previousState ~= nil and sameItem(previousState, currentState) and type(previousState.lastComparableCondition) == "number" then
+        currentState.lastComparableCondition = previousState.lastComparableCondition
+        return currentState
+    end
+
+    return currentState
 end
 
 local function tumblerSenseEnabled()
@@ -123,7 +254,7 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local currentApplied = clamp(tonumber(effectsSection:get(APPLIED_SKILL_BONUS_KEY)) or 0, 0, getMaxStacks())
+    local currentApplied = clamp(appliedSkillBonus, 0, getMaxStacks())
     local desiredApplied = clamp(math.floor(tonumber(targetBonus) or 0), 0, getMaxStacks())
     if currentApplied == desiredApplied then
         return
@@ -136,7 +267,7 @@ local function applySecuritySkillBonus(targetBonus)
 
     local newBase = math.max(0, math.floor(stat.base - currentApplied + desiredApplied))
     stat.base = newBase
-    effectsSection:set(APPLIED_SKILL_BONUS_KEY, desiredApplied)
+    appliedSkillBonus = desiredApplied
 
     print(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] security base adjusted appliedBonus=%d->%d resultingBase=%d",
@@ -218,6 +349,7 @@ local function handleToggle(data)
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
     if enabled then
+        appliedSkillBonus = 0
         local initialStacks = clamp(
             tonumber(effectsSection:get(INITIAL_STACKS_KEY)) or DEFAULT_INITIAL_STACKS,
             0,
@@ -357,6 +489,37 @@ end
 
 local function onUpdate()
     clearExpiredStacks("onUpdate")
+
+    if not tumblerSenseEnabled() then
+        trackedToolState = nil
+        return
+    end
+
+    local previousState = trackedToolState
+    local currentState = withLastComparableCondition(previousState, findEquippedSecurityTool())
+    trackedToolState = currentState
+
+    if previousState == nil or currentState == nil or not sameItem(previousState, currentState) then
+        return
+    end
+
+    local oldCondition = previousState.lastComparableCondition
+    local newCondition = currentState.condition
+    if type(oldCondition) ~= "number" or type(newCondition) ~= "number" or newCondition >= oldCondition then
+        return
+    end
+
+    local spentPoints = math.floor(oldCondition - newCondition)
+    if spentPoints < 1 then
+        spentPoints = 1
+    end
+
+    for _ = 1, spentPoints do
+        handleFailure({
+            source = CONDITION_FAILURE_SOURCE,
+            probe = currentState.toolType == "Probe",
+        })
+    end
 end
 
 return {

@@ -101,6 +101,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

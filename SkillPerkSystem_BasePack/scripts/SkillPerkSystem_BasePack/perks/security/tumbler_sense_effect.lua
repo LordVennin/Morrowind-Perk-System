@@ -1,6 +1,6 @@
 local core = require("openmw.core")
 
-local BONUS_PER_FAILED_ATTEMPT = 0.02
+local BONUS_PER_FAILED_ATTEMPT = 0.01
 local MAX_STACKS = 5
 local SHARED_DECAY_SECONDS = 10
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Toggle"
@@ -17,7 +17,7 @@ end
 return {
     id = "security_tumbler_sense_effect",
     name = "Tumbler Sense",
-    description = "Failed lockpick attempts grant +2% lockpick chance per stack (max 5) with a shared 10s decay timer.",
+    description = "Starts at 1 stack (+1% lockpick chance). Failed lockpick attempts grant +1% lockpick chance per stack (max 5) with a shared 10s decay timer.",
     onAcquire = function(_context)
         setTumblerSenseEnabled(true)
     end,

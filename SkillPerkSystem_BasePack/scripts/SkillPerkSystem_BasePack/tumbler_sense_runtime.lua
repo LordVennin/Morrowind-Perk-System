@@ -7,12 +7,14 @@ local ENABLED_KEY = "security.tumbler_sense.enabled"
 local STACK_COUNT_KEY = "security.tumbler_sense.stack_count"
 local BONUS_PER_STACK_KEY = "security.tumbler_sense.bonus_per_stack"
 local MAX_STACKS_KEY = "security.tumbler_sense.max_stacks"
+local INITIAL_STACKS_KEY = "security.tumbler_sense.initial_stacks"
 local SHARED_DECAY_SECONDS_KEY = "security.tumbler_sense.shared_decay_seconds"
 local EXPIRY_TIMESTAMP_KEY = "security.tumbler_sense.expiry_timestamp"
 local ACTIVE_BONUS_KEY = "security.tumbler_sense.active_bonus"
 
-local DEFAULT_BONUS_PER_STACK = 0.02
+local DEFAULT_BONUS_PER_STACK = 0.01
 local DEFAULT_MAX_STACKS = 5
+local DEFAULT_INITIAL_STACKS = 1
 local DEFAULT_DECAY_SECONDS = 10
 
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Toggle"
@@ -158,9 +160,23 @@ local function handleToggle(data)
     effectsSection:set(ENABLED_KEY, enabled)
     effectsSection:set(BONUS_PER_STACK_KEY, normalizeBonus(data.bonusPerFailedAttempt))
     effectsSection:set(MAX_STACKS_KEY, math.max(1, math.floor(tonumber(data.maxStacks) or DEFAULT_MAX_STACKS)))
+    effectsSection:set(INITIAL_STACKS_KEY, math.max(0, math.floor(tonumber(data.initialStacks) or DEFAULT_INITIAL_STACKS)))
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
-    if not enabled then
+    if enabled then
+        local initialStacks = clamp(
+            tonumber(effectsSection:get(INITIAL_STACKS_KEY)) or DEFAULT_INITIAL_STACKS,
+            0,
+            getMaxStacks()
+        )
+        local expiry = nil
+        if initialStacks > 0 and getSharedDecaySeconds() > 0 then
+            expiry = nowTimestamp() + getSharedDecaySeconds()
+        end
+        effectsSection:set(STACK_COUNT_KEY, initialStacks)
+        effectsSection:set(EXPIRY_TIMESTAMP_KEY, expiry)
+        currentBonus()
+    else
         clearStacks("disabled")
     end
 

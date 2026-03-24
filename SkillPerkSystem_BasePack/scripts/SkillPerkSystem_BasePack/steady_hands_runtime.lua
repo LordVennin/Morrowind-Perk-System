@@ -17,8 +17,9 @@ local STEADY_HANDS_PERK_ID = "security_steady_hands"
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 
 local trackedToolState = nil
-local conditionDebugFramesRemaining = 1
-local conditionSourceDebugFramesRemaining = 60
+local conditionDebugFramesRemaining = 0
+local conditionSourceDebugFramesRemaining = 0
+local loggedDisabledSkip = false
 -- Fallback condition tracking can miss intermediate onUpdate frames. When that
 -- happens we treat each lost condition point as one consumed-use attempt, but
 -- cap rolls per update to avoid runaway refunds after large desyncs.
@@ -467,9 +468,16 @@ local function rollAndRefund(toolState, contextLabel, attempts)
     end
 
     if not steadyHandsEnabled() then
-        print(string.format("[SkillPerkSystem_BasePack][SteadyHands] perk disabled; skipping refund roll (%s)", tostring(contextLabel)))
+        if not loggedDisabledSkip then
+            print(string.format(
+                "[SkillPerkSystem_BasePack][SteadyHands] perk disabled; skipping refund rolls until re-enabled (first source=%s)",
+                tostring(contextLabel)
+            ))
+            loggedDisabledSkip = true
+        end
         return
     end
+    loggedDisabledSkip = false
 
     local rollAttempts = tonumber(attempts) or 1
     if rollAttempts < 1 then

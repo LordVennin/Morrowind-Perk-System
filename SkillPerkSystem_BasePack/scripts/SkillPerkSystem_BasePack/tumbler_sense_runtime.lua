@@ -1,6 +1,8 @@
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
 local storage = require("openmw.storage")
+local types = require("openmw.types")
 
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
 local ENABLED_KEY = "security.tumbler_sense.enabled"
@@ -10,8 +12,12 @@ local MAX_STACKS_KEY = "security.tumbler_sense.max_stacks"
 local SHARED_DECAY_SECONDS_KEY = "security.tumbler_sense.shared_decay_seconds"
 local EXPIRY_TIMESTAMP_KEY = "security.tumbler_sense.expiry_timestamp"
 local ACTIVE_BONUS_KEY = "security.tumbler_sense.active_bonus"
+local APPLIED_SECURITY_MODIFIER_KEY = "security.tumbler_sense.applied_security_modifier"
 
-local DEFAULT_BONUS_PER_STACK = 0.02
+-- TEMP TEST TUNING:
+-- Raised from 0.02 (2%) to 0.20 (20%) per stack so fallback recovery state
+-- and missing-toggle scenarios still use the same test value.
+local DEFAULT_BONUS_PER_STACK = 0.20
 local DEFAULT_MAX_STACKS = 5
 local DEFAULT_DECAY_SECONDS = 10
 
@@ -22,6 +28,10 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local trackedToolCondition = nil
+local trackedToolRef = nil
+
+local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
@@ -51,20 +61,46 @@ local function nowTimestamp()
 end
 
 local function tumblerSenseEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) then
+    local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) or false
+    if not hasPerk then
         return false
     end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID) then
+    local effectEnabled = type(playerApi.isPerkEffectEnabled) ~= "function"
+        or playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID)
+    if not effectEnabled then
+        return false
+    end
+
+    local shouldBackfillConfig = false
+    if effectsSection:get(ENABLED_KEY) ~= true then
+        -- Fallback for load-order/event timing issues: if the perk is owned and
+        -- its effect is enabled, keep runtime state active even when the toggle
+        -- event was not observed yet.
+        effectsSection:set(ENABLED_KEY, true)
+        shouldBackfillConfig = true
+        print("[SkillPerkSystem_BasePack][TumblerSense] recovered enabled state from owned perk/effect flags")
+    end
+
+    local savedBonus = tonumber(effectsSection:get(BONUS_PER_STACK_KEY))
+    if shouldBackfillConfig or type(savedBonus) ~= "number" or savedBonus ~= DEFAULT_BONUS_PER_STACK then
+        effectsSection:set(BONUS_PER_STACK_KEY, DEFAULT_BONUS_PER_STACK)
+    end
+
+    if shouldBackfillConfig or type(tonumber(effectsSection:get(MAX_STACKS_KEY))) ~= "number" then
+        effectsSection:set(MAX_STACKS_KEY, DEFAULT_MAX_STACKS)
+    end
+
+    if shouldBackfillConfig or type(tonumber(effectsSection:get(SHARED_DECAY_SECONDS_KEY))) ~= "number" then
+        effectsSection:set(SHARED_DECAY_SECONDS_KEY, DEFAULT_DECAY_SECONDS)
+    end
+
+    if effectsSection:get(ENABLED_KEY) ~= true then
         return false
     end
 
@@ -109,6 +145,46 @@ local function clearStacks(reason)
     end
 end
 
+local function applySecurityChanceModifierFromActiveBonus()
+    local securityAccessor = types.NPC.stats.skills.security
+    if type(securityAccessor) ~= "function" then
+        return
+    end
+
+    local stat = securityAccessor(pself)
+    if stat == nil then
+        return
+    end
+
+    local currentModifier = tonumber(stat.modifier)
+    if type(currentModifier) ~= "number" then
+        return
+    end
+
+    local previouslyApplied = tonumber(effectsSection:get(APPLIED_SECURITY_MODIFIER_KEY)) or 0
+    local activeBonus = tonumber(effectsSection:get(ACTIVE_BONUS_KEY)) or 0
+    local desiredApplied = math.floor((activeBonus * 100) + 0.5)
+    if desiredApplied < 0 then
+        desiredApplied = 0
+    end
+
+    local targetModifier = currentModifier - previouslyApplied + desiredApplied
+    local okWrite = pcall(function()
+        stat.modifier = targetModifier
+    end)
+    if okWrite then
+        effectsSection:set(APPLIED_SECURITY_MODIFIER_KEY, desiredApplied)
+        return
+    end
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][TumblerSense] failed to apply security modifier current=%s previousApplied=%s desiredApplied=%s",
+        tostring(currentModifier),
+        tostring(previouslyApplied),
+        tostring(desiredApplied)
+    ))
+end
+
 local function clearExpiredStacks(reason)
     local stackCount = tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0
     if stackCount <= 0 then
@@ -129,6 +205,7 @@ local function currentBonus()
     local stackCount = clamp(tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0, 0, getMaxStacks())
     local bonus = stackCount * getBonusPerStack()
     effectsSection:set(ACTIVE_BONUS_KEY, bonus)
+    applySecurityChanceModifierFromActiveBonus()
     return stackCount, bonus
 end
 
@@ -145,6 +222,7 @@ local function handleToggle(data)
 
     if not enabled then
         clearStacks("disabled")
+        applySecurityChanceModifierFromActiveBonus()
     end
 
     print(string.format(
@@ -191,6 +269,7 @@ local function handleRefreshChance(data)
 
     if not tumblerSenseEnabled() then
         effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
+        applySecurityChanceModifierFromActiveBonus()
         return
     end
 
@@ -206,6 +285,55 @@ end
 
 local function onUpdate()
     clearExpiredStacks("onUpdate")
+    applySecurityChanceModifierFromActiveBonus()
+
+    local equipped = nil
+    if EQUIPMENT_SLOT.CarriedRight ~= nil then
+        local ok, item = pcall(types.Actor.getEquipment, pself, EQUIPMENT_SLOT.CarriedRight)
+        if ok then
+            equipped = item
+        end
+    end
+
+    local isLockpick = equipped ~= nil and types.Lockpick.objectIsInstance(equipped)
+    local currentCondition = nil
+    if isLockpick then
+        local okData, data = pcall(types.Item.itemData, equipped)
+        if okData and data ~= nil then
+            local okCond, condition = pcall(function()
+                return data.condition
+            end)
+            if okCond and type(condition) == "number" then
+                currentCondition = condition
+            end
+        end
+    end
+
+    if equipped == nil or not isLockpick or type(currentCondition) ~= "number" then
+        trackedToolRef = nil
+        trackedToolCondition = nil
+        return
+    end
+
+    if trackedToolRef ~= equipped then
+        trackedToolRef = equipped
+        trackedToolCondition = currentCondition
+        return
+    end
+
+    local previous = trackedToolCondition
+    trackedToolCondition = currentCondition
+    if type(previous) ~= "number" then
+        return
+    end
+
+    if currentCondition < previous then
+        -- Fallback integration path: for vanilla lockpicking we don't get an
+        -- explicit failed-attempt event, so treat lockpick condition drain as
+        -- an attempt signal to keep Tumbler Sense functional.
+        handleFailure({ source = "onUpdate-fallback", probe = false })
+        handleRefreshChance({ source = "onUpdate-fallback", probe = false })
+    end
 end
 
 return {

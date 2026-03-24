@@ -25,6 +25,7 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+print("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
 
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
@@ -201,6 +202,11 @@ local function handleFailure(data)
     end
 
     if not tumblerSenseEnabled() then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s mode=%s reason=perk-disabled-or-missing",
+            tostring(source),
+            tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown")
+        ))
         return
     end
 
@@ -233,6 +239,7 @@ local function handleRefreshChance(data)
     clearExpiredStacks("chance-refresh")
 
     if not tumblerSenseEnabled() then
+        print("[SkillPerkSystem_BasePack][TumblerSense] chance refresh skipped reason=perk-disabled-or-missing")
         effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
         return
     end

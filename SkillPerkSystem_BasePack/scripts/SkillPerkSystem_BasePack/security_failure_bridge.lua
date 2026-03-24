@@ -2,104 +2,99 @@ local core = require("openmw.core")
 local pself = require("openmw.self")
 local types = require("openmw.types")
 
-local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local FORWARD_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local BRIDGE_INTERFACE_NAME = "SkillPerkSystem_BasePack_SecurityFailureBridge"
-local DEFAULT_SOURCE = "drain_lockpick_event"
+local SOURCE = "drain_lockpick_event"
 
 local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
-local TRACKED_SLOTS = {
-    {
-        slot = EQUIPMENT_SLOT.CarriedRight,
-        label = "CarriedRight",
-    },
-    {
-        slot = EQUIPMENT_SLOT.CarriedLeft,
-        label = "CarriedLeft",
-    },
+
+local tracked = {
+    item = nil,
+    slot = nil,
+    condition = nil,
+    probe = false,
 }
 
-local trackedToolState = nil
-
-local function classifySecurityTool(item)
+local function getCondition(item)
     if item == nil then
         return nil
     end
 
-    if types.Lockpick.objectIsInstance(item) then
-        return "lockpick"
+    if types.Item ~= nil and type(types.Item.itemData) == "function" then
+        local ok, data = pcall(types.Item.itemData, item)
+        if ok and data ~= nil and type(data.condition) == "number" then
+            return data.condition
+        end
     end
 
-    if types.Probe.objectIsInstance(item) then
-        return "probe"
+    if type(item.type) == "table" and type(item.type.itemData) == "function" then
+        local ok, data = pcall(item.type.itemData, item)
+        if ok and data ~= nil and type(data.condition) == "number" then
+            return data.condition
+        end
     end
 
     return nil
 end
 
-local function itemCondition(item)
-    if item == nil then
-        return nil
+local function getEquippedSecurityTool()
+    local right = types.Actor.getEquipment(pself, EQUIPMENT_SLOT.CarriedRight)
+    if right ~= nil then
+        if types.Lockpick.objectIsInstance(right) then
+            return right, EQUIPMENT_SLOT.CarriedRight, false
+        end
+        if types.Probe.objectIsInstance(right) then
+            return right, EQUIPMENT_SLOT.CarriedRight, true
+        end
     end
 
-    local itemData = types.Item.itemData(item)
-    if itemData ~= nil and type(itemData.condition) == "number" then
-        return itemData.condition
+    local left = types.Actor.getEquipment(pself, EQUIPMENT_SLOT.CarriedLeft)
+    if left ~= nil then
+        if types.Lockpick.objectIsInstance(left) then
+            return left, EQUIPMENT_SLOT.CarriedLeft, false
+        end
+        if types.Probe.objectIsInstance(left) then
+            return left, EQUIPMENT_SLOT.CarriedLeft, true
+        end
     end
 
-    return nil
+    return nil, nil, false
 end
 
-local function inferProbeFromEquipment(player)
-    if player == nil then
-        return false
-    end
-
-    local equipped = types.Actor.getEquipment(player, types.Actor.EQUIPMENT_SLOT.CarriedRight)
-    if equipped == nil then
-        return false
-    end
-
-    return types.Probe.objectIsInstance(equipped) == true
-end
-
-local function normalizeSource(data)
-    if type(data) == "table" and type(data.source) == "string" and data.source ~= "" then
-        return data.source
-    end
-    return DEFAULT_SOURCE
-end
-
-local function normalizeProbe(data)
-    if type(data) == "table" and type(data.probe) == "boolean" then
-        return data.probe
-    end
-
-    if type(data) == "table" then
-        return inferProbeFromEquipment(data.player)
-    end
-
-    return false
-end
-
-local function emitFailure(data)
-    local source = normalizeSource(data)
-    local probe = normalizeProbe(data)
-
+local function emitFailure(isProbe)
     core.sendGlobalEvent(FORWARD_FAILURE_EVENT, {
-        source = source,
-        probe = probe,
+        source = SOURCE,
+        probe = isProbe == true,
     })
-
-    print(string.format(
-        "[SkillPerkSystem_BasePack][TumblerSenseBridge] forwarded failure source=%s mode=%s",
-        tostring(source),
-        probe and "probe" or "lockpick"
-    ))
 end
 
-local function onDrainLockpick(data)
-    emitFailure(data)
+local function onUpdate()
+    local item, slot, isProbe = getEquippedSecurityTool()
+    local condition = getCondition(item)
+
+    local sameTool = tracked.item ~= nil and tracked.item == item and tracked.slot == slot
+    if sameTool and type(tracked.condition) == "number" and type(condition) == "number" and condition < tracked.condition then
+        local pointsLost = math.floor(tracked.condition - condition)
+        if pointsLost < 1 then
+            pointsLost = 1
+        end
+
+        for _ = 1, pointsLost do
+            emitFailure(isProbe)
+        end
+
+        print(string.format(
+            "[SkillPerkSystem_BasePack][TumblerSenseBridge] durability drop detected before=%d after=%d emitted=%d",
+            tracked.condition,
+            condition,
+            pointsLost
+        ))
+    end
+
+    tracked.item = item
+    tracked.slot = slot
+    tracked.condition = condition
+    tracked.probe = isProbe
 end
 
 local function findTrackedSecurityTool()
@@ -172,8 +167,5 @@ return {
     },
     engineHandlers = {
         onUpdate = onUpdate,
-    },
-    eventHandlers = {
-        [DRAIN_LOCKPICK_EVENT] = onDrainLockpick,
     },
 }

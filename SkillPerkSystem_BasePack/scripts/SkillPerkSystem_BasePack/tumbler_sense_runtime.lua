@@ -32,6 +32,24 @@ local trackedToolRef = nil
 
 local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
+local function clearPersistentStacks(reason)
+    local stackCount = tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0
+    local expiry = tonumber(effectsSection:get(EXPIRY_TIMESTAMP_KEY))
+
+    effectsSection:set(STACK_COUNT_KEY, 0)
+    effectsSection:set(EXPIRY_TIMESTAMP_KEY, nil)
+    effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
+
+    if stackCount > 0 then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][TumblerSense] stacks expired reason=%s previousStacks=%d expiry=%s",
+            tostring(reason),
+            stackCount,
+            tostring(expiry)
+        ))
+    end
+end
+
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
         return minValue
@@ -99,6 +117,12 @@ local function tumblerSenseEnabled()
         effectsSection:set(SHARED_DECAY_SECONDS_KEY, DEFAULT_DECAY_SECONDS)
     end
 
+    if shouldBackfillConfig then
+        -- Avoid stale stack restoration when we recover enabled state from
+        -- owned perk/effect flags during load-order or save migration paths.
+        clearPersistentStacks("recovered-enabled-reset")
+    end
+
     if effectsSection:get(ENABLED_KEY) ~= true then
         return false
     end
@@ -126,23 +150,7 @@ local function getSharedDecaySeconds()
     return math.max(0, sharedDecay)
 end
 
-local function clearStacks(reason)
-    local stackCount = tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0
-    local expiry = tonumber(effectsSection:get(EXPIRY_TIMESTAMP_KEY))
-
-    effectsSection:set(STACK_COUNT_KEY, 0)
-    effectsSection:set(EXPIRY_TIMESTAMP_KEY, nil)
-    effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
-
-    if stackCount > 0 then
-        print(string.format(
-            "[SkillPerkSystem_BasePack][TumblerSense] stacks expired reason=%s previousStacks=%d expiry=%s",
-            tostring(reason),
-            stackCount,
-            tostring(expiry)
-        ))
-    end
-end
+local clearStacks = clearPersistentStacks
 
 local function clearExpiredStacks(reason)
     local stackCount = tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0
@@ -178,7 +186,9 @@ local function handleToggle(data)
     effectsSection:set(MAX_STACKS_KEY, math.max(1, math.floor(tonumber(data.maxStacks) or DEFAULT_MAX_STACKS)))
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
-    if not enabled then
+    if enabled then
+        clearStacks("enabled-reset")
+    else
         clearStacks("disabled")
     end
 
@@ -283,12 +293,58 @@ local function onUpdate()
     end
 
     if currentCondition < previous then
-        -- Fallback integration path: for vanilla lockpicking we don't get an
-        -- explicit failed-attempt event, so treat lockpick condition drain as
-        -- an attempt signal to keep Tumbler Sense functional.
-        handleFailure({ source = "onUpdate-fallback", probe = false })
+        -- Fallback integration path: condition drain can happen on both success
+        -- and failure, so do not grant stacks here. Keep bonus cache fresh only.
         handleRefreshChance({ source = "onUpdate-fallback", probe = false })
     end
+end
+
+local function onLockpickImpact(target, _hitInfo, _hitResult)
+    if not tumblerSenseEnabled() then
+        return
+    end
+    if target == nil or not types.Lockable.objectIsInstance(target) or not types.Lockable.isLocked(target) then
+        return
+    end
+
+    local equipped = nil
+    if EQUIPMENT_SLOT.CarriedRight ~= nil then
+        local ok, item = pcall(types.Actor.getEquipment, pself, EQUIPMENT_SLOT.CarriedRight)
+        if ok then
+            equipped = item
+        end
+    end
+    if equipped == nil or not types.Lockpick.objectIsInstance(equipped) then
+        return
+    end
+
+    clearExpiredStacks("impact-precheck")
+
+    local stacksBefore, bonusBefore = currentBonus()
+    local clampedBonus = math.max(0, math.min(1, bonusBefore))
+    if clampedBonus > 0 and math.random() < clampedBonus then
+        types.Lockable.unlock(target)
+        print(string.format(
+            "[SkillPerkSystem_BasePack][TumblerSense] lockpick chance hook source=impact-hit outcome=success stacks=%d bonus=%.2f",
+            stacksBefore,
+            bonusBefore
+        ))
+        return
+    end
+
+    handleFailure({ source = "impact-hit", probe = false })
+    handleRefreshChance({ source = "impact-hit", probe = false })
+    print(string.format(
+        "[SkillPerkSystem_BasePack][TumblerSense] lockpick chance hook source=impact-hit outcome=miss stacks=%d bonus=%.2f",
+        stacksBefore,
+        bonusBefore
+    ))
+end
+
+if type(interfaces.impactEffects) == "table" and type(interfaces.impactEffects.addHitObjectHandler) == "function" then
+    interfaces.impactEffects.addHitObjectHandler(onLockpickImpact)
+else
+    print("[SkillPerkSystem_BasePack][TumblerSense] warning: impactEffects hit hook unavailable; chance hook disabled")
 end
 
 return {

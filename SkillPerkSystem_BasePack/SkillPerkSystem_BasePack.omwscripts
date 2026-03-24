@@ -1,5 +1,6 @@
 # This file should be loaded AFTER SkillPerkSystem.omwscripts.
 GLOBAL:scripts/SkillPerkSystem_BasePack/global.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/steady_hands_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/security_failure_bridge.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/tumbler_sense_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua

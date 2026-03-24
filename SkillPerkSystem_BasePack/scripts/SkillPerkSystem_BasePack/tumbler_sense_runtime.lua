@@ -227,7 +227,7 @@ end
 
 local function handleFailure(data)
     local source = type(data) == "table" and data.source or "unknown"
-    if source ~= "pin_skill_roll" and source ~= "auto_attempt_skill_roll" then
+    if source ~= "pin_skill_roll" and source ~= "auto_attempt_skill_roll" and source ~= "drain_lockpick_event" then
         print(string.format(
             "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s mode=%s",
             tostring(source),

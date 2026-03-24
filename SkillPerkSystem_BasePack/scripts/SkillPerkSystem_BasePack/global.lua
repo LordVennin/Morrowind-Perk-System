@@ -74,26 +74,32 @@ local function resolveToolAndActor(data)
     end
 
     local actor = data.actor
-    local item = data.item
     local slot = data.slot
+    if actor ~= nil and slot ~= nil then
+        local ok, equipped = pcall(types.Actor.getEquipment, actor, slot)
+        if ok and equipped ~= nil then
+            return actor, equipped, slot
+        end
+    end
+
+    local item = data.item
     if item ~= nil then
         return actor, item, slot
     end
 
-    if actor == nil or slot == nil then
-        return nil, nil, nil
-    end
-
-    local ok, equipped = pcall(types.Actor.getEquipment, actor, slot)
-    if not ok then
-        return actor, nil, slot
-    end
-    return actor, equipped, slot
+    return actor, nil, slot
 end
 
 local function writeToolCondition(data)
     local actor, tool, slot = resolveToolAndActor(data)
-    if classifySecurityTool(tool) == nil then
+    local toolType = classifySecurityTool(tool)
+    if toolType == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands][debug] refund skipped (no security tool resolved) slot=%s actor=%s amount=%s",
+            tostring(slot),
+            tostring(actor),
+            tostring(type(data) == "table" and data.amount or nil)
+        ))
         return
     end
 
@@ -104,6 +110,12 @@ local function writeToolCondition(data)
 
     local itemData = readItemData(tool)
     if itemData == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands][debug] refund skipped (no itemData) slot=%s type=%s amount=%s",
+            tostring(slot),
+            tostring(toolType),
+            tostring(amount)
+        ))
         return
     end
 
@@ -125,7 +137,7 @@ local function writeToolCondition(data)
         print(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands][debug] refund skipped (invalid condition data) slot=%s type=%s condition=%s maxCondition=%s amount=%s",
             tostring(slot),
-            tostring(classifySecurityTool(tool)),
+            tostring(toolType),
             tostring(okCurrent and currentValue or nil),
             tostring(maxCondition),
             tostring(amount)
@@ -152,9 +164,20 @@ local function writeToolCondition(data)
         newCondition = 0
     end
 
-    pcall(function()
+    local okWrite, writeErr = pcall(function()
         itemData.condition = newCondition
     end)
+    if not okWrite then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands][debug] refund write failed slot=%s type=%s amount=%s current=%s target=%s err=%s",
+            tostring(slot),
+            tostring(toolType),
+            tostring(amount),
+            tostring(currentCondition),
+            tostring(newCondition),
+            tostring(writeErr)
+        ))
+    end
 end
 
 if type(steadyHandsEffect) == "table" and type(steadyHandsEffect.registerRuntimeHooks) == "function" then

@@ -1,4 +1,3 @@
-local core = require("openmw.core")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -321,6 +320,64 @@ local function logToolState(prefix, state)
     ))
 end
 
+local function applyToolConditionRefund(toolState, refundCount)
+    if toolState == nil or toolState.item == nil then
+        return false
+    end
+
+    if type(refundCount) ~= "number" or refundCount <= 0 then
+        return false
+    end
+
+    local data = itemData(toolState.item)
+    if data == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (no mutable itemData) slot=%s type=%s amount=%d",
+            slotLabel(toolState.slot, toolState.slotName),
+            tostring(toolState.toolType),
+            refundCount
+        ))
+        return false
+    end
+
+    local currentCondition = normalizeCondition(itemDataCondition(toolState.item))
+    if currentCondition == nil then
+        currentCondition = normalizeCondition(toolState.condition)
+    end
+
+    if currentCondition == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (unknown condition) slot=%s type=%s amount=%d",
+            slotLabel(toolState.slot, toolState.slotName),
+            tostring(toolState.toolType),
+            refundCount
+        ))
+        return false
+    end
+
+    local newCondition = currentCondition + refundCount
+    local maxCondition = normalizeCondition(toolMaxCondition(toolState.item))
+    if maxCondition ~= nil and newCondition > maxCondition then
+        newCondition = maxCondition
+    end
+
+    local wrote = pcall(function()
+        data.condition = newCondition
+    end)
+
+    if not wrote then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (itemData.condition write failed) slot=%s type=%s amount=%d",
+            slotLabel(toolState.slot, toolState.slotName),
+            tostring(toolState.toolType),
+            refundCount
+        ))
+        return false
+    end
+
+    return true
+end
+
 local function rollAndRefund(toolState, contextLabel, attempts)
     if toolState == nil or toolState.item == nil then
         return
@@ -363,14 +420,21 @@ local function rollAndRefund(toolState, contextLabel, attempts)
         return
     end
 
-    core.sendGlobalEvent("ModifyItemCondition", {
-        actor = pself,
-        item = toolState.item,
-        amount = refundCount,
-    })
+    local applied = applyToolConditionRefund(toolState, refundCount)
+
+    if applied then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] refund applied source=%s slot=%s type=%s amount=%d",
+            tostring(contextLabel),
+            slotLabel(toolState.slot, toolState.slotName),
+            tostring(toolType),
+            refundCount
+        ))
+        return
+    end
 
     print(string.format(
-        "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=%d",
+        "[SkillPerkSystem_BasePack][SteadyHands] refund failed source=%s slot=%s type=%s amount=%d",
         tostring(contextLabel),
         slotLabel(toolState.slot, toolState.slotName),
         tostring(toolType),

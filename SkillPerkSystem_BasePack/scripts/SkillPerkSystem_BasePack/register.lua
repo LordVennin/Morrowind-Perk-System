@@ -101,6 +101,7 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect"),
     },
+    -- Keep Tumbler Sense registration in the same safe effect flow as Steady Hands.
     {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect"),

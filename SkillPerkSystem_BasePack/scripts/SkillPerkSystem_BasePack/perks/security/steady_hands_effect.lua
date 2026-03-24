@@ -13,7 +13,7 @@ end
 return {
     id = "security_steady_hands_effect",
     name = "Steady Hands",
-    description = "Adds a 15% chance to refund 1 lockpick/probe use while enabled.",
+    description = "While enabled, lockpick and probe uses have a 15% chance to not be consumed.",
     onAcquire = function(_context)
         setSteadyHandsEnabled(true, CONDITION_REFUND_CHANCE)
     end,

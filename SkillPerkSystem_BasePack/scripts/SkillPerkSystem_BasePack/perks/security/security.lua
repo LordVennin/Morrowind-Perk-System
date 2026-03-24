@@ -12,7 +12,7 @@ return {
             x = -120,
             y = 0,
             title = "Steady Hands",
-            description = "Measured tool control that reduces lockpick and probe wear.",
+            description = "Lockpick and probe uses have a 15% chance to not be consumed.",
         },
         {
             id = "security_tumbler_sense",

@@ -67,6 +67,18 @@ local optimisticPerkEffectEnabledByID = {}
 
 local uiScale = 1
 
+local function safeMenuUpdate()
+    if menu == nil or type(menu.update) ~= "function" then
+        return
+    end
+
+    local ok, err = pcall(menu.update, menu)
+    if not ok then
+        print("[" .. MOD_NAME .. "] menu:update skipped: " .. tostring(err))
+    end
+end
+
+
 local function clamp(value, minValue, maxValue)
     if value < minValue then
         return minValue
@@ -539,26 +551,26 @@ local function createButton(label, onPress, enabled, size)
                     ambient.playSound("Menu Click")
                     buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                     textLayout.template = interfaces.MWUI.templates.textHeader
-                    if menu ~= nil then menu:update() end
+                    safeMenuUpdate()
                 end
             end),
             mouseRelease = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
                     buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                     textLayout.template = interfaces.MWUI.templates.textNormal
-                    if menu ~= nil then menu:update() end
+                    safeMenuUpdate()
                     onPress()
                 end
             end),
             focusGain = async:callback(function()
                 buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                 textLayout.template = interfaces.MWUI.templates.textHeader
-                if menu ~= nil then menu:update() end
+                safeMenuUpdate()
             end),
             focusLoss = async:callback(function()
                 buttonLayout.template = interfaces.MWUI.templates.boxTransparentThick
                 textLayout.template = interfaces.MWUI.templates.textNormal
-                if menu ~= nil then menu:update() end
+                safeMenuUpdate()
             end),
         }
     end
@@ -620,23 +632,23 @@ local function createBoxedButton(label, onPress, size, textOffsetY, textTemplate
             if mouseEvent.button == 1 then
                 ambient.playSound("Menu Click")
                 textLayout.template = interfaces.MWUI.templates.textHeader
-                if menu ~= nil then menu:update() end
+                safeMenuUpdate()
             end
         end),
         mouseRelease = async:callback(function(mouseEvent)
             if mouseEvent.button == 1 then
                 textLayout.template = idleTextTemplate
-                if menu ~= nil then menu:update() end
+                safeMenuUpdate()
                 onPress()
             end
         end),
         focusGain = async:callback(function()
             textLayout.template = interfaces.MWUI.templates.textHeader
-            if menu ~= nil then menu:update() end
+            safeMenuUpdate()
         end),
         focusLoss = async:callback(function()
             textLayout.template = idleTextTemplate
-            if menu ~= nil then menu:update() end
+            safeMenuUpdate()
         end),
     }
 
@@ -661,7 +673,7 @@ local function changeSelectedSkill(delta)
 
     if menu ~= nil then
         menu.layout = buildLayout()
-        menu:update()
+        safeMenuUpdate()
     end
 end
 
@@ -1180,7 +1192,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
             if selectedPerkID ~= nil then
                 pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })
                 menu.layout = buildLayout()
-                menu:update()
+                safeMenuUpdate()
             end
         end, unlockEnabled, v2(104, 24))
     end
@@ -1194,7 +1206,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 optimisticPerkEffectEnabledByID[selectedPerkID] = nextEffectEnabled
                 pself:sendEvent(MOD_NAME .. "togglePerkEffect", { perkID = selectedPerkID, enabled = nextEffectEnabled })
                 menu.layout = buildLayout()
-                menu:update()
+                safeMenuUpdate()
             end
         end, true, v2(rightColumnWidth - 12, compactControlHeight - 2))
     end
@@ -1571,7 +1583,7 @@ local function buildPerkPane()
                 selectedTreeNodeID = node.id
                 selectedPerkIndex = perkIndex
                 menu.layout = buildLayout()
-                menu:update()
+                safeMenuUpdate()
             end, buttonSize, 1, owned and interfaces.MWUI.templates.textHeader or interfaces.MWUI.templates.textNormal)
             nodeButton.template = owned and interfaces.MWUI.templates.boxSolid or interfaces.MWUI.templates.boxSolidThick
 
@@ -1628,7 +1640,7 @@ local function buildPerkPane()
                             selectedTreeNodeID = nil
                             selectedPerkIndex = i
                             menu.layout = buildLayout()
-                            menu:update()
+                            safeMenuUpdate()
                         end),
                     },
                     props = {
@@ -1710,7 +1722,7 @@ local function buildPerkPane()
                                 clampTreePan(dragPan)
                                 lastMousePos = mouseEvent.position
                                 menu.layout = buildLayout()
-                                menu:update()
+                                safeMenuUpdate()
                             end),
                             mouseRelease = async:callback(function(mouseEvent)
                                 if mouseEvent.button == 1 then
@@ -2033,7 +2045,7 @@ local function onFrame(dt)
             if type(globalPoints) == "number" and globalPoints ~= lastKnownGlobalPoints then
                 lastKnownGlobalPoints = globalPoints
                 menu.layout = buildLayout()
-                menu:update()
+                safeMenuUpdate()
             end
         end
 
@@ -2077,7 +2089,7 @@ local function onFrame(dt)
             if moved then
                 clampTreePan(pan)
                 menu.layout = buildLayout()
-                menu:update()
+                safeMenuUpdate()
             end
         end
     end

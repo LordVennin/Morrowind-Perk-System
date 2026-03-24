@@ -1,6 +1,8 @@
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
 local storage = require("openmw.storage")
+local types = require("openmw.types")
 
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
 local ENABLED_KEY = "security.tumbler_sense.enabled"
@@ -11,6 +13,7 @@ local INITIAL_STACKS_KEY = "security.tumbler_sense.initial_stacks"
 local SHARED_DECAY_SECONDS_KEY = "security.tumbler_sense.shared_decay_seconds"
 local EXPIRY_TIMESTAMP_KEY = "security.tumbler_sense.expiry_timestamp"
 local ACTIVE_BONUS_KEY = "security.tumbler_sense.active_bonus"
+local APPLIED_SKILL_BONUS_KEY = "security.tumbler_sense.applied_skill_bonus"
 
 local DEFAULT_BONUS_PER_STACK = 0.01
 local DEFAULT_MAX_STACKS = 5
@@ -95,6 +98,36 @@ local function getSharedDecaySeconds()
     return math.max(0, sharedDecay)
 end
 
+
+local function applySecuritySkillBonus(targetBonus)
+    local accessor = types.NPC.stats.skills.security
+    if type(accessor) ~= "function" then
+        return
+    end
+
+    local currentApplied = clamp(tonumber(effectsSection:get(APPLIED_SKILL_BONUS_KEY)) or 0, 0, getMaxStacks())
+    local desiredApplied = clamp(math.floor(tonumber(targetBonus) or 0), 0, getMaxStacks())
+    if currentApplied == desiredApplied then
+        return
+    end
+
+    local stat = accessor(pself)
+    if stat == nil or type(stat.base) ~= "number" then
+        return
+    end
+
+    local newBase = math.max(0, math.floor(stat.base - currentApplied + desiredApplied))
+    stat.base = newBase
+    effectsSection:set(APPLIED_SKILL_BONUS_KEY, desiredApplied)
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][TumblerSense] security base adjusted appliedBonus=%d->%d resultingBase=%d",
+        currentApplied,
+        desiredApplied,
+        newBase
+    ))
+end
+
 local function clearStacks(reason)
     local stackCount = tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0
     local expiry = tonumber(effectsSection:get(EXPIRY_TIMESTAMP_KEY))
@@ -102,6 +135,7 @@ local function clearStacks(reason)
     effectsSection:set(STACK_COUNT_KEY, 0)
     effectsSection:set(EXPIRY_TIMESTAMP_KEY, nil)
     effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
+    applySecuritySkillBonus(0)
 
     if stackCount > 0 then
         print(string.format(
@@ -133,6 +167,7 @@ local function currentBonus()
     local stackCount = clamp(tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0, 0, getMaxStacks())
     local bonus = stackCount * getBonusPerStack()
     effectsSection:set(ACTIVE_BONUS_KEY, bonus)
+    applySecuritySkillBonus(stackCount)
     return stackCount, bonus
 end
 
@@ -140,7 +175,7 @@ local function getActiveBonusFraction()
     clearExpiredStacks("runtime-get-active-bonus")
 
     if not tumblerSenseEnabled() then
-        effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
+        clearStacks("perk-disabled-or-missing")
         return 0.0
     end
 
@@ -240,7 +275,7 @@ local function handleRefreshChance(data)
 
     if not tumblerSenseEnabled() then
         print("[SkillPerkSystem_BasePack][TumblerSense] chance refresh skipped reason=perk-disabled-or-missing")
-        effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
+        clearStacks("perk-disabled-or-missing")
         return
     end
 

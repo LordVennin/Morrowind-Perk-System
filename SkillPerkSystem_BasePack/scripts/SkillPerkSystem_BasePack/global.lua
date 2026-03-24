@@ -107,19 +107,33 @@ local function writeToolCondition(data)
         return
     end
 
+    local maxCondition = readMaxCondition(tool)
+
     local currentCondition = nil
     local okCurrent, currentValue = pcall(function()
         return itemData.condition
     end)
     if okCurrent then
-        currentCondition = normalizeNumber(currentValue)
+        if currentValue == nil then
+            currentCondition = maxCondition
+        else
+            currentCondition = normalizeNumber(currentValue)
+        end
     end
 
-    local maxCondition = readMaxCondition(tool)
     if currentCondition == nil then
-        currentCondition = maxCondition
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands][debug] refund skipped (invalid condition data) slot=%s type=%s condition=%s maxCondition=%s amount=%s",
+            tostring(slot),
+            tostring(classifySecurityTool(tool)),
+            tostring(okCurrent and currentValue or nil),
+            tostring(maxCondition),
+            tostring(amount)
+        ))
+        return
     end
-    if currentCondition == nil then
+
+    if maxCondition ~= nil and currentCondition >= maxCondition and amount > 0 then
         return
     end
 

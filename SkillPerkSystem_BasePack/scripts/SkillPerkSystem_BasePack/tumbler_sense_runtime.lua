@@ -178,7 +178,9 @@ local function handleToggle(data)
     effectsSection:set(MAX_STACKS_KEY, math.max(1, math.floor(tonumber(data.maxStacks) or DEFAULT_MAX_STACKS)))
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
-    if not enabled then
+    if enabled then
+        clearStacks("enabled-reset")
+    else
         clearStacks("disabled")
     end
 
@@ -283,10 +285,8 @@ local function onUpdate()
     end
 
     if currentCondition < previous then
-        -- Fallback integration path: for vanilla lockpicking we don't get an
-        -- explicit failed-attempt event, so treat lockpick condition drain as
-        -- an attempt signal to keep Tumbler Sense functional.
-        handleFailure({ source = "onUpdate-fallback", probe = false })
+        -- Fallback integration path: condition drain can happen on both success
+        -- and failure, so do not grant stacks here. Keep bonus cache fresh only.
         handleRefreshChance({ source = "onUpdate-fallback", probe = false })
     end
 end

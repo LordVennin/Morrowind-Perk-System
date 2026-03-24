@@ -76,21 +76,27 @@ local function tumblerSenseEnabled()
         return false
     end
 
+    local shouldBackfillConfig = false
     if effectsSection:get(ENABLED_KEY) ~= true then
         -- Fallback for load-order/event timing issues: if the perk is owned and
         -- its effect is enabled, keep runtime state active even when the toggle
         -- event was not observed yet.
         effectsSection:set(ENABLED_KEY, true)
-        if type(effectsSection:get(BONUS_PER_STACK_KEY)) ~= "number" then
-            effectsSection:set(BONUS_PER_STACK_KEY, DEFAULT_BONUS_PER_STACK)
-        end
-        if type(effectsSection:get(MAX_STACKS_KEY)) ~= "number" then
-            effectsSection:set(MAX_STACKS_KEY, DEFAULT_MAX_STACKS)
-        end
-        if type(effectsSection:get(SHARED_DECAY_SECONDS_KEY)) ~= "number" then
-            effectsSection:set(SHARED_DECAY_SECONDS_KEY, DEFAULT_DECAY_SECONDS)
-        end
+        shouldBackfillConfig = true
         print("[SkillPerkSystem_BasePack][TumblerSense] recovered enabled state from owned perk/effect flags")
+    end
+
+    local savedBonus = tonumber(effectsSection:get(BONUS_PER_STACK_KEY))
+    if shouldBackfillConfig or type(savedBonus) ~= "number" or savedBonus ~= DEFAULT_BONUS_PER_STACK then
+        effectsSection:set(BONUS_PER_STACK_KEY, DEFAULT_BONUS_PER_STACK)
+    end
+
+    if shouldBackfillConfig or type(tonumber(effectsSection:get(MAX_STACKS_KEY))) ~= "number" then
+        effectsSection:set(MAX_STACKS_KEY, DEFAULT_MAX_STACKS)
+    end
+
+    if shouldBackfillConfig or type(tonumber(effectsSection:get(SHARED_DECAY_SECONDS_KEY))) ~= "number" then
+        effectsSection:set(SHARED_DECAY_SECONDS_KEY, DEFAULT_DECAY_SECONDS)
     end
 
     if effectsSection:get(ENABLED_KEY) ~= true then

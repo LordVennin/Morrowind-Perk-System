@@ -1,4 +1,4 @@
-local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -10,6 +10,8 @@ local DEFAULT_NO_CONSUME_CHANCE = 0.15
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_SteadyHands_Toggle"
 local TOOL_DRAIN_EVENT = "SkillPerkSystem_BasePack_SteadyHands_ToolDrain"
 local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local STEADY_HANDS_PERK_ID = "security_steady_hands"
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
@@ -37,7 +39,24 @@ local function clampChance(value)
 end
 
 local function steadyHandsEnabled()
-    return effectsSection:get(ENABLED_KEY) == true
+    if effectsSection:get(ENABLED_KEY) ~= true then
+        return false
+    end
+
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(STEADY_HANDS_PERK_ID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(STEADY_HANDS_PERK_ID) then
+        return false
+    end
+
+    return true
 end
 
 local function steadyHandsNoConsumeChance()
@@ -322,6 +341,8 @@ local function logToolState(prefix, state)
     ))
 end
 
+local handleModifyToolConditionEvent
+
 local function applyToolConditionRefund(toolState, refundCount)
     if toolState == nil or toolState.item == nil then
         return false
@@ -342,13 +363,97 @@ local function applyToolConditionRefund(toolState, refundCount)
         return false
     end
 
-    core.sendGlobalEvent(MODIFY_SECURITY_TOOL_CONDITION_EVENT, {
+    return handleModifyToolConditionEvent({
         actor = pself,
         slot = toolState.slot,
         item = toolState.item,
         amount = refundCount,
     })
-    return true
+end
+
+local function resolveToolFromEventData(data)
+    if type(data) ~= "table" then
+        return nil, nil
+    end
+
+    local tool = data.item
+    if tool ~= nil then
+        return tool, data.slot
+    end
+
+    local slot = data.slot
+    if slot == nil then
+        return nil, nil
+    end
+
+    local ok, equipped = pcall(types.Actor.getEquipment, pself, slot)
+    if not ok then
+        return nil, slot
+    end
+    return equipped, slot
+end
+
+handleModifyToolConditionEvent = function(data)
+    if type(data) ~= "table" then
+        return false
+    end
+
+    local amount = tonumber(data.amount) or 0
+    if amount == 0 then
+        return false
+    end
+
+    local tool, slot = resolveToolFromEventData(data)
+    if tool == nil then
+        return false
+    end
+
+    local toolType = classifyTool(tool)
+    if toolType == nil then
+        return false
+    end
+
+    local dataView = itemData(tool)
+    if dataView == nil then
+        return false
+    end
+
+    local currentCondition = itemCondition(tool)
+    if type(currentCondition) ~= "number" then
+        return false
+    end
+
+    local maxCondition = normalizeCondition(toolMaxCondition(tool))
+    if maxCondition ~= nil and currentCondition >= maxCondition and amount > 0 then
+        return false
+    end
+
+    local newCondition = currentCondition + amount
+    if maxCondition ~= nil and newCondition > maxCondition then
+        newCondition = maxCondition
+    end
+
+    if newCondition <= 0 then
+        local okRemove = pcall(function()
+            tool:remove()
+        end)
+        return okRemove
+    end
+
+    local okWrite = pcall(function()
+        dataView.condition = newCondition
+    end)
+    if not okWrite then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] refund write failed slot=%s type=%s amount=%s current=%s target=%s",
+            slotLabel(slot, data.slotName),
+            tostring(toolType),
+            tostring(amount),
+            tostring(currentCondition),
+            tostring(newCondition)
+        ))
+    end
+    return okWrite
 end
 
 local function rollAndRefund(toolState, contextLabel, attempts)
@@ -632,5 +737,6 @@ return {
     eventHandlers = {
         [TOGGLE_EVENT] = handleSteadyHandsToggle,
         [TOOL_DRAIN_EVENT] = handleToolDrainEvent,
+        [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = handleModifyToolConditionEvent,
     },
 }

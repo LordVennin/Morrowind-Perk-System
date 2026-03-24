@@ -26,6 +26,22 @@ local REFRESH_CHANCE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_RefreshChanc
 local RUNTIME_INTERFACE_NAME = "SkillPerkSystem_BasePack_TumblerSenseRuntime"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
+local DEFAULT_FAILURE_SOURCE = "unknown"
+
+local FAILURE_SOURCE_ALIASES = {
+    pin_skill_roll = "pin_skill_roll",
+    pin_roll = "pin_skill_roll",
+    auto_attempt_skill_roll = "auto_attempt_skill_roll",
+    auto_attempt_roll = "auto_attempt_skill_roll",
+    drain_lockpick_event = "drain_lockpick_event",
+    drain_lockpick = "drain_lockpick_event",
+}
+
+local ACCEPTED_FAILURE_SOURCES = {
+    pin_skill_roll = true,
+    auto_attempt_skill_roll = true,
+    drain_lockpick_event = true,
+}
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 print("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
@@ -226,21 +242,40 @@ local function handleToggle(data)
 end
 
 local function handleFailure(data)
-    local source = type(data) == "table" and data.source or "unknown"
-    if source ~= "pin_skill_roll" and source ~= "auto_attempt_skill_roll" and source ~= "drain_lockpick_event" then
+    if type(data) ~= "table" then
+        print("[SkillPerkSystem_BasePack][TumblerSense] failure ignored reason=invalid-payload normalizedSource=unknown accepted=false")
+        return
+    end
+
+    local rawSource = type(data.source) == "string" and data.source or DEFAULT_FAILURE_SOURCE
+    local normalizedSource = FAILURE_SOURCE_ALIASES[rawSource] or rawSource
+    local sourceAccepted = ACCEPTED_FAILURE_SOURCES[normalizedSource] == true
+
+    print(string.format(
+        "[SkillPerkSystem_BasePack][TumblerSense] failure source debug raw=%s normalized=%s accepted=%s",
+        tostring(rawSource),
+        tostring(normalizedSource),
+        tostring(sourceAccepted)
+    ))
+
+    if not sourceAccepted then
         print(string.format(
-            "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s mode=%s",
-            tostring(source),
-            tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown")
+            "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s normalizedSource=%s mode=%s accepted=%s",
+            tostring(rawSource),
+            tostring(normalizedSource),
+            tostring(data.probe == true and "probe" or "lockpick"),
+            tostring(sourceAccepted)
         ))
         return
     end
 
     if not tumblerSenseEnabled() then
         print(string.format(
-            "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s mode=%s reason=perk-disabled-or-missing",
-            tostring(source),
-            tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown")
+            "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s normalizedSource=%s mode=%s accepted=%s reason=perk-disabled-or-missing",
+            tostring(rawSource),
+            tostring(normalizedSource),
+            tostring(data.probe == true and "probe" or "lockpick"),
+            tostring(sourceAccepted)
         ))
         return
     end
@@ -255,16 +290,20 @@ local function handleFailure(data)
 
     local _, bonus = currentBonus()
     print(string.format(
-        "[SkillPerkSystem_BasePack][TumblerSense] stack gain source=%s mode=%s stacks=%d->%d bonus=%.2f",
-        tostring(source),
-        tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown"),
+        "[SkillPerkSystem_BasePack][TumblerSense] stack gain source=%s normalizedSource=%s mode=%s accepted=%s stacks=%d->%d bonus=%.2f",
+        tostring(rawSource),
+        tostring(normalizedSource),
+        tostring(data.probe == true and "probe" or "lockpick"),
+        tostring(sourceAccepted),
         previousStacks,
         nextStacks,
         bonus
     ))
     print(string.format(
-        "[SkillPerkSystem_BasePack][TumblerSense] timer refresh source=%s expiry=%.2f now=%.2f",
-        tostring(source),
+        "[SkillPerkSystem_BasePack][TumblerSense] timer refresh source=%s normalizedSource=%s accepted=%s expiry=%.2f now=%.2f",
+        tostring(rawSource),
+        tostring(normalizedSource),
+        tostring(sourceAccepted),
         expiry,
         nowTimestamp()
     ))

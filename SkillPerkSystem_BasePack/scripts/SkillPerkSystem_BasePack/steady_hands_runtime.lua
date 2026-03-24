@@ -1,4 +1,5 @@
 local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -10,8 +11,10 @@ local DEFAULT_NO_CONSUME_CHANCE = 0.15
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_SteadyHands_Toggle"
 local TOOL_DRAIN_EVENT = "SkillPerkSystem_BasePack_SteadyHands_ToolDrain"
 local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local STEADY_HANDS_PERK_ID = "security_steady_hands"
 
-local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
+local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 
 local trackedToolState = nil
 local conditionDebugFramesRemaining = 1
@@ -37,7 +40,24 @@ local function clampChance(value)
 end
 
 local function steadyHandsEnabled()
-    return effectsSection:get(ENABLED_KEY) == true
+    if effectsSection:get(ENABLED_KEY) ~= true then
+        return false
+    end
+
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(STEADY_HANDS_PERK_ID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(STEADY_HANDS_PERK_ID) then
+        return false
+    end
+
+    return true
 end
 
 local function steadyHandsNoConsumeChance()
@@ -343,9 +363,8 @@ local function applyToolConditionRefund(toolState, refundCount)
     end
 
     core.sendGlobalEvent(MODIFY_SECURITY_TOOL_CONDITION_EVENT, {
-        actor = pself,
+        player = pself,
         slot = toolState.slot,
-        item = toolState.item,
         amount = refundCount,
     })
     return true

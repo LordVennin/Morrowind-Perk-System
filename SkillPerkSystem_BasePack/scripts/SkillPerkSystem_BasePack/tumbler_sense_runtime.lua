@@ -13,7 +13,6 @@ local INITIAL_STACKS_KEY = "security.tumbler_sense.initial_stacks"
 local SHARED_DECAY_SECONDS_KEY = "security.tumbler_sense.shared_decay_seconds"
 local EXPIRY_TIMESTAMP_KEY = "security.tumbler_sense.expiry_timestamp"
 local ACTIVE_BONUS_KEY = "security.tumbler_sense.active_bonus"
-local APPLIED_SKILL_BONUS_KEY = "security.tumbler_sense.applied_skill_bonus"
 
 local DEFAULT_BONUS_PER_STACK = 0.01
 local DEFAULT_MAX_STACKS = 5
@@ -49,6 +48,7 @@ local ACCEPTED_FAILURE_SOURCES = {
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 print("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
 local trackedToolState = nil
+local appliedSkillBonus = 0
 
 local EQUIPMENT_SLOT = (types.Actor ~= nil and types.Actor.EQUIPMENT_SLOT) or {}
 local TRACKED_SLOTS = {
@@ -254,7 +254,7 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local currentApplied = clamp(tonumber(effectsSection:get(APPLIED_SKILL_BONUS_KEY)) or 0, 0, getMaxStacks())
+    local currentApplied = clamp(appliedSkillBonus, 0, getMaxStacks())
     local desiredApplied = clamp(math.floor(tonumber(targetBonus) or 0), 0, getMaxStacks())
     if currentApplied == desiredApplied then
         return
@@ -267,7 +267,7 @@ local function applySecuritySkillBonus(targetBonus)
 
     local newBase = math.max(0, math.floor(stat.base - currentApplied + desiredApplied))
     stat.base = newBase
-    effectsSection:set(APPLIED_SKILL_BONUS_KEY, desiredApplied)
+    appliedSkillBonus = desiredApplied
 
     print(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] security base adjusted appliedBonus=%d->%d resultingBase=%d",
@@ -349,6 +349,7 @@ local function handleToggle(data)
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
     if enabled then
+        appliedSkillBonus = 0
         local initialStacks = clamp(
             tonumber(effectsSection:get(INITIAL_STACKS_KEY)) or DEFAULT_INITIAL_STACKS,
             0,
@@ -488,6 +489,11 @@ end
 
 local function onUpdate()
     clearExpiredStacks("onUpdate")
+
+    if not tumblerSenseEnabled() then
+        trackedToolState = nil
+        return
+    end
 
     local previousState = trackedToolState
     local currentState = withLastComparableCondition(previousState, findEquippedSecurityTool())

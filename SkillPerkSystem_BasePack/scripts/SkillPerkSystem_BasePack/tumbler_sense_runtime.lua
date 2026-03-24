@@ -1,6 +1,8 @@
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
 local storage = require("openmw.storage")
+local types = require("openmw.types")
 
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
 local ENABLED_KEY = "security.tumbler_sense.enabled"
@@ -22,6 +24,10 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local trackedToolCondition = nil
+local trackedToolRef = nil
+
+local EQUIPMENT_SLOT = types.Actor.EQUIPMENT_SLOT or {}
 
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
@@ -51,20 +57,40 @@ local function nowTimestamp()
 end
 
 local function tumblerSenseEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) then
+    local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) or false
+    if not hasPerk then
         return false
     end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID) then
+    local effectEnabled = type(playerApi.isPerkEffectEnabled) ~= "function"
+        or playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID)
+    if not effectEnabled then
+        return false
+    end
+
+    if effectsSection:get(ENABLED_KEY) ~= true then
+        -- Fallback for load-order/event timing issues: if the perk is owned and
+        -- its effect is enabled, keep runtime state active even when the toggle
+        -- event was not observed yet.
+        effectsSection:set(ENABLED_KEY, true)
+        if type(effectsSection:get(BONUS_PER_STACK_KEY)) ~= "number" then
+            effectsSection:set(BONUS_PER_STACK_KEY, DEFAULT_BONUS_PER_STACK)
+        end
+        if type(effectsSection:get(MAX_STACKS_KEY)) ~= "number" then
+            effectsSection:set(MAX_STACKS_KEY, DEFAULT_MAX_STACKS)
+        end
+        if type(effectsSection:get(SHARED_DECAY_SECONDS_KEY)) ~= "number" then
+            effectsSection:set(SHARED_DECAY_SECONDS_KEY, DEFAULT_DECAY_SECONDS)
+        end
+        print("[SkillPerkSystem_BasePack][TumblerSense] recovered enabled state from owned perk/effect flags")
+    end
+
+    if effectsSection:get(ENABLED_KEY) ~= true then
         return false
     end
 
@@ -206,6 +232,54 @@ end
 
 local function onUpdate()
     clearExpiredStacks("onUpdate")
+
+    local equipped = nil
+    if EQUIPMENT_SLOT.CarriedRight ~= nil then
+        local ok, item = pcall(types.Actor.getEquipment, pself, EQUIPMENT_SLOT.CarriedRight)
+        if ok then
+            equipped = item
+        end
+    end
+
+    local isLockpick = equipped ~= nil and types.Lockpick.objectIsInstance(equipped)
+    local currentCondition = nil
+    if isLockpick then
+        local okData, data = pcall(types.Item.itemData, equipped)
+        if okData and data ~= nil then
+            local okCond, condition = pcall(function()
+                return data.condition
+            end)
+            if okCond and type(condition) == "number" then
+                currentCondition = condition
+            end
+        end
+    end
+
+    if equipped == nil or not isLockpick or type(currentCondition) ~= "number" then
+        trackedToolRef = nil
+        trackedToolCondition = nil
+        return
+    end
+
+    if trackedToolRef ~= equipped then
+        trackedToolRef = equipped
+        trackedToolCondition = currentCondition
+        return
+    end
+
+    local previous = trackedToolCondition
+    trackedToolCondition = currentCondition
+    if type(previous) ~= "number" then
+        return
+    end
+
+    if currentCondition < previous then
+        -- Fallback integration path: for vanilla lockpicking we don't get an
+        -- explicit failed-attempt event, so treat lockpick condition drain as
+        -- an attempt signal to keep Tumbler Sense functional.
+        handleFailure({ source = "onUpdate-fallback", probe = false })
+        handleRefreshChance({ source = "onUpdate-fallback", probe = false })
+    end
 end
 
 return {

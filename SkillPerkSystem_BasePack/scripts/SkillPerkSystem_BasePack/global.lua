@@ -1,7 +1,154 @@
 local steadyHandsEffect = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect")
+local types = require("openmw.types")
+
+local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
+
+local function classifySecurityTool(item)
+    if item == nil then
+        return nil
+    end
+    if types.Lockpick.objectIsInstance(item) then
+        return "Lockpick"
+    end
+    if types.Probe.objectIsInstance(item) then
+        return "Probe"
+    end
+    return nil
+end
+
+local function normalizeNumber(value)
+    if type(value) == "number" then
+        return value
+    end
+    return nil
+end
+
+local function readItemData(item)
+    if item == nil then
+        return nil
+    end
+    if type(item.type) == "table" and type(item.type.itemData) == "function" then
+        local ok, data = pcall(item.type.itemData, item)
+        if ok and data ~= nil then
+            return data
+        end
+    end
+    if types.Item ~= nil and type(types.Item.itemData) == "function" then
+        local ok, data = pcall(types.Item.itemData, item)
+        if ok and data ~= nil then
+            return data
+        end
+    end
+    return nil
+end
+
+local function readMaxCondition(item)
+    if item == nil then
+        return nil
+    end
+    local recordId = item.recordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    local records = nil
+    if types.Lockpick.objectIsInstance(item) then
+        records = types.Lockpick.records
+    elseif types.Probe.objectIsInstance(item) then
+        records = types.Probe.records
+    end
+    if type(records) ~= "table" then
+        return nil
+    end
+
+    local record = records[recordId]
+    if type(record) ~= "table" then
+        return nil
+    end
+    return normalizeNumber(record.maxCondition)
+end
+
+local function resolveToolAndActor(data)
+    if type(data) ~= "table" then
+        return nil, nil, nil
+    end
+
+    local actor = data.actor
+    local item = data.item
+    local slot = data.slot
+    if item ~= nil then
+        return actor, item, slot
+    end
+
+    if actor == nil or slot == nil then
+        return nil, nil, nil
+    end
+
+    local ok, equipped = pcall(types.Actor.getEquipment, actor, slot)
+    if not ok then
+        return actor, nil, slot
+    end
+    return actor, equipped, slot
+end
+
+local function writeToolCondition(data)
+    local actor, tool, slot = resolveToolAndActor(data)
+    if classifySecurityTool(tool) == nil then
+        return
+    end
+
+    local amount = normalizeNumber(data.amount) or 0
+    if amount == 0 then
+        return
+    end
+
+    local itemData = readItemData(tool)
+    if itemData == nil then
+        return
+    end
+
+    local currentCondition = nil
+    local okCurrent, currentValue = pcall(function()
+        return itemData.condition
+    end)
+    if okCurrent then
+        currentCondition = normalizeNumber(currentValue)
+    end
+
+    local maxCondition = readMaxCondition(tool)
+    if currentCondition == nil then
+        currentCondition = maxCondition
+    end
+    if currentCondition == nil then
+        return
+    end
+
+    local newCondition = currentCondition + amount
+    if maxCondition ~= nil and newCondition > maxCondition then
+        newCondition = maxCondition
+    end
+
+    if newCondition <= 0 then
+        local removed = pcall(function()
+            tool:remove()
+        end)
+        if removed then
+            return
+        end
+        newCondition = 0
+    end
+
+    pcall(function()
+        itemData.condition = newCondition
+    end)
+end
 
 if type(steadyHandsEffect) == "table" and type(steadyHandsEffect.registerRuntimeHooks) == "function" then
     steadyHandsEffect.registerRuntimeHooks()
 end
 
-return {}
+return {
+    eventHandlers = {
+        [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = writeToolCondition,
+    },
+}

@@ -342,6 +342,8 @@ local function logToolState(prefix, state)
     ))
 end
 
+local handleModifyToolConditionEvent
+
 local function applyToolConditionRefund(toolState, refundCount)
     if toolState == nil or toolState.item == nil then
         return false
@@ -367,7 +369,91 @@ local function applyToolConditionRefund(toolState, refundCount)
         slot = toolState.slot,
         amount = refundCount,
     })
-    return true
+end
+
+local function resolveToolFromEventData(data)
+    if type(data) ~= "table" then
+        return nil, nil
+    end
+
+    local tool = data.item
+    if tool ~= nil then
+        return tool, data.slot
+    end
+
+    local slot = data.slot
+    if slot == nil then
+        return nil, nil
+    end
+
+    local ok, equipped = pcall(types.Actor.getEquipment, pself, slot)
+    if not ok then
+        return nil, slot
+    end
+    return equipped, slot
+end
+
+handleModifyToolConditionEvent = function(data)
+    if type(data) ~= "table" then
+        return false
+    end
+
+    local amount = tonumber(data.amount) or 0
+    if amount == 0 then
+        return false
+    end
+
+    local tool, slot = resolveToolFromEventData(data)
+    if tool == nil then
+        return false
+    end
+
+    local toolType = classifyTool(tool)
+    if toolType == nil then
+        return false
+    end
+
+    local dataView = itemData(tool)
+    if dataView == nil then
+        return false
+    end
+
+    local currentCondition = itemCondition(tool)
+    if type(currentCondition) ~= "number" then
+        return false
+    end
+
+    local maxCondition = normalizeCondition(toolMaxCondition(tool))
+    if maxCondition ~= nil and currentCondition >= maxCondition and amount > 0 then
+        return false
+    end
+
+    local newCondition = currentCondition + amount
+    if maxCondition ~= nil and newCondition > maxCondition then
+        newCondition = maxCondition
+    end
+
+    if newCondition <= 0 then
+        local okRemove = pcall(function()
+            tool:remove()
+        end)
+        return okRemove
+    end
+
+    local okWrite = pcall(function()
+        dataView.condition = newCondition
+    end)
+    if not okWrite then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][SteadyHands] refund write failed slot=%s type=%s amount=%s current=%s target=%s",
+            slotLabel(slot, data.slotName),
+            tostring(toolType),
+            tostring(amount),
+            tostring(currentCondition),
+            tostring(newCondition)
+        ))
+    end
+    return okWrite
 end
 
 local function rollAndRefund(toolState, contextLabel, attempts)
@@ -651,5 +737,6 @@ return {
     eventHandlers = {
         [TOGGLE_EVENT] = handleSteadyHandsToggle,
         [TOOL_DRAIN_EVENT] = handleToolDrainEvent,
+        [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = handleModifyToolConditionEvent,
     },
 }

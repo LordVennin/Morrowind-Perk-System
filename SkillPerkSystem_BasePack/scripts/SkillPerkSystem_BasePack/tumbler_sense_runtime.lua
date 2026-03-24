@@ -51,20 +51,40 @@ local function nowTimestamp()
 end
 
 local function tumblerSenseEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) then
+    local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) or false
+    if not hasPerk then
         return false
     end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID) then
+    local effectEnabled = type(playerApi.isPerkEffectEnabled) ~= "function"
+        or playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID)
+    if not effectEnabled then
+        return false
+    end
+
+    if effectsSection:get(ENABLED_KEY) ~= true then
+        -- Fallback for load-order/event timing issues: if the perk is owned and
+        -- its effect is enabled, keep runtime state active even when the toggle
+        -- event was not observed yet.
+        effectsSection:set(ENABLED_KEY, true)
+        if type(effectsSection:get(BONUS_PER_STACK_KEY)) ~= "number" then
+            effectsSection:set(BONUS_PER_STACK_KEY, DEFAULT_BONUS_PER_STACK)
+        end
+        if type(effectsSection:get(MAX_STACKS_KEY)) ~= "number" then
+            effectsSection:set(MAX_STACKS_KEY, DEFAULT_MAX_STACKS)
+        end
+        if type(effectsSection:get(SHARED_DECAY_SECONDS_KEY)) ~= "number" then
+            effectsSection:set(SHARED_DECAY_SECONDS_KEY, DEFAULT_DECAY_SECONDS)
+        end
+        print("[SkillPerkSystem_BasePack][TumblerSense] recovered enabled state from owned perk/effect flags")
+    end
+
+    if effectsSection:get(ENABLED_KEY) ~= true then
         return false
     end
 

@@ -364,8 +364,8 @@ local function applyToolConditionRefund(toolState, refundCount)
         return false
     end
 
-    return handleModifyToolConditionEvent({
-        actor = pself,
+    core.sendGlobalEvent(MODIFY_SECURITY_TOOL_CONDITION_EVENT, {
+        player = pself,
         slot = toolState.slot,
         amount = refundCount,
     })

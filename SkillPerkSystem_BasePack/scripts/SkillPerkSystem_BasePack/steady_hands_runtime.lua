@@ -1,3 +1,4 @@
+local core = require("openmw.core")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -8,6 +9,7 @@ local NO_CONSUME_CHANCE_KEY = "security.steady_hands.no_consume_chance"
 local DEFAULT_NO_CONSUME_CHANCE = 0.15
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_SteadyHands_Toggle"
 local TOOL_DRAIN_EVENT = "SkillPerkSystem_BasePack_SteadyHands_ToolDrain"
+local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
@@ -329,10 +331,10 @@ local function applyToolConditionRefund(toolState, refundCount)
         return false
     end
 
-    local data = itemData(toolState.item)
-    if data == nil then
+    local toolType = classifyTool(toolState.item)
+    if toolType == nil then
         print(string.format(
-            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (no mutable itemData) slot=%s type=%s amount=%d",
+            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (tool no longer lockpick/probe) slot=%s type=%s amount=%d",
             slotLabel(toolState.slot, toolState.slotName),
             tostring(toolState.toolType),
             refundCount
@@ -340,41 +342,12 @@ local function applyToolConditionRefund(toolState, refundCount)
         return false
     end
 
-    local currentCondition = normalizeCondition(itemDataCondition(toolState.item))
-    if currentCondition == nil then
-        currentCondition = normalizeCondition(toolState.condition)
-    end
-
-    if currentCondition == nil then
-        print(string.format(
-            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (unknown condition) slot=%s type=%s amount=%d",
-            slotLabel(toolState.slot, toolState.slotName),
-            tostring(toolState.toolType),
-            refundCount
-        ))
-        return false
-    end
-
-    local newCondition = currentCondition + refundCount
-    local maxCondition = normalizeCondition(toolMaxCondition(toolState.item))
-    if maxCondition ~= nil and newCondition > maxCondition then
-        newCondition = maxCondition
-    end
-
-    local wrote = pcall(function()
-        data.condition = newCondition
-    end)
-
-    if not wrote then
-        print(string.format(
-            "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (itemData.condition write failed) slot=%s type=%s amount=%d",
-            slotLabel(toolState.slot, toolState.slotName),
-            tostring(toolState.toolType),
-            refundCount
-        ))
-        return false
-    end
-
+    core.sendGlobalEvent(MODIFY_SECURITY_TOOL_CONDITION_EVENT, {
+        actor = pself,
+        slot = toolState.slot,
+        item = toolState.item,
+        amount = refundCount,
+    })
     return true
 end
 

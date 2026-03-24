@@ -1,3 +1,4 @@
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
@@ -13,7 +14,7 @@ local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySec
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local STEADY_HANDS_PERK_ID = "security_steady_hands"
 
-local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
+local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 
 local trackedToolState = nil
 local conditionDebugFramesRemaining = 1

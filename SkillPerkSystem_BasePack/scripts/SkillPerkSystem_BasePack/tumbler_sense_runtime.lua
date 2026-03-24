@@ -18,6 +18,7 @@ local DEFAULT_DECAY_SECONDS = 10
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Toggle"
 local FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local REFRESH_CHANCE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_RefreshChance"
+local RUNTIME_INTERFACE_NAME = "SkillPerkSystem_BasePack_TumblerSenseRuntime"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TUMBLER_SENSE_PERK_ID = "security_tumbler_sense"
 
@@ -132,6 +133,22 @@ local function currentBonus()
     return stackCount, bonus
 end
 
+local function getActiveBonusFraction()
+    clearExpiredStacks("runtime-get-active-bonus")
+
+    if not tumblerSenseEnabled() then
+        effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
+        return 0.0
+    end
+
+    local _, bonus = currentBonus()
+    return bonus
+end
+
+local function getActiveBonusPercentPoints()
+    return getActiveBonusFraction() * 100
+end
+
 local function handleToggle(data)
     if type(data) ~= "table" then
         return
@@ -157,6 +174,16 @@ local function handleToggle(data)
 end
 
 local function handleFailure(data)
+    local source = type(data) == "table" and data.source or "unknown"
+    if source ~= "pin_skill_roll" and source ~= "auto_attempt_skill_roll" then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s mode=%s",
+            tostring(source),
+            tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown")
+        ))
+        return
+    end
+
     if not tumblerSenseEnabled() then
         return
     end
@@ -172,7 +199,7 @@ local function handleFailure(data)
     local _, bonus = currentBonus()
     print(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] stack gain source=%s mode=%s stacks=%d->%d bonus=%.2f",
-        tostring(type(data) == "table" and data.source or "unknown"),
+        tostring(source),
         tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown"),
         previousStacks,
         nextStacks,
@@ -180,7 +207,7 @@ local function handleFailure(data)
     ))
     print(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] timer refresh source=%s expiry=%.2f now=%.2f",
-        tostring(type(data) == "table" and data.source or "unknown"),
+        tostring(source),
         expiry,
         nowTimestamp()
     ))
@@ -195,6 +222,15 @@ local function handleRefreshChance(data)
     end
 
     local stackCount, bonus = currentBonus()
+    local baseChance = type(data) == "table" and tonumber(data.baseChance) or nil
+    local chanceMax = type(data) == "table" and tonumber(data.chanceMax) or 100
+    local chanceMin = type(data) == "table" and tonumber(data.chanceMin) or 0
+    local bonusPctPoints = bonus * 100
+    local finalChance = nil
+    if type(baseChance) == "number" then
+        finalChance = clamp(baseChance + bonusPctPoints, chanceMin, chanceMax)
+    end
+
     print(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] chance bonus applied source=%s mode=%s stacks=%d bonus=%.2f",
         tostring(type(data) == "table" and data.source or "unknown"),
@@ -202,6 +238,22 @@ local function handleRefreshChance(data)
         stackCount,
         bonus
     ))
+    if type(baseChance) == "number" then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][TumblerSense] chance debug source=%s base=%.2f perkBonus=%.2f final=%.2f bounds=%.2f..%.2f",
+            tostring(type(data) == "table" and data.source or "unknown"),
+            baseChance,
+            bonusPctPoints,
+            finalChance,
+            chanceMin,
+            chanceMax
+        ))
+    end
+end
+
+local function requestRefreshChance(data)
+    handleRefreshChance(data)
+    return getActiveBonusPercentPoints()
 end
 
 local function onUpdate()
@@ -209,6 +261,12 @@ local function onUpdate()
 end
 
 return {
+    interfaceName = RUNTIME_INTERFACE_NAME,
+    interface = {
+        requestRefreshChance = requestRefreshChance,
+        getActiveBonusFraction = getActiveBonusFraction,
+        getActiveBonusPercentPoints = getActiveBonusPercentPoints,
+    },
     engineHandlers = {
         onUpdate = onUpdate,
     },

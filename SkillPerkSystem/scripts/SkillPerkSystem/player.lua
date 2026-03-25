@@ -704,6 +704,19 @@ local function onInit()
 end
 
 local function onLoad(data)
+    local hasEarnedMilestonesBySkill = data ~= nil and data.earnedMilestonesBySkill ~= nil
+    local hasSpentPointsBySkill = data ~= nil and data.spentPointsBySkill ~= nil
+    local hasActivePerks = data ~= nil and data.activePerks ~= nil
+    local hasPointsLedger = data ~= nil and data.pointsLedger ~= nil
+    print(string.format(
+        "[%s] onLoad data keys present: earnedMilestonesBySkill=%s spentPointsBySkill=%s activePerks=%s pointsLedger=%s",
+        MOD_NAME,
+        tostring(hasEarnedMilestonesBySkill),
+        tostring(hasSpentPointsBySkill),
+        tostring(hasActivePerks),
+        tostring(hasPointsLedger)
+    ))
+
     earnedMilestonesBySkill = (data and data.earnedMilestonesBySkill) or {}
     spentPointsBySkill = (data and data.spentPointsBySkill) or {}
     activePerks = (data and data.activePerks) or {}
@@ -721,21 +734,29 @@ local function onLoad(data)
         for _, amount in pairs(spentPointsBySkill) do
             migratedSpent = migratedSpent + (tonumber(amount) or 0)
         end
+        local migratedBalance = math.max(0, migratedEarned - migratedSpent)
         pointsLedger.importState({
-            balance = math.max(0, migratedEarned - migratedSpent),
+            balance = migratedBalance,
             totalAdded = migratedEarned,
             totalSpent = migratedSpent,
             history = {
                 {
                     id = 1,
                     type = "migration",
-                    amount = math.max(0, migratedEarned - migratedSpent),
+                    amount = migratedBalance,
                     reason = "Migrated legacy per-skill points to global ledger",
                     sourceId = "migration",
                 },
             },
             nextEntryID = 2,
         })
+        print(string.format(
+            "[%s][warn] pointsLedger missing in save; using migration fallback (migratedEarned=%d, migratedSpent=%d, balance=%d)",
+            MOD_NAME,
+            migratedEarned,
+            migratedSpent,
+            migratedBalance
+        ))
     end
 
     pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
@@ -746,6 +767,14 @@ local function onLoad(data)
         for _, _ in pairs(perks) do
             registryCount = registryCount + 1
         end
+    end
+
+    if registryCount > 0 and (not hasActivePerks or #activePerks == 0) then
+        print(string.format(
+            "[%s][warn] Save has missing/empty activePerks while perk registry contains entries (%d); this may indicate save incompatibility or version mismatch",
+            MOD_NAME,
+            registryCount
+        ))
     end
 
     if registryCount == 0 then

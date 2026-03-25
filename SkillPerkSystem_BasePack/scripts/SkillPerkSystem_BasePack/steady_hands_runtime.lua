@@ -22,6 +22,7 @@ end
 local trackedToolState = nil
 local conditionDebugFramesRemaining = 1
 local conditionSourceDebugFramesRemaining = 60
+local slotLabel
 -- Fallback condition tracking can miss intermediate onUpdate frames. When that
 -- happens we treat each lost condition point as one consumed-use attempt, but
 -- cap rolls per update to avoid runaway refunds after large desyncs.
@@ -317,7 +318,7 @@ local function sameItem(a, b)
     return a.item == b.item and a.slot == b.slot
 end
 
-local function slotLabel(slot, slotName)
+slotLabel = function(slot, slotName)
     if type(slotName) == "string" and slotName ~= "" then
         return slotName
     end

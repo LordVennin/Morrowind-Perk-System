@@ -15,6 +15,9 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local STEADY_HANDS_PERK_ID = "security_steady_hands"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local function log(...)
+end
+
 
 local trackedToolState = nil
 local conditionDebugFramesRemaining = 1
@@ -273,7 +276,7 @@ local function logConditionDebugForFrame(iteratedState)
         label = "CarriedRight",
     })
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands][debug] frame compare iteratedCondition=%s iteratedSlot=%s explicitCarriedRightCondition=%s",
         tostring(iteratedState ~= nil and iteratedState.condition or nil),
         tostring(iteratedState ~= nil and slotLabel(iteratedState.slot, iteratedState.slotName) or nil),
@@ -282,7 +285,7 @@ local function logConditionDebugForFrame(iteratedState)
 
     conditionDebugFramesRemaining = conditionDebugFramesRemaining - 1
     if conditionDebugFramesRemaining == 0 then
-        print("[SkillPerkSystem_BasePack][SteadyHands][debug] condition comparison diagnostics complete; disabling debug output")
+        log("[SkillPerkSystem_BasePack][SteadyHands][debug] condition comparison diagnostics complete; disabling debug output")
     end
 end
 
@@ -292,7 +295,7 @@ local function logConditionSourceDebugForFrame(iteratedState)
     end
 
     local debugInfo = iteratedState ~= nil and iteratedState.conditionDebug or nil
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands][debug] condition source rawCondition=%s maxConditionFallback=%s effectiveCondition=%s recordId=%s toolType=%s",
         tostring(debugInfo ~= nil and debugInfo.rawCondition or nil),
         tostring(debugInfo ~= nil and debugInfo.maxConditionFallback or nil),
@@ -303,7 +306,7 @@ local function logConditionSourceDebugForFrame(iteratedState)
 
     conditionSourceDebugFramesRemaining = conditionSourceDebugFramesRemaining - 1
     if conditionSourceDebugFramesRemaining == 0 then
-        print("[SkillPerkSystem_BasePack][SteadyHands][debug] condition source diagnostics complete; disabling debug output")
+        log("[SkillPerkSystem_BasePack][SteadyHands][debug] condition source diagnostics complete; disabling debug output")
     end
 end
 
@@ -329,11 +332,11 @@ end
 
 local function logToolState(prefix, state)
     if state == nil then
-        print("[SkillPerkSystem_BasePack][SteadyHands] " .. prefix .. " no equipped lockpick/probe detected")
+        log("[SkillPerkSystem_BasePack][SteadyHands] " .. prefix .. " no equipped lockpick/probe detected")
         return
     end
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] %s slot=%s type=%s condition=%s",
         prefix,
         slotLabel(state.slot, state.slotName),
@@ -355,7 +358,7 @@ local function applyToolConditionRefund(toolState, refundCount)
 
     local toolType = classifyTool(toolState.item)
     if toolType == nil then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] refund skipped (tool no longer lockpick/probe) slot=%s type=%s amount=%d",
             slotLabel(toolState.slot, toolState.slotName),
             tostring(toolState.toolType),
@@ -444,7 +447,7 @@ handleModifyToolConditionEvent = function(data)
         dataView.condition = newCondition
     end)
     if not okWrite then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] refund write failed slot=%s type=%s amount=%s current=%s target=%s",
             slotLabel(slot, data.slotName),
             tostring(toolType),
@@ -467,7 +470,7 @@ local function rollAndRefund(toolState, contextLabel, attempts)
     end
 
     if not steadyHandsEnabled() then
-        print(string.format("[SkillPerkSystem_BasePack][SteadyHands] perk disabled; skipping refund roll (%s)", tostring(contextLabel)))
+        log(string.format("[SkillPerkSystem_BasePack][SteadyHands] perk disabled; skipping refund roll (%s)", tostring(contextLabel)))
         return
     end
 
@@ -484,7 +487,7 @@ local function rollAndRefund(toolState, contextLabel, attempts)
         end
     end
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] refund roll source=%s slot=%s type=%s attempts=%d chance=%.2f refunded=%d",
         tostring(contextLabel),
         slotLabel(toolState.slot, toolState.slotName),
@@ -501,7 +504,7 @@ local function rollAndRefund(toolState, contextLabel, attempts)
     local applied = applyToolConditionRefund(toolState, refundCount)
 
     if applied then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] refund fired source=%s slot=%s type=%s amount=%d",
             tostring(contextLabel),
             slotLabel(toolState.slot, toolState.slotName),
@@ -511,7 +514,7 @@ local function rollAndRefund(toolState, contextLabel, attempts)
         return
     end
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] refund failed source=%s slot=%s type=%s amount=%d",
         tostring(contextLabel),
         slotLabel(toolState.slot, toolState.slotName),
@@ -539,7 +542,7 @@ local function handleToolDrainEvent(data)
         condition = itemCondition(item),
     }
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] tool drain event received slot=%s type=%s condition=%s",
         slotLabel(toolState.slot, toolState.slotName),
         tostring(toolType),
@@ -571,7 +574,7 @@ local function withLastComparableCondition(previousState, currentState)
 
     if previousState ~= nil and sameItem(previousState, currentState) and type(previousState.lastComparableCondition) == "number" then
         state.lastComparableCondition = previousState.lastComparableCondition
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] condition read nil; keeping previous comparable condition slot=%s type=%s previousCondition=%s",
             slotLabel(currentState.slot, currentState.slotName),
             tostring(currentState.toolType),
@@ -599,7 +602,7 @@ local function maybeRefundCondition(previousState, currentState)
         end
 
         if previousCondition <= 1 then
-            print(string.format(
+            log(string.format(
                 "[SkillPerkSystem_BasePack][SteadyHands] tool disappeared before compare; treating as break-consume event slot=%s type=%s previousCondition=%s",
                 slotLabel(previousState.slot, previousState.slotName),
                 tostring(previousState.toolType),
@@ -607,7 +610,7 @@ local function maybeRefundCondition(previousState, currentState)
             ))
             rollAndRefund(previousState, "onUpdate-disappeared-tool", 1)
         else
-            print(string.format(
+            log(string.format(
                 "[SkillPerkSystem_BasePack][SteadyHands] tool disappeared before compare; no break refund (previousCondition=%s > 1) slot=%s type=%s",
                 tostring(previousCondition),
                 slotLabel(previousState.slot, previousState.slotName),
@@ -625,7 +628,7 @@ local function maybeRefundCondition(previousState, currentState)
     local newCondition = currentState.condition
 
     if type(oldCondition) == "number" and type(newCondition) ~= "number" then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] condition transitioned number->nil slot=%s type=%s previousCondition=%s",
             slotLabel(currentState.slot, currentState.slotName),
             tostring(currentState.toolType),
@@ -635,7 +638,7 @@ local function maybeRefundCondition(previousState, currentState)
     end
 
     if type(oldCondition) ~= "number" and type(newCondition) == "number" then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] condition transitioned nil->number slot=%s type=%s condition=%s",
             slotLabel(currentState.slot, currentState.slotName),
             tostring(currentState.toolType),
@@ -652,7 +655,7 @@ local function maybeRefundCondition(previousState, currentState)
         return
     end
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][SteadyHands] tool use detected slot=%s type=%s conditionBefore=%d conditionAfter=%d",
         slotLabel(currentState.slot, currentState.slotName),
         tostring(currentState.toolType),
@@ -675,7 +678,7 @@ local function maybeRefundCondition(previousState, currentState)
     -- still bounding refunds if several updates were skipped.
     local rollAttempts = math.min(spentPoints, MAX_CONDITION_ROLLS_PER_UPDATE)
     if spentPoints > rollAttempts then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] multi-point drop detected source=onUpdate-fallback slot=%s type=%s delta=%d policy=per-point-with-cap cap=%d",
             slotLabel(currentState.slot, currentState.slotName),
             tostring(currentState.toolType),
@@ -683,7 +686,7 @@ local function maybeRefundCondition(previousState, currentState)
             MAX_CONDITION_ROLLS_PER_UPDATE
         ))
     elseif spentPoints > 1 then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][SteadyHands] multi-point drop detected source=onUpdate-fallback slot=%s type=%s delta=%d policy=per-point",
             slotLabel(currentState.slot, currentState.slotName),
             tostring(currentState.toolType),
@@ -727,7 +730,7 @@ local function handleSteadyHandsToggle(data)
         effectsSection:set(NO_CONSUME_CHANCE_KEY, 0.0)
     end
 
-    print(string.format("[SkillPerkSystem_BasePack] Steady Hands %s (chance=%.2f)", enabled and "enabled" or "disabled", effectsSection:get(NO_CONSUME_CHANCE_KEY) or 0.0))
+    log(string.format("[SkillPerkSystem_BasePack] Steady Hands %s (chance=%.2f)", enabled and "enabled" or "disabled", effectsSection:get(NO_CONSUME_CHANCE_KEY) or 0.0))
 end
 
 return {

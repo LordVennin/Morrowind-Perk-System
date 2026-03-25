@@ -46,7 +46,10 @@ local ACCEPTED_FAILURE_SOURCES = {
 }
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
-print("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
+local function log(...)
+end
+
+log("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
 local trackedToolState = nil
 local appliedSkillBonus = 0
 
@@ -269,7 +272,7 @@ local function applySecuritySkillBonus(targetBonus)
     stat.base = newBase
     appliedSkillBonus = desiredApplied
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] security base adjusted appliedBonus=%d->%d resultingBase=%d",
         currentApplied,
         desiredApplied,
@@ -287,7 +290,7 @@ local function clearStacks(reason)
     applySecuritySkillBonus(0)
 
     if stackCount > 0 then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][TumblerSense] stacks expired reason=%s previousStacks=%d expiry=%s",
             tostring(reason),
             stackCount,
@@ -366,7 +369,7 @@ local function handleToggle(data)
         clearStacks("disabled")
     end
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] %s (bonusPerStack=%.2f maxStacks=%d decaySeconds=%.2f)",
         enabled and "enabled" or "disabled",
         getBonusPerStack(),
@@ -377,7 +380,7 @@ end
 
 local function handleFailure(data)
     if type(data) ~= "table" then
-        print("[SkillPerkSystem_BasePack][TumblerSense] failure ignored reason=invalid-payload normalizedSource=unknown accepted=false")
+        log("[SkillPerkSystem_BasePack][TumblerSense] failure ignored reason=invalid-payload normalizedSource=unknown accepted=false")
         return
     end
 
@@ -385,7 +388,7 @@ local function handleFailure(data)
     local normalizedSource = FAILURE_SOURCE_ALIASES[rawSource] or rawSource
     local sourceAccepted = ACCEPTED_FAILURE_SOURCES[normalizedSource] == true
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] failure source debug raw=%s normalized=%s accepted=%s",
         tostring(rawSource),
         tostring(normalizedSource),
@@ -393,7 +396,7 @@ local function handleFailure(data)
     ))
 
     if not sourceAccepted then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s normalizedSource=%s mode=%s accepted=%s",
             tostring(rawSource),
             tostring(normalizedSource),
@@ -404,7 +407,7 @@ local function handleFailure(data)
     end
 
     if not tumblerSenseEnabled() then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][TumblerSense] failure ignored source=%s normalizedSource=%s mode=%s accepted=%s reason=perk-disabled-or-missing",
             tostring(rawSource),
             tostring(normalizedSource),
@@ -423,7 +426,7 @@ local function handleFailure(data)
     effectsSection:set(EXPIRY_TIMESTAMP_KEY, expiry)
 
     local _, bonus = currentBonus()
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] stack gain source=%s normalizedSource=%s mode=%s accepted=%s stacks=%d->%d bonus=%.2f",
         tostring(rawSource),
         tostring(normalizedSource),
@@ -433,7 +436,7 @@ local function handleFailure(data)
         nextStacks,
         bonus
     ))
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] timer refresh source=%s normalizedSource=%s accepted=%s expiry=%.2f now=%.2f",
         tostring(rawSource),
         tostring(normalizedSource),
@@ -447,7 +450,7 @@ local function handleRefreshChance(data)
     clearExpiredStacks("chance-refresh")
 
     if not tumblerSenseEnabled() then
-        print("[SkillPerkSystem_BasePack][TumblerSense] chance refresh skipped reason=perk-disabled-or-missing")
+        log("[SkillPerkSystem_BasePack][TumblerSense] chance refresh skipped reason=perk-disabled-or-missing")
         clearStacks("perk-disabled-or-missing")
         return
     end
@@ -462,7 +465,7 @@ local function handleRefreshChance(data)
         finalChance = clamp(baseChance + bonusPctPoints, chanceMin, chanceMax)
     end
 
-    print(string.format(
+    log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] chance bonus applied source=%s mode=%s stacks=%d bonus=%.2f",
         tostring(type(data) == "table" and data.source or "unknown"),
         tostring(type(data) == "table" and (data.probe == true and "probe" or "lockpick") or "unknown"),
@@ -470,7 +473,7 @@ local function handleRefreshChance(data)
         bonus
     ))
     if type(baseChance) == "number" then
-        print(string.format(
+        log(string.format(
             "[SkillPerkSystem_BasePack][TumblerSense] chance debug source=%s base=%.2f perkBonus=%.2f final=%.2f bounds=%.2f..%.2f",
             tostring(type(data) == "table" and data.source or "unknown"),
             baseChance,

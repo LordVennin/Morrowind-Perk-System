@@ -42,7 +42,7 @@ return {
             id = "security_quick_pick",
             tab = "Security",
             minimumSkill = 30,
-            effectId = "demo_noop",
+            effectId = "security_quick_pick_effect",
             requires = { "security_tumbler_sense" },
             cost = 1,
             x = 220,

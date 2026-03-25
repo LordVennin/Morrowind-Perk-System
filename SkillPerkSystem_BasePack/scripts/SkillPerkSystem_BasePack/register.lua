@@ -106,6 +106,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.quick_pick_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.quick_pick_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

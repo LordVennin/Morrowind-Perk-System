@@ -16,6 +16,7 @@ local activePerks = {}
 local effectEnabledByPerkId = {}
 local updateTimer = 0
 local pointSourcesInitialized = false
+local pendingReconcileAfterRegistry = false
 
 local function debugPrint(message)
     if not DEBUG_LOGS then
@@ -333,7 +334,24 @@ local function setPerkEffectEnabledState(perkID, enabled)
 end
 
 local function reconcileSaveState()
-    local perks = interfaces[MOD_NAME].getPerks()
+    local modApi = interfaces[MOD_NAME]
+    if modApi == nil or type(modApi.getPerks) ~= "function" then
+        print("[" .. MOD_NAME .. "] reconcileSaveState skipped: perk registry API unavailable")
+        return
+    end
+
+    local perks = modApi.getPerks() or {}
+    local registryPerkCount = 0
+    for _, _ in pairs(perks) do
+        registryPerkCount = registryPerkCount + 1
+    end
+    if registryPerkCount == 0 then
+        print(string.format("[%s] reconcileSaveState deferred: loadedActive=%d registryPerks=%d dropped=0", MOD_NAME, #activePerks, registryPerkCount))
+        return
+    end
+
+    local loadedActiveCount = #activePerks
+    local droppedCount = 0
     local filteredActivePerks = {}
     local recomputedSpentBySkill = {}
     local filteredEffectEnabledByPerkId = {}
@@ -350,6 +368,7 @@ local function reconcileSaveState()
                 filteredEffectEnabledByPerkId[perkID] = true
             end
         else
+            droppedCount = droppedCount + 1
             print("[" .. MOD_NAME .. "] Dropping missing active perk from save: " .. tostring(perkID))
         end
     end
@@ -374,6 +393,14 @@ local function reconcileSaveState()
             claimedRewardsBySource = pointsLedger.exportState().claimedRewardsBySource,
         })
     end
+
+    print(string.format(
+        "[%s] reconcileSaveState complete: loadedActive=%d registryPerks=%d dropped=%d",
+        MOD_NAME,
+        loadedActiveCount,
+        registryPerkCount,
+        droppedCount
+    ))
 end
 
 local function addPerk(data)
@@ -618,6 +645,23 @@ local function onUpdate(dt)
     end
     updateTimer = 1
     pointsLedger.emitPointSourceEvent("onUpdate", { dt = dt })
+
+    if pendingReconcileAfterRegistry then
+        local modApi = interfaces[MOD_NAME]
+        local registryCount = 0
+        if modApi ~= nil and type(modApi.getPerks) == "function" then
+            local perks = modApi.getPerks() or {}
+            for _, _ in pairs(perks) do
+                registryCount = registryCount + 1
+            end
+        end
+
+        if registryCount > 0 then
+            reconcileSaveState()
+            pendingReconcileAfterRegistry = false
+            print(string.format("[%s] Delayed reconcileSaveState ran after perk registry became available", MOD_NAME))
+        end
+    end
 end
 
 local function shouldShowUI()
@@ -695,7 +739,22 @@ local function onLoad(data)
     end
 
     pointsLedger.emitPointSourceEvent("onUpdate", { dt = 0 })
-    reconcileSaveState()
+    local modApi = interfaces[MOD_NAME]
+    local registryCount = 0
+    if modApi ~= nil and type(modApi.getPerks) == "function" then
+        local perks = modApi.getPerks() or {}
+        for _, _ in pairs(perks) do
+            registryCount = registryCount + 1
+        end
+    end
+
+    if registryCount == 0 then
+        pendingReconcileAfterRegistry = true
+        print(string.format("[%s] Delaying reconcileSaveState: perk registry is empty during onLoad", MOD_NAME))
+    else
+        pendingReconcileAfterRegistry = false
+        reconcileSaveState()
+    end
 
     print(string.format(
         "[%s] Loaded (skills=%d, activePerks=%d, totalAdded=%d, spent=%d, available=%d)",

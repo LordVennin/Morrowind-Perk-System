@@ -17,8 +17,6 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local QUICK_PICK_PERK_ID = "security_quick_pick"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
-local printedGroups = {}
-
 local function quickPickEnabled()
     if effectsSection:get(ENABLED_KEY) ~= true then
         return false
@@ -93,13 +91,6 @@ I.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options
 
     if getEquippedSecurityTool() == nil then
         return
-    end
-
-    if not printedGroups[groupName] then
-        printedGroups[groupName] = true
-        local startKey = type(options) == "table" and (options.startkey or options.startKey) or nil
-        local stopKey = type(options) == "table" and (options.stopkey or options.stopKey) or nil
-        print("[SkillPerkSystem_BasePack][QuickPick] group=", tostring(groupName), " start=", tostring(startKey), " stop=", tostring(stopKey))
     end
 
     if not isLikelyToolUseAnimation(groupName, options) then

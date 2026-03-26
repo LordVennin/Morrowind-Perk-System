@@ -418,6 +418,9 @@ local function syncActivePerkRuntimeEffects()
         else
             local enabled = isPerkEffectEnabled(perkID)
             if enabled then
+                -- Clear any stale runtime state before reapplying restored effects.
+                -- Some effect implementations are not strictly idempotent on acquire.
+                applyEffectRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself, restored = true, resync = true })
                 applyEffectAcquire(perk.effectId, { perkID = perkID, perk = perk, player = pself, restored = true })
             else
                 applyEffectRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself, restored = true, disabled = true })

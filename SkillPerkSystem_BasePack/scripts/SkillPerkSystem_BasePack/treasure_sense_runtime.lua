@@ -9,6 +9,7 @@ local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TreasureSense_Toggle"
 local TREASURE_SECTION_ID = "SkillPerkSystem_BasePack_TreasureSense"
 local GOLD_RECORD_ID = "gold_001"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local DEBUG_LOGS = true
 local TREASURE_SENSE_PERK_ID = "security_treasure_sense"
 
 local enabledSection = storage.globalSection(ENABLED_SECTION_ID)
@@ -61,27 +62,15 @@ local function isChestLikeContainer(container)
 end
 
 local function objectKey(object)
-    return tostring(object.formId or object.recordId or object.id)
+    return tostring(object.formId or object.id or object.recordId)
 end
 
 local function resolveLuckStat(actor)
-    if actor == nil then
+    if actor == nil or actor.type == nil or actor.type.stats == nil then
         return nil
     end
 
-    local actorType = actor.type
-    if actorType ~= nil and type(actorType.stats) == "table" then
-        local attrs = actorType.stats.attributes
-        if type(attrs) == "table" and type(attrs.luck) == "function" then
-            local ok, stat = pcall(attrs.luck, actor)
-            if ok then
-                return stat
-            end
-        end
-    end
-
-    local npcStats = types.NPC and types.NPC.stats or nil
-    local attrs = npcStats and npcStats.attributes or nil
+    local attrs = actor.type.stats.attributes
     if type(attrs) == "table" and type(attrs.luck) == "function" then
         local ok, stat = pcall(attrs.luck, actor)
         if ok then
@@ -121,21 +110,43 @@ local function handleToggle(data)
     enabledSection:set(ENABLED_KEY, data.enable == true)
 end
 
+local function debugLog(message)
+    if not DEBUG_LOGS then
+        return
+    end
+    print("[SkillPerkSystem_BasePack][TreasureSense] " .. tostring(message))
+end
+
 local function onActivate(object, actor)
+    debugLog("onActivate fired")
+
     if actor == nil or actor ~= world.players[1] then
+        debugLog("actor check failed")
         return
     end
 
     if not treasureSenseEnabled() then
+        debugLog("perk not enabled")
         return
     end
 
+    if not types.Container.objectIsInstance(object) then
+        debugLog("activated object is not a container")
+        return
+    end
+
+    local record = types.Container.record(object)
+    local recordName = record and record.name or "nil"
+    debugLog(string.format("container name=%s recordId=%s", tostring(recordName), tostring(object.recordId)))
+
     if not isChestLikeContainer(object) then
+        debugLog("container is not chest-like")
         return
     end
 
     local key = objectKey(object)
     if treasureSection:get(key) then
+        debugLog("already rewarded key=" .. tostring(key))
         return
     end
 
@@ -143,9 +154,7 @@ local function onActivate(object, actor)
     addGoldToContainer(object, goldCount)
     treasureSection:set(key, true)
 
-    local record = types.Container.record(object)
-    local chestName = record and record.name or tostring(object.recordId)
-    print(string.format("[SkillPerkSystem_BasePack][TreasureSense] added %d gold to %s", goldCount, chestName))
+    debugLog(string.format("added %d gold key=%s", goldCount, tostring(key)))
 end
 
 return {

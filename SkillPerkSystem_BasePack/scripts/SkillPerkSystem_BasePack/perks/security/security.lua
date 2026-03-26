@@ -30,7 +30,7 @@ return {
             id = "security_treasure_sense",
             tab = "Security",
             minimumSkill = 30,
-            effectId = "demo_noop",
+            effectId = "security_treasure_sense_effect",
             requires = { "security_steady_hands" },
             cost = 1,
             x = -220,

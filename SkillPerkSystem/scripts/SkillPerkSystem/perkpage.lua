@@ -8,6 +8,7 @@ local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
+local PERK_UI_MODE_ID = MOD_NAME .. "_PerkMenuMode"
 
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
@@ -1938,9 +1939,9 @@ local function showMenu()
     selectedTreeNodeID = nil
     updateFilteredPerks()
 
-    -- Use an isolated interface mode so the perk page has cursor/UI input without
-    -- auto-opening vanilla interface windows (inventory/map/magic panes).
-    interfaces.UI.setMode("Interface", { windows = {} })
+    -- Push an isolated, mod-specific UI mode so this menu never collides with
+    -- vanilla "Interface" entries or other mods that use that same mode id.
+    interfaces.UI.addMode(PERK_UI_MODE_ID, { windows = {} })
     local interfaceModeOpened = true
 
     local ok, createdOrError = pcall(function()
@@ -1950,7 +1951,7 @@ local function showMenu()
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
         if interfaceModeOpened then
-            interfaces.UI.removeMode("Interface")
+            interfaces.UI.removeMode(PERK_UI_MODE_ID)
         end
         return
     end
@@ -1963,6 +1964,9 @@ end
 local function closeMenu()
     isDraggingTree = false
     lastMousePos = nil
+    selectedPerkIndex = 0
+    selectedTreeNodeID = nil
+    filteredPerkIDs = {}
 
     if menu ~= nil then
         menu:destroy()
@@ -1970,11 +1974,12 @@ local function closeMenu()
     end
 
     if openedInterfaceForPerkMenu then
-        interfaces.UI.removeMode("Interface")
+        interfaces.UI.removeMode(PERK_UI_MODE_ID)
         openedInterfaceForPerkMenu = false
     end
     optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
+    suppressToggleUntilRelease = true
 end
 
 local function toggleMenu()
@@ -2027,6 +2032,10 @@ end
 local function onUiModeChanged(data)
     if type(data) ~= "table" then
         return
+    end
+
+    if menu ~= nil and data.newMode == nil then
+        closeMenu()
     end
 
     -- If any non-nil mode just closed, wait until the toggle key is released
@@ -2102,7 +2111,7 @@ local function onFrame(dt)
     end
     if isPressed and not toggleKeyWasPressed then
         if menu ~= nil then
-            toggleMenu()
+            closeMenu()
         elseif not hasOpenMenuModeNow and not suppressToggleUntilRelease then
             toggleMenu()
         end

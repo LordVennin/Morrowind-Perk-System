@@ -403,6 +403,32 @@ local function reconcileSaveState()
     ))
 end
 
+local function syncActivePerkRuntimeEffects()
+    local modApi = interfaces[MOD_NAME]
+    if modApi == nil or type(modApi.getPerks) ~= "function" then
+        print("[" .. MOD_NAME .. "][warn] syncActivePerkRuntimeEffects skipped: perk registry API unavailable")
+        return
+    end
+
+    local perks = modApi.getPerks() or {}
+    for _, perkID in ipairs(activePerks) do
+        local perk = perks[perkID]
+        if perk == nil then
+            print("[" .. MOD_NAME .. "][warn] syncActivePerkRuntimeEffects skipped unknown perk id: " .. tostring(perkID))
+        else
+            local enabled = isPerkEffectEnabled(perkID)
+            if enabled then
+                -- Clear any stale runtime state before reapplying restored effects.
+                -- Some effect implementations are not strictly idempotent on acquire.
+                applyEffectRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself, restored = true, resync = true })
+                applyEffectAcquire(perk.effectId, { perkID = perkID, perk = perk, player = pself, restored = true })
+            else
+                applyEffectRemove(perk.effectId, { perkID = perkID, perk = perk, player = pself, restored = true, disabled = true })
+            end
+        end
+    end
+end
+
 local function addPerk(data)
     if type(data) ~= "table" or type(data.perkID) ~= "string" then
         error("addPerk() requires { perkID = string }")
@@ -658,6 +684,7 @@ local function onUpdate(dt)
 
         if registryCount > 0 then
             reconcileSaveState()
+            syncActivePerkRuntimeEffects()
             pendingReconcileAfterRegistry = false
             print(string.format("[%s] Delayed reconcileSaveState ran after perk registry became available", MOD_NAME))
         end
@@ -783,6 +810,7 @@ local function onLoad(data)
     else
         pendingReconcileAfterRegistry = false
         reconcileSaveState()
+        syncActivePerkRuntimeEffects()
     end
 
     print(string.format(

@@ -48,7 +48,7 @@ return {
             x = 220,
             y = 140,
             title = "Quick Pick",
-            description = "A practiced rhythm that speeds lockpick attempts.",
+            description = "Greatly speeds up lockpicking attempts.",
         },
         {
             id = "security_lucky_find",

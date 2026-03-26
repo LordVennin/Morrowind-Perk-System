@@ -17,25 +17,45 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local QUICK_PICK_PERK_ID = "security_quick_pick"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
-local function quickPickEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
+local function log(...)
+    print(...)
+end
 
+local function resolveInterfaceEnabled(contextLabel)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
+        return nil
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(QUICK_PICK_PERK_ID) then
-        return false
+    local hasPerk = playerApi.hasPerk(QUICK_PICK_PERK_ID)
+    local effectEnabled = hasPerk
+    if hasPerk and type(playerApi.isPerkEffectEnabled) == "function" then
+        effectEnabled = playerApi.isPerkEffectEnabled(QUICK_PICK_PERK_ID)
     end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(QUICK_PICK_PERK_ID) then
-        return false
+    local cachedEnabled = effectsSection:get(ENABLED_KEY) == true
+    if cachedEnabled ~= effectEnabled then
+        log(string.format(
+            "[SkillPerkSystem_BasePack][QuickPick] %s ENABLED_KEY cache mismatch cached=%s interface=%s hasPerk=%s isPerkEffectEnabled=%s; syncing cache",
+            tostring(contextLabel),
+            tostring(cachedEnabled),
+            tostring(effectEnabled),
+            tostring(hasPerk),
+            tostring(effectEnabled)
+        ))
+        effectsSection:set(ENABLED_KEY, effectEnabled)
     end
 
-    return true
+    return effectEnabled
+end
+
+local function quickPickEnabled()
+    local interfaceEnabled = resolveInterfaceEnabled("quickPickEnabled")
+    if interfaceEnabled ~= nil then
+        return interfaceEnabled
+    end
+
+    return effectsSection:get(ENABLED_KEY) == true
 end
 
 local function toolSpeedMultiplier()
@@ -108,6 +128,15 @@ local function handleQuickPickToggle(data)
 
     local enabled = data.enable == true
     effectsSection:set(ENABLED_KEY, enabled)
+    local interfaceEnabled = resolveInterfaceEnabled("handleToggle")
+    if interfaceEnabled ~= nil and interfaceEnabled ~= enabled then
+        log(string.format(
+            "[SkillPerkSystem_BasePack][QuickPick] handleToggle input diverged from interface state ENABLED_KEY=%s interface(isPerkEffectEnabled)=%s; using interface",
+            tostring(enabled),
+            tostring(interfaceEnabled)
+        ))
+        enabled = interfaceEnabled
+    end
 
     if enabled then
         local value = tonumber(data.toolSpeedMultiplier)

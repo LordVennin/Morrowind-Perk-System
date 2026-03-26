@@ -1963,6 +1963,9 @@ end
 local function closeMenu()
     isDraggingTree = false
     lastMousePos = nil
+    selectedPerkIndex = 0
+    selectedTreeNodeID = nil
+    filteredPerkIDs = {}
 
     if menu ~= nil then
         menu:destroy()
@@ -1975,6 +1978,7 @@ local function closeMenu()
     end
     optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
+    suppressToggleUntilRelease = true
 end
 
 local function toggleMenu()
@@ -2102,7 +2106,7 @@ local function onFrame(dt)
     end
     if isPressed and not toggleKeyWasPressed then
         if menu ~= nil then
-            toggleMenu()
+            closeMenu()
         elseif not hasOpenMenuModeNow and not suppressToggleUntilRelease then
             toggleMenu()
         end

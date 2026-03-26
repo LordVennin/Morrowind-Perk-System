@@ -32,13 +32,36 @@ local function objectKey(object)
     return tostring(object.formId or object.recordId or object.id)
 end
 
-local function goldFromLuck(actor)
-    local luckAccessor = types.NPC.stats.attribute.luck
-    if type(luckAccessor) ~= "function" then
-        return math.random(1, 20)
+local function resolveLuckStat(actor)
+    if actor == nil then
+        return nil
     end
 
-    local luckStat = luckAccessor(actor)
+    local actorType = actor.type
+    if actorType ~= nil and type(actorType.stats) == "table" then
+        local attrs = actorType.stats.attributes
+        if type(attrs) == "table" and type(attrs.luck) == "function" then
+            local ok, stat = pcall(attrs.luck, actor)
+            if ok then
+                return stat
+            end
+        end
+    end
+
+    local npcStats = types.NPC and types.NPC.stats or nil
+    local attrs = npcStats and npcStats.attributes or nil
+    if type(attrs) == "table" and type(attrs.luck) == "function" then
+        local ok, stat = pcall(attrs.luck, actor)
+        if ok then
+            return stat
+        end
+    end
+
+    return nil
+end
+
+local function goldFromLuck(actor)
+    local luckStat = resolveLuckStat(actor)
     local luck = 0
     if type(luckStat) == "table" and type(luckStat.modified) == "number" then
         luck = math.max(0, math.floor(luckStat.modified))

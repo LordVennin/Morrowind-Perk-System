@@ -1,3 +1,4 @@
+local interfaces = require("openmw.interfaces")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
 local world = require("openmw.world")
@@ -7,12 +8,43 @@ local ENABLED_KEY = "security.treasure_sense.enabled"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TreasureSense_Toggle"
 local TREASURE_SECTION_ID = "SkillPerkSystem_BasePack_TreasureSense"
 local GOLD_RECORD_ID = "gold_001"
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local TREASURE_SENSE_PERK_ID = "security_treasure_sense"
 
 local enabledSection = storage.globalSection(ENABLED_SECTION_ID)
 local treasureSection = storage.globalSection(TREASURE_SECTION_ID)
 
+local function perkInterfaceSaysEnabled()
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(TREASURE_SENSE_PERK_ID)
+    if not hasPerk then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(TREASURE_SENSE_PERK_ID)
+    end
+
+    return true
+end
+
 local function treasureSenseEnabled()
-    return enabledSection:get(ENABLED_KEY) == true
+    if enabledSection:get(ENABLED_KEY) == true then
+        return true
+    end
+
+    return perkInterfaceSaysEnabled()
+end
+
+local function stringHasChest(value)
+    if type(value) ~= "string" then
+        return false
+    end
+    return string.find(string.lower(value), "chest", 1, true) ~= nil
 end
 
 local function isChestLikeContainer(container)
@@ -21,11 +53,11 @@ local function isChestLikeContainer(container)
     end
 
     local record = types.Container.record(container)
-    if record == nil or type(record.name) ~= "string" then
-        return false
+    if record ~= nil and stringHasChest(record.name) then
+        return true
     end
 
-    return string.find(string.lower(record.name), "chest", 1, true) ~= nil
+    return stringHasChest(container.recordId)
 end
 
 local function objectKey(object)

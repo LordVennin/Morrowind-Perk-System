@@ -1,39 +1,18 @@
-local interfaces = require("openmw.interfaces")
-local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
 local world = require("openmw.world")
 
-local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
+local ENABLED_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
 local ENABLED_KEY = "security.treasure_sense.enabled"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TreasureSense_Toggle"
-local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
-local TREASURE_SENSE_PERK_ID = "security_treasure_sense"
 local TREASURE_SECTION_ID = "SkillPerkSystem_BasePack_TreasureSense"
 local GOLD_RECORD_ID = "gold_001"
 
-local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local enabledSection = storage.globalSection(ENABLED_SECTION_ID)
 local treasureSection = storage.globalSection(TREASURE_SECTION_ID)
 
 local function treasureSenseEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
-    end
-
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(TREASURE_SENSE_PERK_ID) then
-        return false
-    end
-
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(TREASURE_SENSE_PERK_ID) then
-        return false
-    end
-
-    return true
+    return enabledSection:get(ENABLED_KEY) == true
 end
 
 local function isChestLikeContainer(container)
@@ -84,11 +63,11 @@ local function handleToggle(data)
         return
     end
 
-    effectsSection:set(ENABLED_KEY, data.enable == true)
+    enabledSection:set(ENABLED_KEY, data.enable == true)
 end
 
 local function onActivate(object, actor)
-    if actor ~= pself and actor ~= world.players[1] then
+    if actor == nil or actor ~= world.players[1] then
         return
     end
 

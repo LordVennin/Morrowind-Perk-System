@@ -8,6 +8,7 @@ local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
+local PERK_UI_MODE_ID = MOD_NAME .. "_PerkMenuMode"
 
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
@@ -1938,10 +1939,9 @@ local function showMenu()
     selectedTreeNodeID = nil
     updateFilteredPerks()
 
-    -- Push an isolated interface mode so the perk page has cursor/UI input
-    -- without auto-opening vanilla interface windows (inventory/map/magic panes).
-    -- addMode/removeMode keeps UI mode stack transitions symmetrical.
-    interfaces.UI.addMode("Interface", { windows = {} })
+    -- Push an isolated, mod-specific UI mode so this menu never collides with
+    -- vanilla "Interface" entries or other mods that use that same mode id.
+    interfaces.UI.addMode(PERK_UI_MODE_ID, { windows = {} })
     local interfaceModeOpened = true
 
     local ok, createdOrError = pcall(function()
@@ -1951,7 +1951,7 @@ local function showMenu()
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
         if interfaceModeOpened then
-            interfaces.UI.removeMode("Interface")
+            interfaces.UI.removeMode(PERK_UI_MODE_ID)
         end
         return
     end
@@ -1974,7 +1974,7 @@ local function closeMenu()
     end
 
     if openedInterfaceForPerkMenu then
-        interfaces.UI.removeMode("Interface")
+        interfaces.UI.removeMode(PERK_UI_MODE_ID)
         openedInterfaceForPerkMenu = false
     end
     optimisticPerkEffectEnabledByID = {}
@@ -2032,6 +2032,10 @@ end
 local function onUiModeChanged(data)
     if type(data) ~= "table" then
         return
+    end
+
+    if menu ~= nil and data.newMode == nil then
+        closeMenu()
     end
 
     -- If any non-nil mode just closed, wait until the toggle key is released

@@ -47,8 +47,18 @@ local function toolSpeedMultiplier()
 end
 
 local function getEquippedSecurityTool()
-    local right = Actor.getEquipment(pself, Actor.EQUIPMENT_SLOT.CarriedRight)
-    local left = Actor.getEquipment(pself, Actor.EQUIPMENT_SLOT.CarriedLeft)
+    local right = nil
+    local left = nil
+
+    local okRight, rightItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if okRight then
+        right = rightItem
+    end
+
+    local okLeft, leftItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedLeft)
+    if okLeft then
+        left = leftItem
+    end
 
     if right and (Lockpick.objectIsInstance(right) or Probe.objectIsInstance(right)) then
         return right
@@ -94,6 +104,10 @@ I.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options
     end
 
     if not isLikelyToolUseAnimation(groupName, options) then
+        return
+    end
+
+    if type(options) ~= "table" then
         return
     end
 

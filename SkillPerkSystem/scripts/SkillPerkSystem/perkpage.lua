@@ -1938,9 +1938,10 @@ local function showMenu()
     selectedTreeNodeID = nil
     updateFilteredPerks()
 
-    -- Use an isolated interface mode so the perk page has cursor/UI input without
-    -- auto-opening vanilla interface windows (inventory/map/magic panes).
-    interfaces.UI.setMode("Interface", { windows = {} })
+    -- Push an isolated interface mode so the perk page has cursor/UI input
+    -- without auto-opening vanilla interface windows (inventory/map/magic panes).
+    -- addMode/removeMode keeps UI mode stack transitions symmetrical.
+    interfaces.UI.addMode("Interface", { windows = {} })
     local interfaceModeOpened = true
 
     local ok, createdOrError = pcall(function()
@@ -1963,6 +1964,9 @@ end
 local function closeMenu()
     isDraggingTree = false
     lastMousePos = nil
+    selectedPerkIndex = 0
+    selectedTreeNodeID = nil
+    filteredPerkIDs = {}
 
     if menu ~= nil then
         menu:destroy()
@@ -1975,6 +1979,7 @@ local function closeMenu()
     end
     optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
+    suppressToggleUntilRelease = true
 end
 
 local function toggleMenu()
@@ -2102,7 +2107,7 @@ local function onFrame(dt)
     end
     if isPressed and not toggleKeyWasPressed then
         if menu ~= nil then
-            toggleMenu()
+            closeMenu()
         elseif not hasOpenMenuModeNow and not suppressToggleUntilRelease then
             toggleMenu()
         end

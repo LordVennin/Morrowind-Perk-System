@@ -110,6 +110,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.quick_pick_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.quick_pick_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.treasure_sense_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.treasure_sense_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

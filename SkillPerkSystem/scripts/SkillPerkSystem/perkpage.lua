@@ -1938,9 +1938,10 @@ local function showMenu()
     selectedTreeNodeID = nil
     updateFilteredPerks()
 
-    -- Use an isolated interface mode so the perk page has cursor/UI input without
-    -- auto-opening vanilla interface windows (inventory/map/magic panes).
-    interfaces.UI.setMode("Interface", { windows = {} })
+    -- Push an isolated interface mode so the perk page has cursor/UI input
+    -- without auto-opening vanilla interface windows (inventory/map/magic panes).
+    -- addMode/removeMode keeps UI mode stack transitions symmetrical.
+    interfaces.UI.addMode("Interface", { windows = {} })
     local interfaceModeOpened = true
 
     local ok, createdOrError = pcall(function()

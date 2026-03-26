@@ -8,7 +8,9 @@ local pself = require("openmw.self")
 local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
-local PERK_UI_MODE_ID = MOD_NAME .. "_PerkMenuMode"
+-- OpenMW only accepts built-in mode ids for UI.addMode/removeMode.
+-- "Journal" is the same mode used by the Advanced World Map example.
+local PERK_UI_MODE_ID = "Journal"
 
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
@@ -2034,7 +2036,7 @@ local function onUiModeChanged(data)
         return
     end
 
-    if menu ~= nil and data.newMode == nil then
+    if menu ~= nil and data.oldMode == PERK_UI_MODE_ID and data.newMode ~= PERK_UI_MODE_ID then
         closeMenu()
     end
 

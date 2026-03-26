@@ -11,9 +11,6 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TREASURE_SENSE_PERK_ID = "security_treasure_sense"
 
 local enabledSection = storage.globalSection(ENABLED_SECTION_ID)
-local function log(...)
-    print(...)
-end
 
 -- Per-save state
 local rewardedChests = {}
@@ -37,18 +34,11 @@ local function perkInterfaceSaysEnabled()
 end
 
 local function treasureSenseEnabled()
-    local interfaceEnabled = perkInterfaceSaysEnabled()
-    local cachedEnabled = enabledSection:get(ENABLED_KEY) == true
-    if cachedEnabled ~= interfaceEnabled then
-        log(string.format(
-            "[SkillPerkSystem_BasePack][TreasureSense] treasureSenseEnabled ENABLED_KEY cache mismatch cached=%s interface(isPerkEffectEnabled)=%s; syncing cache",
-            tostring(cachedEnabled),
-            tostring(interfaceEnabled)
-        ))
-        enabledSection:set(ENABLED_KEY, interfaceEnabled)
+    if enabledSection:get(ENABLED_KEY) == true then
+        return true
     end
 
-    return interfaceEnabled
+    return perkInterfaceSaysEnabled()
 end
 
 local function stringHasChest(value)
@@ -173,18 +163,7 @@ local function handleToggle(data)
         return
     end
 
-    local enabled = data.enable == true
-    enabledSection:set(ENABLED_KEY, enabled)
-
-    local interfaceEnabled = perkInterfaceSaysEnabled()
-    if interfaceEnabled ~= enabled then
-        log(string.format(
-            "[SkillPerkSystem_BasePack][TreasureSense] handleToggle mismatch ENABLED_KEY=%s interface(isPerkEffectEnabled)=%s; syncing cache",
-            tostring(enabled),
-            tostring(interfaceEnabled)
-        ))
-        enabledSection:set(ENABLED_KEY, interfaceEnabled)
-    end
+    enabledSection:set(ENABLED_KEY, data.enable == true)
 end
 
 local function onActivate(object, actor)

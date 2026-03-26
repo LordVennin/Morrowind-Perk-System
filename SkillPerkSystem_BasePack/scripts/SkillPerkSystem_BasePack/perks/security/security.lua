@@ -36,7 +36,7 @@ return {
             x = -220,
             y = 140,
             title = "Treasure Sense",
-            description = "First checks on chests can reveal extra hidden gold based on Luck.",
+            description = "Chests you open will always have extra gold based on your Luck.",
         },
         {
             id = "security_quick_pick",

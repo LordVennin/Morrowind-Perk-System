@@ -16,6 +16,7 @@ local STEADY_HANDS_PERK_ID = "security_steady_hands"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 local function log(...)
+    print(...)
 end
 
 
@@ -44,24 +45,30 @@ local function clampChance(value)
 end
 
 local function steadyHandsEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
+    if playerApi ~= nil and type(playerApi.hasPerk) == "function" then
+        local hasPerk = playerApi.hasPerk(STEADY_HANDS_PERK_ID)
+        local effectEnabled = hasPerk
+        if hasPerk and type(playerApi.isPerkEffectEnabled) == "function" then
+            effectEnabled = playerApi.isPerkEffectEnabled(STEADY_HANDS_PERK_ID)
+        end
+
+        local cachedEnabled = effectsSection:get(ENABLED_KEY) == true
+        if cachedEnabled ~= effectEnabled then
+            log(string.format(
+                "[SkillPerkSystem_BasePack][SteadyHands] steadyHandsEnabled ENABLED_KEY cache mismatch cached=%s interface=%s hasPerk=%s isPerkEffectEnabled=%s; syncing cache",
+                tostring(cachedEnabled),
+                tostring(effectEnabled),
+                tostring(hasPerk),
+                tostring(effectEnabled)
+            ))
+            effectsSection:set(ENABLED_KEY, effectEnabled)
+        end
+
+        return effectEnabled
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(STEADY_HANDS_PERK_ID) then
-        return false
-    end
-
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(STEADY_HANDS_PERK_ID) then
-        return false
-    end
-
-    return true
+    return effectsSection:get(ENABLED_KEY) == true
 end
 
 local function steadyHandsNoConsumeChance()
@@ -725,6 +732,24 @@ local function handleSteadyHandsToggle(data)
 
     local enabled = data.enable == true
     effectsSection:set(ENABLED_KEY, enabled)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi ~= nil and type(playerApi.hasPerk) == "function" then
+        local hasPerk = playerApi.hasPerk(STEADY_HANDS_PERK_ID)
+        local interfaceEnabled = hasPerk
+        if hasPerk and type(playerApi.isPerkEffectEnabled) == "function" then
+            interfaceEnabled = playerApi.isPerkEffectEnabled(STEADY_HANDS_PERK_ID)
+        end
+        if interfaceEnabled ~= enabled then
+            log(string.format(
+                "[SkillPerkSystem_BasePack][SteadyHands] handleToggle mismatch ENABLED_KEY=%s interface(isPerkEffectEnabled)=%s hasPerk=%s; syncing cache",
+                tostring(enabled),
+                tostring(interfaceEnabled),
+                tostring(hasPerk)
+            ))
+            effectsSection:set(ENABLED_KEY, interfaceEnabled)
+            enabled = interfaceEnabled
+        end
+    end
     if enabled then
         effectsSection:set(NO_CONSUME_CHANCE_KEY, clampChance(data.chance))
     else

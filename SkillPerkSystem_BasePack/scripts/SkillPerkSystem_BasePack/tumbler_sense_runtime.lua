@@ -47,6 +47,7 @@ local ACCEPTED_FAILURE_SOURCES = {
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 local function log(...)
+    print(...)
 end
 
 log("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
@@ -210,24 +211,30 @@ local function withLastComparableCondition(previousState, currentState)
 end
 
 local function tumblerSenseEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
+    if playerApi ~= nil and type(playerApi.hasPerk) == "function" then
+        local hasPerk = playerApi.hasPerk(TUMBLER_SENSE_PERK_ID)
+        local effectEnabled = hasPerk
+        if hasPerk and type(playerApi.isPerkEffectEnabled) == "function" then
+            effectEnabled = playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID)
+        end
+
+        local cachedEnabled = effectsSection:get(ENABLED_KEY) == true
+        if cachedEnabled ~= effectEnabled then
+            log(string.format(
+                "[SkillPerkSystem_BasePack][TumblerSense] tumblerSenseEnabled ENABLED_KEY cache mismatch cached=%s interface=%s hasPerk=%s isPerkEffectEnabled=%s; syncing cache",
+                tostring(cachedEnabled),
+                tostring(effectEnabled),
+                tostring(hasPerk),
+                tostring(effectEnabled)
+            ))
+            effectsSection:set(ENABLED_KEY, effectEnabled)
+        end
+
+        return effectEnabled
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(TUMBLER_SENSE_PERK_ID) then
-        return false
-    end
-
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID) then
-        return false
-    end
-
-    return true
+    return effectsSection:get(ENABLED_KEY) == true
 end
 
 local function getMaxStacks()
@@ -346,6 +353,24 @@ local function handleToggle(data)
 
     local enabled = data.enable == true
     effectsSection:set(ENABLED_KEY, enabled)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi ~= nil and type(playerApi.hasPerk) == "function" then
+        local hasPerk = playerApi.hasPerk(TUMBLER_SENSE_PERK_ID)
+        local interfaceEnabled = hasPerk
+        if hasPerk and type(playerApi.isPerkEffectEnabled) == "function" then
+            interfaceEnabled = playerApi.isPerkEffectEnabled(TUMBLER_SENSE_PERK_ID)
+        end
+        if interfaceEnabled ~= enabled then
+            log(string.format(
+                "[SkillPerkSystem_BasePack][TumblerSense] handleToggle mismatch ENABLED_KEY=%s interface(isPerkEffectEnabled)=%s hasPerk=%s; syncing cache",
+                tostring(enabled),
+                tostring(interfaceEnabled),
+                tostring(hasPerk)
+            ))
+            effectsSection:set(ENABLED_KEY, interfaceEnabled)
+            enabled = interfaceEnabled
+        end
+    end
     effectsSection:set(BONUS_PER_STACK_KEY, normalizeBonus(data.bonusPerFailedAttempt))
     effectsSection:set(MAX_STACKS_KEY, math.max(1, math.floor(tonumber(data.maxStacks) or DEFAULT_MAX_STACKS)))
     effectsSection:set(INITIAL_STACKS_KEY, math.max(0, math.floor(tonumber(data.initialStacks) or DEFAULT_INITIAL_STACKS)))

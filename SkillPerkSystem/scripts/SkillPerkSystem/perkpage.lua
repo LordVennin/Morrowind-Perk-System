@@ -2294,6 +2294,16 @@ local function onFrame(dt)
         journalCloseSoundSuppressionRemaining = math.max(0, journalCloseSoundSuppressionRemaining - deltaTime)
     end
 
+    if menu ~= nil and not isClosingMenu then
+        local ok, currentMode = pcall(function()
+            return interfaces.UI.getMode()
+        end)
+        if not ok or currentMode ~= PERK_UI_MODE_ID then
+            closeMenu({ allowFallbackModeRemove = false, allowForceSetMode = false })
+            return
+        end
+    end
+
     if menu == nil and perkModeOwned then
         local released = releaseOwnedInterfaceMode(false, true)
         if released then

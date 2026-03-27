@@ -719,8 +719,6 @@ local function UiModeChanged(data)
         else
             pself:sendEvent(MOD_NAME .. "closePerkUI", {})
         end
-    else
-        pself:sendEvent(MOD_NAME .. "closePerkUI", {})
     end
 end
 

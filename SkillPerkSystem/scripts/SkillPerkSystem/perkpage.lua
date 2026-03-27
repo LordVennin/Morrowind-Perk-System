@@ -55,6 +55,7 @@ local menu = nil
 local perkModeOwned = false
 local interfaceDepthBeforeOpen = 0
 local isClosingMenu = false
+local didForceUiModeReset = false
 local lastKnownGlobalPoints = nil
 local selectedSkillIndex = 1
 local selectedPerkIndex = 1
@@ -2013,6 +2014,7 @@ local function showMenu()
     updateFilteredPerks()
 
     interfaceDepthBeforeOpen = countInterfaceModeDepth()
+    didForceUiModeReset = false
     local addModeOk, addModeError = pcall(function()
         interfaces.UI.addMode(PERK_UI_MODE_ID, { windows = {} })
     end)
@@ -2067,6 +2069,17 @@ local function closeMenu(options)
     if ownedModeReleased then
         perkModeOwned = false
         interfaceDepthBeforeOpen = 0
+        didForceUiModeReset = false
+    elseif options.allowForceSetMode ~= false then
+        local ok, err = pcall(function()
+            interfaces.UI.setMode()
+        end)
+        if not ok then
+            print("[" .. MOD_NAME .. "] Failed to force reset UI mode: " .. tostring(err))
+        end
+        perkModeOwned = false
+        interfaceDepthBeforeOpen = 0
+        didForceUiModeReset = true
     end
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
@@ -2132,7 +2145,7 @@ local function onUiModeChanged(data)
         if isClosingMenu then
             return
         end
-        closeMenu({ allowFallbackModeRemove = false })
+        closeMenu({ allowFallbackModeRemove = false, allowForceSetMode = false })
     end
 
     -- If any non-nil mode just closed, wait until the toggle key is released
@@ -2148,6 +2161,17 @@ local function onFrame(dt)
         if released then
             perkModeOwned = false
             interfaceDepthBeforeOpen = 0
+            didForceUiModeReset = false
+        elseif not didForceUiModeReset then
+            local ok, err = pcall(function()
+                interfaces.UI.setMode()
+            end)
+            if not ok then
+                print("[" .. MOD_NAME .. "] Failed to force reset UI mode from onFrame: " .. tostring(err))
+            end
+            perkModeOwned = false
+            interfaceDepthBeforeOpen = 0
+            didForceUiModeReset = true
         end
     end
 

@@ -2118,10 +2118,10 @@ local function closeMenu(options)
     end
 
     local ok, err = pcall(function()
-        interfaces.UI.setMode()
+        interfaces.UI.removeMode(PERK_UI_MODE_ID)
     end)
     if not ok then
-        print("[" .. MOD_NAME .. "] Failed to force reset UI mode: " .. tostring(err))
+        print("[" .. MOD_NAME .. "] Failed to remove UI mode: " .. tostring(err))
     end
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
@@ -2211,10 +2211,10 @@ local function onFrame(dt)
             didForceUiModeReset = false
         elseif not didForceUiModeReset then
             local ok, err = pcall(function()
-                interfaces.UI.setMode()
+                interfaces.UI.removeMode(PERK_UI_MODE_ID)
             end)
             if not ok then
-                print("[" .. MOD_NAME .. "] Failed to force reset UI mode from onFrame: " .. tostring(err))
+                print("[" .. MOD_NAME .. "] Failed to remove UI mode from onFrame: " .. tostring(err))
             end
             perkModeOwned = false
             interfaceDepthBeforeOpen = 0

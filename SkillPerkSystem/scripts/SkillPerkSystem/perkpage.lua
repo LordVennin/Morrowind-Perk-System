@@ -223,24 +223,34 @@ local function countInterfaceModeDepth()
     return depth
 end
 
-local function releaseOwnedInterfaceMode(forceRelease)
+local function releaseOwnedInterfaceMode(forceRelease, allowFallbackRemove)
     if not forceRelease and not perkModeOwned then
         return
     end
 
     local currentDepth = countInterfaceModeDepth()
     if currentDepth <= interfaceDepthBeforeOpen then
+        if not allowFallbackRemove then
+            return
+        end
+        interfaces.UI.removeMode(PERK_UI_MODE_ID)
         return
     end
 
     local targetDepth = math.max(interfaceDepthBeforeOpen, currentDepth - 1)
+    local removedAny = false
     while currentDepth > targetDepth do
         interfaces.UI.removeMode(PERK_UI_MODE_ID)
+        removedAny = true
         local updatedDepth = countInterfaceModeDepth()
         if updatedDepth >= currentDepth then
             break
         end
         currentDepth = updatedDepth
+    end
+
+    if not removedAny and allowFallbackRemove then
+        interfaces.UI.removeMode(PERK_UI_MODE_ID)
     end
 end
 
@@ -2015,7 +2025,7 @@ local function showMenu()
 
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
-        releaseOwnedInterfaceMode(true)
+        releaseOwnedInterfaceMode(true, true)
         return
     end
 
@@ -2048,7 +2058,8 @@ local function closeMenu(options)
     end
 
     if not options.skipOwnedModeRemoval then
-        releaseOwnedInterfaceMode()
+        local allowFallbackModeRemove = options.allowFallbackModeRemove ~= false
+        releaseOwnedInterfaceMode(false, allowFallbackModeRemove)
     end
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
@@ -2114,7 +2125,7 @@ local function onUiModeChanged(data)
         if isClosingMenu then
             return
         end
-        closeMenu()
+        closeMenu({ allowFallbackModeRemove = false })
     end
 
     -- If any non-nil mode just closed, wait until the toggle key is released

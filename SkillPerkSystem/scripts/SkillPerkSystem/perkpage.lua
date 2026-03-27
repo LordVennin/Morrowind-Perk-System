@@ -2200,6 +2200,7 @@ local function closeMenu(options)
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to remove UI mode: " .. tostring(err))
     end
+    beginJournalSoundSuppressionWindow()
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
     didForceUiModeReset = ok

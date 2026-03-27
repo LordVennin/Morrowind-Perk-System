@@ -2081,6 +2081,8 @@ local function closeMenu(options)
         interfaceDepthBeforeOpen = 0
         didForceUiModeReset = true
     end
+    perkModeOwned = false
+    interfaceDepthBeforeOpen = 0
     optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
     suppressToggleUntilRelease = true

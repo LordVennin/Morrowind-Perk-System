@@ -2090,6 +2090,15 @@ local function closeMenu(options)
         return
     end
     isClosingMenu = true
+
+    if menu == nil and not perkModeOwned then
+        isClosingMenu = false
+        if ENABLE_UI_CLOSE_DEBUG_LOGS then
+            logUiDebug("closeMenu:ignored-no-owned-state")
+        end
+        return
+    end
+
     logUiDebug("closeMenu:start")
 
     isDraggingTree = false

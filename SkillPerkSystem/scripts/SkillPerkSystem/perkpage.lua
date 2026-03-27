@@ -15,6 +15,7 @@ local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
 local toggleKeyWasPressed = false
 local suppressToggleUntilRelease = false
+local ENABLE_UI_CLOSE_DEBUG_LOGS = true
 
 local function refreshToggleKeyBinding()
     local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
@@ -81,6 +82,47 @@ local function safeMenuUpdate()
     if not ok then
         print("[" .. MOD_NAME .. "] menu:update skipped: " .. tostring(err))
     end
+end
+
+local function getCurrentUiMode()
+    local ok, mode = pcall(function()
+        return interfaces.UI.getMode()
+    end)
+    if not ok then
+        return "<getMode-error>"
+    end
+    return tostring(mode)
+end
+
+local function getInterfaceModeDepthForLog()
+    local uiModes = interfaces.UI.modes
+    if type(uiModes) ~= "table" then
+        return 0
+    end
+    local depth = 0
+    for _, mode in pairs(uiModes) do
+        if mode == PERK_UI_MODE_ID then
+            depth = depth + 1
+        end
+    end
+    return depth
+end
+
+local function logUiDebug(message)
+    if not ENABLE_UI_CLOSE_DEBUG_LOGS then
+        return
+    end
+    print(string.format(
+        "[%s][UI-DEBUG] %s | mode=%s owned=%s beforeDepth=%s interfaceDepth=%s menu=%s closing=%s",
+        MOD_NAME,
+        message,
+        getCurrentUiMode(),
+        tostring(perkModeOwned),
+        tostring(interfaceDepthBeforeOpen),
+        tostring(getInterfaceModeDepthForLog()),
+        tostring(menu ~= nil),
+        tostring(isClosingMenu)
+    ))
 end
 
 
@@ -2006,6 +2048,7 @@ local function showMenu()
     if menu ~= nil then
         return
     end
+    logUiDebug("showMenu:start")
     refreshLayoutMetrics()
     skillIDs = getSkillIDs()
     selectedSkillIndex = math.max(1, math.min(selectedSkillIndex, #skillIDs))
@@ -2020,6 +2063,7 @@ local function showMenu()
     end)
     if not addModeOk then
         print("[" .. MOD_NAME .. "] Failed to add perk UI mode: " .. tostring(addModeError))
+        logUiDebug("showMenu:addMode-failed")
         return
     end
 
@@ -2030,12 +2074,14 @@ local function showMenu()
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
         releaseOwnedInterfaceMode(true, true)
+        logUiDebug("showMenu:create-failed")
         return
     end
 
     menu = createdOrError
     perkModeOwned = true
     lastKnownGlobalPoints = getCurrentGlobalPoints(getSelectedSkillID())
+    logUiDebug("showMenu:success")
 end
 
 local function closeMenu(options)
@@ -2044,6 +2090,7 @@ local function closeMenu(options)
         return
     end
     isClosingMenu = true
+    logUiDebug("closeMenu:start")
 
     isDraggingTree = false
     lastMousePos = nil
@@ -2074,6 +2121,7 @@ local function closeMenu(options)
     lastKnownGlobalPoints = nil
     suppressToggleUntilRelease = true
     isClosingMenu = false
+    logUiDebug("closeMenu:done")
 end
 
 local function toggleMenu()
@@ -2126,6 +2174,9 @@ end
 local function onUiModeChanged(data)
     if type(data) ~= "table" then
         return
+    end
+    if ENABLE_UI_CLOSE_DEBUG_LOGS then
+        logUiDebug("UiModeChanged old=" .. tostring(data.oldMode) .. " new=" .. tostring(data.newMode))
     end
 
     if menu ~= nil and data.oldMode == PERK_UI_MODE_ID and data.newMode ~= PERK_UI_MODE_ID then

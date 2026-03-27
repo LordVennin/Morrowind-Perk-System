@@ -9,8 +9,7 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
 -- OpenMW only accepts built-in mode ids for UI.addMode/removeMode.
--- "Journal" is the same mode used by the Advanced World Map example.
-local PERK_UI_MODE_ID = "Journal"
+local PERK_UI_MODE_ID = "Interface"
 
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P
@@ -53,7 +52,9 @@ local function anyKeyDown(names)
 end
 
 local menu = nil
-local openedInterfaceForPerkMenu = false
+local perkModeOwned = false
+local interfaceDepthBeforeOpen = 0
+local isClosingMenu = false
 local lastKnownGlobalPoints = nil
 local selectedSkillIndex = 1
 local selectedPerkIndex = 1
@@ -184,6 +185,64 @@ local function refreshLayoutMetrics()
 end
 
 local buildLayout
+
+local function countInterfaceModeDepth()
+    local uiModes = interfaces.UI.modes
+    if type(uiModes) ~= "table" then
+        return 0
+    end
+
+    local function getModeId(entry)
+        if type(entry) == "string" then
+            return entry
+        end
+        if type(entry) == "table" then
+            if type(entry.mode) == "string" then
+                return entry.mode
+            end
+            if type(entry.id) == "string" then
+                return entry.id
+            end
+            if type(entry.name) == "string" then
+                return entry.name
+            end
+        end
+        return nil
+    end
+
+    local depth = 0
+    for key, value in pairs(uiModes) do
+        if key == PERK_UI_MODE_ID and type(value) == "number" then
+            depth = depth + value
+        elseif key == PERK_UI_MODE_ID and value == true then
+            depth = math.max(depth, 1)
+        elseif getModeId(value) == PERK_UI_MODE_ID or getModeId(key) == PERK_UI_MODE_ID then
+            depth = depth + 1
+        end
+    end
+    return depth
+end
+
+local function releaseOwnedInterfaceMode(forceRelease)
+    if not forceRelease and not perkModeOwned then
+        return
+    end
+
+    local currentDepth = countInterfaceModeDepth()
+    if currentDepth <= interfaceDepthBeforeOpen then
+        return
+    end
+
+    local targetDepth = math.max(interfaceDepthBeforeOpen, currentDepth - 1)
+    while currentDepth > targetDepth do
+        interfaces.UI.removeMode(PERK_UI_MODE_ID)
+        local updatedDepth = countInterfaceModeDepth()
+        if updatedDepth >= currentDepth then
+            break
+        end
+        currentDepth = updatedDepth
+    end
+end
 
 local function getSkillIDs()
     local modApi = interfaces[MOD_NAME]
@@ -1941,10 +2000,14 @@ local function showMenu()
     selectedTreeNodeID = nil
     updateFilteredPerks()
 
-    -- Push an isolated, mod-specific UI mode so this menu never collides with
-    -- vanilla "Interface" entries or other mods that use that same mode id.
-    interfaces.UI.addMode(PERK_UI_MODE_ID, { windows = {} })
-    local interfaceModeOpened = true
+    interfaceDepthBeforeOpen = countInterfaceModeDepth()
+    local addModeOk, addModeError = pcall(function()
+        interfaces.UI.addMode(PERK_UI_MODE_ID, { windows = {} })
+    end)
+    if not addModeOk then
+        print("[" .. MOD_NAME .. "] Failed to add perk UI mode: " .. tostring(addModeError))
+        return
+    end
 
     local ok, createdOrError = pcall(function()
         return ui.create(buildLayout())
@@ -1952,18 +2015,22 @@ local function showMenu()
 
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to create perk UI: " .. tostring(createdOrError))
-        if interfaceModeOpened then
-            interfaces.UI.removeMode(PERK_UI_MODE_ID)
-        end
+        releaseOwnedInterfaceMode(true)
         return
     end
 
     menu = createdOrError
-    openedInterfaceForPerkMenu = true
+    perkModeOwned = true
     lastKnownGlobalPoints = getCurrentGlobalPoints(getSelectedSkillID())
 end
 
-local function closeMenu()
+local function closeMenu(options)
+    options = options or {}
+    if isClosingMenu then
+        return
+    end
+    isClosingMenu = true
+
     isDraggingTree = false
     lastMousePos = nil
     selectedPerkIndex = 0
@@ -1971,17 +2038,24 @@ local function closeMenu()
     filteredPerkIDs = {}
 
     if menu ~= nil then
-        menu:destroy()
+        local ok, err = pcall(function()
+            menu:destroy()
+        end)
+        if not ok then
+            print("[" .. MOD_NAME .. "] Failed to destroy perk UI: " .. tostring(err))
+        end
         menu = nil
     end
 
-    if openedInterfaceForPerkMenu then
-        interfaces.UI.removeMode(PERK_UI_MODE_ID)
-        openedInterfaceForPerkMenu = false
+    if not options.skipOwnedModeRemoval then
+        releaseOwnedInterfaceMode()
     end
+    perkModeOwned = false
+    interfaceDepthBeforeOpen = 0
     optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
     suppressToggleUntilRelease = true
+    isClosingMenu = false
 end
 
 local function toggleMenu()
@@ -2037,6 +2111,9 @@ local function onUiModeChanged(data)
     end
 
     if menu ~= nil and data.oldMode == PERK_UI_MODE_ID and data.newMode ~= PERK_UI_MODE_ID then
+        if isClosingMenu then
+            return
+        end
         closeMenu()
     end
 

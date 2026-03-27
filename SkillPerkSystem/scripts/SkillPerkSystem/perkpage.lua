@@ -192,9 +192,31 @@ local function countInterfaceModeDepth()
         return 0
     end
 
+    local function getModeId(entry)
+        if type(entry) == "string" then
+            return entry
+        end
+        if type(entry) == "table" then
+            if type(entry.mode) == "string" then
+                return entry.mode
+            end
+            if type(entry.id) == "string" then
+                return entry.id
+            end
+            if type(entry.name) == "string" then
+                return entry.name
+            end
+        end
+        return nil
+    end
+
     local depth = 0
-    for _, modeId in pairs(uiModes) do
-        if modeId == PERK_UI_MODE_ID then
+    for key, value in pairs(uiModes) do
+        if key == PERK_UI_MODE_ID and type(value) == "number" then
+            depth = depth + value
+        elseif key == PERK_UI_MODE_ID and value == true then
+            depth = math.max(depth, 1)
+        elseif getModeId(value) == PERK_UI_MODE_ID or getModeId(key) == PERK_UI_MODE_ID then
             depth = depth + 1
         end
     end

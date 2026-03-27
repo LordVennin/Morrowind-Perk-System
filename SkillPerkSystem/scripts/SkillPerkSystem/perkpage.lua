@@ -16,6 +16,7 @@ local activeToggleKeyCode = input.KEY.P
 local toggleKeyWasPressed = false
 local suppressToggleUntilRelease = false
 local ENABLE_UI_CLOSE_DEBUG_LOGS = true
+local SUPPRESS_JOURNAL_SOUND_EFFECTS = true
 
 local function refreshToggleKeyBinding()
     local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
@@ -123,6 +124,21 @@ local function logUiDebug(message)
         tostring(menu ~= nil),
         tostring(isClosingMenu)
     ))
+end
+
+local function suppressJournalUiSounds()
+    if not SUPPRESS_JOURNAL_SOUND_EFFECTS then
+        return
+    end
+    if PERK_UI_MODE_ID ~= "Journal" then
+        return
+    end
+
+    pcall(function()
+        ambient.stopSound("book open")
+        ambient.stopSound("book page")
+        ambient.stopSound("book page2")
+    end)
 end
 
 
@@ -2066,6 +2082,7 @@ local function showMenu()
         logUiDebug("showMenu:addMode-failed")
         return
     end
+    suppressJournalUiSounds()
 
     local ok, createdOrError = pcall(function()
         return ui.create(buildLayout())

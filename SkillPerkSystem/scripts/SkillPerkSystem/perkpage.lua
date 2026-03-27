@@ -190,6 +190,15 @@ local function beginJournalCloseSoundSuppressionWindow()
     suppressJournalCloseUiSounds()
 end
 
+-- Backward-compat shim:
+-- Some existing callbacks/hot-reload states may still reference the old helper name.
+-- Keep a safe alias so legacy call sites do not hard-error.
+local function beginJournalSoundSuppressionWindow()
+    beginJournalOpenSoundSuppressionWindow()
+    beginJournalCloseSoundSuppressionWindow()
+end
+_G.beginJournalSoundSuppressionWindow = beginJournalSoundSuppressionWindow
+
 
 local function clamp(value, minValue, maxValue)
     if value < minValue then

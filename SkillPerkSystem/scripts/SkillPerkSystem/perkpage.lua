@@ -9,7 +9,8 @@ local settings = require("scripts.SkillPerkSystem.settings")
 
 local MOD_NAME = settings.MOD_NAME
 -- OpenMW only accepts built-in mode ids for UI.addMode/removeMode.
-local PERK_UI_MODE_ID = "Interface"
+-- Use Companion to avoid collisions with the shared Interface mode stack.
+local PERK_UI_MODE_ID = "Companion"
 
 local activeToggleKeyName = nil
 local activeToggleKeyCode = input.KEY.P

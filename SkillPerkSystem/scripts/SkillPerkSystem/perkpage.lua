@@ -2092,7 +2092,7 @@ local function onUiModeChanged(data)
         if isClosingMenu then
             return
         end
-        closeMenu({ skipOwnedModeRemoval = true })
+        closeMenu()
     end
 
     -- If any non-nil mode just closed, wait until the toggle key is released

@@ -17,6 +17,7 @@ local toggleKeyWasPressed = false
 local suppressToggleUntilRelease = false
 local ENABLE_UI_CLOSE_DEBUG_LOGS = true
 local SUPPRESS_JOURNAL_SOUND_EFFECTS = true
+local JOURNAL_SOUND_SUPPRESSION_WINDOW_SECONDS = 0.35
 
 local function refreshToggleKeyBinding()
     local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
@@ -71,6 +72,7 @@ local isDraggingTree = false
 local lastMousePos = nil
 local apiUnavailableWarned = false
 local optimisticPerkEffectEnabledByID = {}
+local journalSoundSuppressionRemaining = 0
 
 local uiScale = 1
 
@@ -139,6 +141,21 @@ local function suppressJournalUiSounds()
         ambient.stopSound("book page")
         ambient.stopSound("book page2")
     end)
+end
+
+local function beginJournalSoundSuppressionWindow()
+    if not SUPPRESS_JOURNAL_SOUND_EFFECTS then
+        return
+    end
+    if PERK_UI_MODE_ID ~= "Journal" then
+        return
+    end
+
+    journalSoundSuppressionRemaining = math.max(
+        journalSoundSuppressionRemaining or 0,
+        JOURNAL_SOUND_SUPPRESSION_WINDOW_SECONDS
+    )
+    suppressJournalUiSounds()
 end
 
 
@@ -2082,7 +2099,7 @@ local function showMenu()
         logUiDebug("showMenu:addMode-failed")
         return
     end
-    suppressJournalUiSounds()
+    beginJournalSoundSuppressionWindow()
 
     local ok, createdOrError = pcall(function()
         return ui.create(buildLayout())
@@ -2140,6 +2157,7 @@ local function closeMenu(options)
     if not ok then
         print("[" .. MOD_NAME .. "] Failed to remove UI mode: " .. tostring(err))
     end
+    beginJournalSoundSuppressionWindow()
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
     didForceUiModeReset = ok
@@ -2205,6 +2223,11 @@ local function onUiModeChanged(data)
         logUiDebug("UiModeChanged old=" .. tostring(data.oldMode) .. " new=" .. tostring(data.newMode))
     end
 
+    local transitionTouchesJournal = data.oldMode == PERK_UI_MODE_ID or data.newMode == PERK_UI_MODE_ID
+    if transitionTouchesJournal and (menu ~= nil or perkModeOwned or isClosingMenu) then
+        beginJournalSoundSuppressionWindow()
+    end
+
     if menu ~= nil and data.oldMode == PERK_UI_MODE_ID and data.newMode ~= PERK_UI_MODE_ID then
         if isClosingMenu then
             return
@@ -2220,6 +2243,11 @@ local function onUiModeChanged(data)
 end
 
 local function onFrame(dt)
+    if journalSoundSuppressionRemaining > 0 then
+        suppressJournalUiSounds()
+        journalSoundSuppressionRemaining = math.max(0, journalSoundSuppressionRemaining - (tonumber(dt) or 0))
+    end
+
     if menu == nil and perkModeOwned then
         local released = releaseOwnedInterfaceMode(false, true)
         if released then

@@ -2061,28 +2061,15 @@ local function closeMenu(options)
         menu = nil
     end
 
-    local ownedModeReleased = true
-    if not options.skipOwnedModeRemoval then
-        local allowFallbackModeRemove = options.allowFallbackModeRemove ~= false
-        ownedModeReleased = releaseOwnedInterfaceMode(false, allowFallbackModeRemove)
-    end
-    if ownedModeReleased then
-        perkModeOwned = false
-        interfaceDepthBeforeOpen = 0
-        didForceUiModeReset = false
-    elseif options.allowForceSetMode ~= false then
-        local ok, err = pcall(function()
-            interfaces.UI.setMode()
-        end)
-        if not ok then
-            print("[" .. MOD_NAME .. "] Failed to force reset UI mode: " .. tostring(err))
-        end
-        perkModeOwned = false
-        interfaceDepthBeforeOpen = 0
-        didForceUiModeReset = true
+    local ok, err = pcall(function()
+        interfaces.UI.setMode()
+    end)
+    if not ok then
+        print("[" .. MOD_NAME .. "] Failed to force reset UI mode: " .. tostring(err))
     end
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
+    didForceUiModeReset = ok
     optimisticPerkEffectEnabledByID = {}
     lastKnownGlobalPoints = nil
     suppressToggleUntilRelease = true

@@ -225,16 +225,16 @@ end
 
 local function releaseOwnedInterfaceMode(forceRelease, allowFallbackRemove)
     if not forceRelease and not perkModeOwned then
-        return
+        return true
     end
 
     local currentDepth = countInterfaceModeDepth()
     if currentDepth <= interfaceDepthBeforeOpen then
         if not allowFallbackRemove then
-            return
+            return true
         end
         interfaces.UI.removeMode(PERK_UI_MODE_ID)
-        return
+        return countInterfaceModeDepth() <= interfaceDepthBeforeOpen
     end
 
     local targetDepth = math.max(interfaceDepthBeforeOpen, currentDepth - 1)
@@ -252,6 +252,8 @@ local function releaseOwnedInterfaceMode(forceRelease, allowFallbackRemove)
     if not removedAny and allowFallbackRemove then
         interfaces.UI.removeMode(PERK_UI_MODE_ID)
     end
+
+    return countInterfaceModeDepth() <= interfaceDepthBeforeOpen
 end
 
 local function getSkillIDs()
@@ -2057,9 +2059,14 @@ local function closeMenu(options)
         menu = nil
     end
 
+    local ownedModeReleased = true
     if not options.skipOwnedModeRemoval then
         local allowFallbackModeRemove = options.allowFallbackModeRemove ~= false
-        releaseOwnedInterfaceMode(false, allowFallbackModeRemove)
+        ownedModeReleased = releaseOwnedInterfaceMode(false, allowFallbackModeRemove)
+    end
+    if ownedModeReleased then
+        perkModeOwned = false
+        interfaceDepthBeforeOpen = 0
     end
     perkModeOwned = false
     interfaceDepthBeforeOpen = 0
@@ -2136,6 +2143,14 @@ local function onUiModeChanged(data)
 end
 
 local function onFrame(dt)
+    if menu == nil and perkModeOwned then
+        local released = releaseOwnedInterfaceMode(false, true)
+        if released then
+            perkModeOwned = false
+            interfaceDepthBeforeOpen = 0
+        end
+    end
+
     if menu ~= nil then
         local playerApi = interfaces[MOD_NAME .. "Player"]
         if playerApi ~= nil then

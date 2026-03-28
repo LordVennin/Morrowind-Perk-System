@@ -44,11 +44,16 @@ local function perkInterfaceSaysEnabled()
 end
 
 local function luckyFindEnabled()
-    if effectsSection:get(ENABLED_KEY) == true then
-        return true
+    if not perkInterfaceSaysEnabled() then
+        return false
     end
 
-    return perkInterfaceSaysEnabled()
+    -- Explicit runtime disable should override perk ownership.
+    if effectsSection:get(ENABLED_KEY) == false then
+        return false
+    end
+
+    return true
 end
 
 local function objectKey(object)
@@ -251,19 +256,78 @@ local function countLuckyCoinsInInventory(actor)
     return clampNonNegativeInteger(count)
 end
 
-local function applyLuckBonus(actor, targetBonus)
-    local accessor = types.NPC.stats.attributes.luck
-    if type(accessor) ~= "function" then
-        return
+local function resolveLuckStat(actor)
+    if actor == nil then
+        return nil
     end
 
+    local okType, actorType = pcall(function()
+        return actor.type
+    end)
+    if not okType or actorType == nil then
+        return nil
+    end
+
+    local function tryLuckGetter(t)
+        if t == nil then
+            return nil
+        end
+
+        local okStats, stats = pcall(function()
+            return t.stats
+        end)
+        if not okStats or stats == nil then
+            return nil
+        end
+
+        local okAttrs, attrs = pcall(function()
+            return stats.attributes
+        end)
+        if not okAttrs or attrs == nil then
+            return nil
+        end
+
+        local okFn, fn = pcall(function()
+            return attrs.luck
+        end)
+        if not okFn or type(fn) ~= "function" then
+            return nil
+        end
+
+        local okStat, stat = pcall(fn, actor)
+        if not okStat then
+            return nil
+        end
+
+        return stat
+    end
+
+    local stat = tryLuckGetter(actorType)
+    if stat ~= nil then
+        return stat
+    end
+
+    local okBase, baseType = pcall(function()
+        return actorType.baseType
+    end)
+    if okBase and baseType ~= nil then
+        stat = tryLuckGetter(baseType)
+        if stat ~= nil then
+            return stat
+        end
+    end
+
+    return nil
+end
+
+local function applyLuckBonus(actor, targetBonus)
     local desired = clampNonNegativeInteger(targetBonus)
     local currentApplied = clampNonNegativeInteger(appliedLuckBonus)
     if currentApplied == desired then
         return
     end
 
-    local stat = accessor(actor)
+    local stat = resolveLuckStat(actor)
     if stat == nil or type(stat.base) ~= "number" then
         return
     end

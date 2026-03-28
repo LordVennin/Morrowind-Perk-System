@@ -53,7 +53,37 @@ local function luckyFindEnabled()
 end
 
 local function objectKey(object)
-    return tostring(object.id or object.formId or object.recordId)
+    local explicitId = object.id or object.formId
+    if explicitId ~= nil then
+        return "id:" .. tostring(explicitId)
+    end
+
+    local recordId = tostring(object.recordId or "<unknown>")
+
+    local cellPart = "cell:<unknown>"
+    local okCell, cell = pcall(function()
+        return object.cell
+    end)
+    if okCell and cell ~= nil then
+        local name = cell.name or cell.id
+        if type(name) == "string" and name ~= "" then
+            cellPart = "cell:" .. name
+        end
+    end
+
+    local posPart = "pos:<unknown>"
+    local okPos, pos = pcall(function()
+        return object.position
+    end)
+    if okPos and type(pos) == "table" and type(pos.x) == "number" and type(pos.y) == "number" and type(pos.z) == "number" then
+        posPart = string.format("pos:%.3f,%.3f,%.3f", pos.x, pos.y, pos.z)
+    end
+
+    return table.concat({
+        "record:" .. recordId,
+        cellPart,
+        posPart,
+    }, "|")
 end
 
 local function addLuckyCoinsToContainer(container, amount)

@@ -7,6 +7,7 @@ Bundled default perk content pack for SkillPerkSystem.
 - Default Long Blade and Block perk modules under `scripts/SkillPerkSystem_BasePack/perks/`.
 - Direct registration script at `scripts/SkillPerkSystem_BasePack/register.lua`.
 - GLOBAL runtime bootstrap at `scripts/SkillPerkSystem_BasePack/global.lua` for non-consume item handlers.
+- Additional security runtime handlers in `treasure_sense_runtime.lua` and `lucky_find_runtime.lua`.
 
 ## How it loads
 
@@ -17,12 +18,19 @@ Bundled default perk content pack for SkillPerkSystem.
 
 ```text
 GLOBAL:scripts/SkillPerkSystem_BasePack/global.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/steady_hands_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/tumbler_sense_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/quick_pick_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/treasure_sense_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/lucky_find_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 ```
 
 `global.lua` runs in GLOBAL context and initializes Steady Hands runtime item usage hooks.
 
 `register.lua` runs in PLAYER context and directly calls `openmw.interfaces.SkillPerkSystem.registerPerk` / `registerTreeNode`, matching the `example_Mod` direct registration style. Effect state toggling remains authored in `perks/security/steady_hands_effect.lua` through `onAcquire`/`onRemove`.
+
+Lucky Find uses `sps_lucky_coin` for drops. The runtime attempts to create it from `gold_001` automatically (with weight `0.01`) when record APIs are available; otherwise provide `sps_lucky_coin` as a `Miscellaneous` record in an enabled plugin.
 
 ## Authoring guidance for addon packs
 

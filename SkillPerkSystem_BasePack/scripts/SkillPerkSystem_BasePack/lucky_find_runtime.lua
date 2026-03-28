@@ -23,7 +23,6 @@ local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 local checkedContainers = {}
 local appliedLuckBonus = 0
 local luckyCoinRecordReady = false
-local attemptedLuckyCoinRecordCreate = false
 local activeLuckyCoinRecordId = nil
 
 local function perkInterfaceSaysEnabled()
@@ -75,7 +74,7 @@ local function objectKey(object)
     local okPos, pos = pcall(function()
         return object.position
     end)
-    if okPos and type(pos) == "table" and type(pos.x) == "number" and type(pos.y) == "number" and type(pos.z) == "number" then
+    if okPos and pos ~= nil and type(pos.x) == "number" and type(pos.y) == "number" and type(pos.z) == "number" then
         posPart = string.format("pos:%.3f,%.3f,%.3f", pos.x, pos.y, pos.z)
     end
 
@@ -122,19 +121,27 @@ local function ensureLuckyCoinRecord()
         return true
     end
 
-    if type(types.Miscellaneous) ~= "table" or type(types.Miscellaneous.records) ~= "table" then
+    if types.Miscellaneous == nil then
+        print("[SkillPerkSystem_BasePack][LuckyFind] types.Miscellaneous unavailable")
+        return false
+    end
+    local okRecords, records = pcall(function()
+        return types.Miscellaneous.records
+    end)
+    if not okRecords or records == nil then
+        print("[SkillPerkSystem_BasePack][LuckyFind] types.Miscellaneous.records unavailable")
         return false
     end
 
     if type(activeLuckyCoinRecordId) == "string"
         and activeLuckyCoinRecordId ~= ""
-        and types.Miscellaneous.records[activeLuckyCoinRecordId] ~= nil
+        and records[activeLuckyCoinRecordId] ~= nil
     then
         luckyCoinRecordReady = true
         return true
     end
 
-    local configuredRecord = types.Miscellaneous.records[CONFIGURED_LUCKY_COIN_RECORD_ID]
+    local configuredRecord = records[CONFIGURED_LUCKY_COIN_RECORD_ID]
     if configuredRecord ~= nil then
         activeLuckyCoinRecordId = CONFIGURED_LUCKY_COIN_RECORD_ID
         effectsSection:set(COIN_RECORD_ID_KEY, activeLuckyCoinRecordId)
@@ -143,7 +150,7 @@ local function ensureLuckyCoinRecord()
     end
 
     local savedRecordId = effectsSection:get(COIN_RECORD_ID_KEY)
-    if type(savedRecordId) == "string" and savedRecordId ~= "" and types.Miscellaneous.records[savedRecordId] ~= nil then
+    if type(savedRecordId) == "string" and savedRecordId ~= "" and records[savedRecordId] ~= nil then
         activeLuckyCoinRecordId = savedRecordId
         luckyCoinRecordReady = true
         return true
@@ -157,12 +164,7 @@ local function ensureLuckyCoinRecord()
         return false
     end
 
-    if attemptedLuckyCoinRecordCreate then
-        return false
-    end
-    attemptedLuckyCoinRecordCreate = true
-
-    local template = types.Miscellaneous.records[GOLD_TEMPLATE_RECORD_ID]
+    local template = records[GOLD_TEMPLATE_RECORD_ID]
     if template == nil then
         print(string.format(
             "[SkillPerkSystem_BasePack][LuckyFind] missing template record '%s' while creating '%s'",
@@ -187,7 +189,13 @@ local function ensureLuckyCoinRecord()
     end
 
     local okCreate, createdRecord = pcall(world.createRecord, recordDraft)
-    local createdId = type(createdRecord) == "table" and createdRecord.id or nil
+    local createdId = nil
+    if type(createdRecord) == "table" then
+        createdId = createdRecord.id
+    elseif type(createdRecord) == "string" then
+        createdId = createdRecord
+    end
+
     if not okCreate or type(createdId) ~= "string" or createdId == "" then
         print(string.format(
             "[SkillPerkSystem_BasePack][LuckyFind] failed to create record '%s': %s",
@@ -301,13 +309,16 @@ local function onActivate(object, actor)
         return
     end
 
+    local foundCoin = math.random() <= FIND_CHANCE
+    if foundCoin and not ensureLuckyCoinRecord() then
+        -- Don't consume the one-time check when setup failed.
+        return
+    end
+
     -- Only one Lucky Find check should happen per container.
     checkedContainers[key] = true
 
-    if math.random() <= FIND_CHANCE then
-        if not ensureLuckyCoinRecord() then
-            return
-        end
+    if foundCoin then
         addLuckyCoinsToContainer(object, 1)
     end
 end
@@ -327,7 +338,6 @@ local function onLoad(savedData)
     checkedContainers = {}
     appliedLuckBonus = 0
     luckyCoinRecordReady = false
-    attemptedLuckyCoinRecordCreate = false
     activeLuckyCoinRecordId = nil
 
     if type(savedData) == "table" then
@@ -346,7 +356,6 @@ local function onNewGame()
     checkedContainers = {}
     appliedLuckBonus = 0
     luckyCoinRecordReady = false
-    attemptedLuckyCoinRecordCreate = false
     activeLuckyCoinRecordId = nil
     effectsSection:set(COIN_RECORD_ID_KEY, nil)
     refreshLuckBonusForPlayer()

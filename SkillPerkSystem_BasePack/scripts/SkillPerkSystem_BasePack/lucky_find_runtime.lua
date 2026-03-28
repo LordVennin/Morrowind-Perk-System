@@ -28,10 +28,14 @@ local activeLuckyCoinRecordId = nil
 local function perkInterfaceSaysEnabled()
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
-        return false
+        return nil
     end
 
-    local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(LUCKY_FIND_PERK_ID)
+    if type(playerApi.hasPerk) ~= "function" then
+        return nil
+    end
+
+    local hasPerk = playerApi.hasPerk(LUCKY_FIND_PERK_ID)
     if not hasPerk then
         return false
     end
@@ -44,13 +48,19 @@ local function perkInterfaceSaysEnabled()
 end
 
 local function luckyFindEnabled()
-    if not perkInterfaceSaysEnabled() then
+    local enabledFromInterface = perkInterfaceSaysEnabled()
+    if enabledFromInterface == false then
         return false
     end
 
     -- Explicit runtime disable should override perk ownership.
     if effectsSection:get(ENABLED_KEY) == false then
         return false
+    end
+
+    -- If the player interface isn't visible in this context, rely on event-driven toggle state.
+    if enabledFromInterface == nil then
+        return effectsSection:get(ENABLED_KEY) == true
     end
 
     return true

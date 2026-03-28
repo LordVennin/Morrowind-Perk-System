@@ -6,9 +6,10 @@ local world = require("openmw.world")
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
 local ENABLED_KEY = "security.lucky_find.enabled"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_LuckyFind_Toggle"
+local GOLD_TEMPLATE_RECORD_ID = "gold_001"
 
--- This record is expected to be provided by a content file.
--- It should mirror gold_001 visuals and use weight 0.01.
+-- Lucky Coin record ID used for Lucky Find drops.
+-- We try to create this record at runtime from gold_001 if it's missing.
 local LUCKY_COIN_RECORD_ID = "sps_lucky_coin"
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
@@ -20,6 +21,8 @@ local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 -- Per-save state.
 local checkedContainers = {}
 local appliedLuckBonus = 0
+local luckyCoinRecordReady = false
+local attemptedLuckyCoinRecordCreate = false
 
 local function perkInterfaceSaysEnabled()
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -75,6 +78,77 @@ local function clampNonNegativeInteger(value)
         return 0
     end
     return n
+end
+
+local function ensureLuckyCoinRecord()
+    if luckyCoinRecordReady then
+        return true
+    end
+
+    if type(types.Miscellaneous) ~= "table" or type(types.Miscellaneous.records) ~= "table" then
+        return false
+    end
+
+    if types.Miscellaneous.records[LUCKY_COIN_RECORD_ID] ~= nil then
+        luckyCoinRecordReady = true
+        return true
+    end
+
+    if attemptedLuckyCoinRecordCreate then
+        return false
+    end
+    attemptedLuckyCoinRecordCreate = true
+
+    if type(types.Miscellaneous.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][LuckyFind] missing record API; add '%s' as a Misc record in a plugin",
+            tostring(LUCKY_COIN_RECORD_ID)
+        ))
+        return false
+    end
+
+    local template = types.Miscellaneous.records[GOLD_TEMPLATE_RECORD_ID]
+    if template == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][LuckyFind] missing template record '%s' while creating '%s'",
+            tostring(GOLD_TEMPLATE_RECORD_ID),
+            tostring(LUCKY_COIN_RECORD_ID)
+        ))
+        return false
+    end
+
+    local okDraft, recordDraft = pcall(types.Miscellaneous.createRecordDraft, {
+        template = template,
+        id = LUCKY_COIN_RECORD_ID,
+        name = "Lucky Coin",
+        weight = 0.01,
+    })
+    if not okDraft or recordDraft == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][LuckyFind] failed to build record draft '%s': %s",
+            tostring(LUCKY_COIN_RECORD_ID),
+            tostring(recordDraft)
+        ))
+        return false
+    end
+
+    local okCreate, createdRecord = pcall(world.createRecord, recordDraft)
+    if not okCreate or createdRecord == nil then
+        print(string.format(
+            "[SkillPerkSystem_BasePack][LuckyFind] failed to create record '%s': %s",
+            tostring(LUCKY_COIN_RECORD_ID),
+            tostring(createdRecord)
+        ))
+        return false
+    end
+
+    luckyCoinRecordReady = true
+    print(string.format(
+        "[SkillPerkSystem_BasePack][LuckyFind] created runtime record '%s' from '%s'",
+        tostring(LUCKY_COIN_RECORD_ID),
+        tostring(GOLD_TEMPLATE_RECORD_ID)
+    ))
+    return true
 end
 
 local function countLuckyCoinsInInventory(actor)
@@ -170,6 +244,9 @@ local function onActivate(object, actor)
     checkedContainers[key] = true
 
     if math.random() <= FIND_CHANCE then
+        if not ensureLuckyCoinRecord() then
+            return
+        end
         addLuckyCoinsToContainer(object, 1)
     end
 end

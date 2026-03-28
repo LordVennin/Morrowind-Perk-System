@@ -30,7 +30,7 @@ PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 
 `register.lua` runs in PLAYER context and directly calls `openmw.interfaces.SkillPerkSystem.registerPerk` / `registerTreeNode`, matching the `example_Mod` direct registration style. Effect state toggling remains authored in `perks/security/steady_hands_effect.lua` through `onAcquire`/`onRemove`.
 
-Lucky Find uses `sps_lucky_coin` for drops. The runtime attempts to create it from `gold_001` automatically (with weight `0.01`) when record APIs are available; otherwise provide `sps_lucky_coin` as a `Miscellaneous` record in an enabled plugin.
+Lucky Find uses a Lucky Coin misc record for drops. If `sps_lucky_coin` exists in content files it is used directly; otherwise the runtime attempts to generate a custom Lucky Coin record from `gold_001` (weight `0.01`) and reuses the generated record ID for future drops.
 
 ## Authoring guidance for addon packs
 

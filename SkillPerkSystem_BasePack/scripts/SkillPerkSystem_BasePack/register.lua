@@ -114,6 +114,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.treasure_sense_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.treasure_sense_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.lucky_find_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.lucky_find_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

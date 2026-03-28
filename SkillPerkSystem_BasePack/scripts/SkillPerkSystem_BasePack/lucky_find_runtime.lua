@@ -13,6 +13,7 @@ local GOLD_TEMPLATE_RECORD_ID = "gold_001"
 local CONFIGURED_LUCKY_COIN_RECORD_ID = "sps_lucky_coin"
 
 local FIND_CHANCE = 0.02
+local DEBUG_LUCKY_FIND = true
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
@@ -21,6 +22,14 @@ local checkedContainers = {}
 local appliedLuckBonus = 0
 local luckyCoinRecordReady = false
 local activeLuckyCoinRecordId = nil
+local lastLoggedCoinCount = nil
+
+local function log(message)
+    if not DEBUG_LUCKY_FIND then
+        return
+    end
+    print("[SkillPerkSystem_BasePack][LuckyFind] " .. tostring(message))
+end
 
 local function luckyFindEnabled()
     return effectsSection:get(ENABLED_KEY) == true
@@ -80,6 +89,7 @@ local function addLuckyCoinsToContainer(container, amount)
     end
 
     coin:moveInto(types.Container.inventory(container))
+    log(string.format("added %d lucky coin(s) to container=%s record=%s", amount, tostring(container), tostring(recordId)))
     return true
 end
 
@@ -121,6 +131,7 @@ local function ensureLuckyCoinRecord()
         activeLuckyCoinRecordId = CONFIGURED_LUCKY_COIN_RECORD_ID
         effectsSection:set(COIN_RECORD_ID_KEY, activeLuckyCoinRecordId)
         luckyCoinRecordReady = true
+        log(string.format("using configured lucky coin record '%s'", tostring(activeLuckyCoinRecordId)))
         return true
     end
 
@@ -128,6 +139,7 @@ local function ensureLuckyCoinRecord()
     if type(savedRecordId) == "string" and savedRecordId ~= "" and records[savedRecordId] ~= nil then
         activeLuckyCoinRecordId = savedRecordId
         luckyCoinRecordReady = true
+        log(string.format("using saved lucky coin record '%s'", tostring(activeLuckyCoinRecordId)))
         return true
     end
 
@@ -188,8 +200,8 @@ local function ensureLuckyCoinRecord()
     activeLuckyCoinRecordId = createdId
     effectsSection:set(COIN_RECORD_ID_KEY, activeLuckyCoinRecordId)
     luckyCoinRecordReady = true
-    print(string.format(
-        "[SkillPerkSystem_BasePack][LuckyFind] created runtime record '%s' (Lucky Coin) from '%s'",
+    log(string.format(
+        "created runtime record '%s' (Lucky Coin) from '%s'",
         tostring(activeLuckyCoinRecordId),
         tostring(GOLD_TEMPLATE_RECORD_ID)
     ))
@@ -218,12 +230,38 @@ local function countLuckyCoinsInInventory(actor)
         return 0
     end
 
-    local okCount, count = pcall(inventory.countOf, inventory, activeLuckyCoinRecordId)
-    if not okCount then
-        return 0
+    local count = nil
+
+    if type(inventory.countOf) == "function" then
+        local okCountA, countA = pcall(function()
+            return inventory:countOf(activeLuckyCoinRecordId)
+        end)
+        if okCountA and type(countA) == "number" then
+            count = countA
+        end
+
+        if (count == nil or count <= 0) and types.Miscellaneous ~= nil then
+            local okRecord, record = pcall(function()
+                return types.Miscellaneous.records[activeLuckyCoinRecordId]
+            end)
+            if okRecord and record ~= nil then
+                local okCountB, countB = pcall(function()
+                    return inventory:countOf(record)
+                end)
+                if okCountB and type(countB) == "number" then
+                    count = countB
+                end
+            end
+        end
     end
 
-    return clampNonNegativeInteger(count)
+    local normalizedCount = clampNonNegativeInteger(count or 0)
+    if lastLoggedCoinCount ~= normalizedCount then
+        log(string.format("inventory lucky coin count=%d record=%s", normalizedCount, tostring(activeLuckyCoinRecordId)))
+        lastLoggedCoinCount = normalizedCount
+    end
+
+    return normalizedCount
 end
 
 local function resolveLuckStat(actor)
@@ -299,12 +337,14 @@ local function applyLuckBonus(actor, targetBonus)
 
     local stat = resolveLuckStat(actor)
     if stat == nil or type(stat.base) ~= "number" then
+        log("unable to resolve writable luck stat for player")
         return
     end
 
     local newBase = math.max(0, math.floor(stat.base - currentApplied + desired))
     stat.base = newBase
     appliedLuckBonus = desired
+    log(string.format("applied luck bonus %d -> %d (new base=%d)", currentApplied, desired, newBase))
 end
 
 local function refreshLuckBonusForPlayer()
@@ -327,6 +367,7 @@ local function handleToggle(data)
     end
 
     effectsSection:set(ENABLED_KEY, data.enable == true)
+    log(string.format("toggle enable=%s", tostring(data.enable == true)))
     refreshLuckBonusForPlayer()
 end
 

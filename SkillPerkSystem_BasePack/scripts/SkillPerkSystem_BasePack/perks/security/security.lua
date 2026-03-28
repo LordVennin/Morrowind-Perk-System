@@ -54,7 +54,7 @@ return {
             id = "security_lucky_find",
             tab = "Security",
             minimumSkill = 45,
-            effectId = "demo_noop",
+            effectId = "security_lucky_find_effect",
             requires = { "security_treasure_sense" },
             cost = 1,
             x = -220,

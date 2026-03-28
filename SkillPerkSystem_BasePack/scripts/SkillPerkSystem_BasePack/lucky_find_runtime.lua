@@ -190,10 +190,15 @@ local function ensureLuckyCoinRecord()
 
     local okCreate, createdRecord = pcall(world.createRecord, recordDraft)
     local createdId = nil
-    if type(createdRecord) == "table" then
-        createdId = createdRecord.id
-    elseif type(createdRecord) == "string" then
+    if type(createdRecord) == "string" then
         createdId = createdRecord
+    elseif createdRecord ~= nil then
+        local okId, idValue = pcall(function()
+            return createdRecord.id
+        end)
+        if okId and type(idValue) == "string" and idValue ~= "" then
+            createdId = idValue
+        end
     end
 
     if not okCreate or type(createdId) ~= "string" or createdId == "" then

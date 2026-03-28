@@ -23,6 +23,7 @@ PLAYER:scripts/SkillPerkSystem_BasePack/tumbler_sense_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/quick_pick_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/treasure_sense_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/lucky_find_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/lucky_find_player_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 ```
 

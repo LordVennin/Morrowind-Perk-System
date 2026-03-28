@@ -1,4 +1,3 @@
-local interfaces = require("openmw.interfaces")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
 local world = require("openmw.world")
@@ -13,8 +12,6 @@ local GOLD_TEMPLATE_RECORD_ID = "gold_001"
 -- We try to create this record at runtime from gold_001 if it's missing.
 local CONFIGURED_LUCKY_COIN_RECORD_ID = "sps_lucky_coin"
 
-local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
-local LUCKY_FIND_PERK_ID = "security_lucky_find"
 local FIND_CHANCE = 0.02
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
@@ -25,45 +22,8 @@ local appliedLuckBonus = 0
 local luckyCoinRecordReady = false
 local activeLuckyCoinRecordId = nil
 
-local function perkInterfaceSaysEnabled()
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return nil
-    end
-
-    if type(playerApi.hasPerk) ~= "function" then
-        return nil
-    end
-
-    local hasPerk = playerApi.hasPerk(LUCKY_FIND_PERK_ID)
-    if not hasPerk then
-        return false
-    end
-
-    if type(playerApi.isPerkEffectEnabled) == "function" then
-        return playerApi.isPerkEffectEnabled(LUCKY_FIND_PERK_ID)
-    end
-
-    return true
-end
-
 local function luckyFindEnabled()
-    local enabledFromInterface = perkInterfaceSaysEnabled()
-    if enabledFromInterface == false then
-        return false
-    end
-
-    -- Explicit runtime disable should override perk ownership.
-    if effectsSection:get(ENABLED_KEY) == false then
-        return false
-    end
-
-    -- If the player interface isn't visible in this context, rely on event-driven toggle state.
-    if enabledFromInterface == nil then
-        return effectsSection:get(ENABLED_KEY) == true
-    end
-
-    return true
+    return effectsSection:get(ENABLED_KEY) == true
 end
 
 local function objectKey(object)
@@ -418,6 +378,8 @@ local function onLoad(savedData)
     appliedLuckBonus = 0
     luckyCoinRecordReady = false
     activeLuckyCoinRecordId = nil
+    -- onLoad starts disabled until perk effects are synced and toggled back on.
+    effectsSection:set(ENABLED_KEY, false)
 
     if type(savedData) == "table" then
         if type(savedData.checkedContainers) == "table" then
@@ -436,6 +398,7 @@ local function onNewGame()
     appliedLuckBonus = 0
     luckyCoinRecordReady = false
     activeLuckyCoinRecordId = nil
+    effectsSection:set(ENABLED_KEY, false)
     effectsSection:set(COIN_RECORD_ID_KEY, nil)
     refreshLuckBonusForPlayer()
 end

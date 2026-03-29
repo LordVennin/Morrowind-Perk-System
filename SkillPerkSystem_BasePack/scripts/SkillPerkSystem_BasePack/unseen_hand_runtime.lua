@@ -16,11 +16,37 @@ local DEFAULT_SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_Toggle"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local PERK_ID = "security_unseen_hand"
+local LOG_TAG = "[SkillPerkSystem_BasePack][UnseenHand]"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 
 local unseenHandSpellRecordReady = false
 local activeUnseenHandSpellRecordId = nil
+local spellRecordResolutionFailureState = nil
+local playerSpellsFailureState = nil
+local addSpellFailureLogged = false
+local removeSpellFailureLogged = false
+
+local function logDebug(message)
+    print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
+end
+
+local function logFirstFailure(stateKey, message)
+    if stateKey == nil then
+        return
+    end
+
+    if stateKey == spellRecordResolutionFailureState then
+        return
+    end
+
+    spellRecordResolutionFailureState = stateKey
+    logDebug(message)
+end
+
+local function clearSpellResolutionFailure()
+    spellRecordResolutionFailureState = nil
+end
 
 local function spellRecordExists(spellRecordId)
     if type(spellRecordId) ~= "string" or spellRecordId == "" then
@@ -143,6 +169,30 @@ local function ensureUnseenHandSpellRecord()
     return true
 end
 
+local function resolveSpellRecordId()
+    if not ensureUnseenHandSpellRecord() then
+        logFirstFailure("record-not-ready", "spell record not ready; unable to provision unseen-hand ability")
+        return nil
+    end
+
+    local spellRecordId = activeUnseenHandSpellRecordId
+    if type(spellRecordId) ~= "string" or spellRecordId == "" then
+        logFirstFailure("record-empty", "resolved spell record id is empty")
+        return nil
+    end
+
+    if not spellRecordExists(spellRecordId) then
+        logFirstFailure(
+            "record-unknown:" .. spellRecordId,
+            string.format("resolved spell record id is unknown: %s", spellRecordId)
+        )
+        return nil
+    end
+
+    clearSpellResolutionFailure()
+    return spellRecordId
+end
+
 local function unseenHandEnabled()
     if effectsSection:get(ENABLED_KEY) ~= true then
         return false
@@ -191,24 +241,29 @@ end
 
 local function getPlayerSpells()
     if Actor == nil or type(Actor.spells) ~= "function" then
+        if playerSpellsFailureState ~= "unavailable" then
+            playerSpellsFailureState = "unavailable"
+            logDebug("Actor.spells(pself) unavailable; cannot adjust unseen-hand spell state")
+        end
         return nil
     end
 
     local okSpells, spells = pcall(Actor.spells, pself)
     if not okSpells then
+        if playerSpellsFailureState ~= "error" then
+            playerSpellsFailureState = "error"
+            logDebug("Actor.spells(pself) errored; cannot adjust unseen-hand spell state")
+        end
         return nil
     end
 
+    playerSpellsFailureState = nil
     return spells
 end
 
 local function ensureSpellState(shouldHave)
-    if not ensureUnseenHandSpellRecord() then
-        return
-    end
-
-    local spellRecordId = activeUnseenHandSpellRecordId
-    if type(spellRecordId) ~= "string" or spellRecordId == "" then
+    local spellRecordId = resolveSpellRecordId()
+    if spellRecordId == nil then
         return
     end
 
@@ -228,13 +283,29 @@ local function ensureSpellState(shouldHave)
     end
 
     if shouldHave and not hasSpell and type(spells.add) == "function" then
-        pcall(function()
+        local okAdd, addError = pcall(function()
             spells:add(spellRecordId)
         end)
+        if not okAdd then
+            if not addSpellFailureLogged then
+                addSpellFailureLogged = true
+                logDebug(string.format("spells:add(%s) failed: %s", spellRecordId, tostring(addError)))
+            end
+            return
+        end
+        addSpellFailureLogged = false
     elseif (not shouldHave) and hasSpell and type(spells.remove) == "function" then
-        pcall(function()
+        local okRemove, removeError = pcall(function()
             spells:remove(spellRecordId)
         end)
+        if not okRemove then
+            if not removeSpellFailureLogged then
+                removeSpellFailureLogged = true
+                logDebug(string.format("spells:remove(%s) failed: %s", spellRecordId, tostring(removeError)))
+            end
+            return
+        end
+        removeSpellFailureLogged = false
     end
 end
 

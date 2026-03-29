@@ -9,31 +9,53 @@ local Probe = types.Probe
 local SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local PERK_ID = "security_unseen_hand"
+local PLAYER_TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle"
 local LOG_TAG = "[SkillPerkSystem_BasePack][UnseenHand]"
 
 local addSpellFailureLogged = false
 local removeSpellFailureLogged = false
 local playerSpellsFailureState = nil
+local enabledOverride = nil
+local spellAddedByRuntime = false
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
 end
 
-local function unseenHandEnabled()
+local function interfaceSaysEnabled()
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(PERK_ID) then
-        return false
-    end
+    if type(spells.has) == "function" then
+        local okHasById, valueById = pcall(function()
+            return spells:has(SPELL_RECORD_ID)
+        end)
+        if okHasById and valueById == true then
+            return true
+        end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" then
-        return playerApi.isPerkEffectEnabled(PERK_ID)
+        local spellRecord = resolveSpellRecord()
+        if spellRecord ~= nil then
+            local okHasByRecord, valueByRecord = pcall(function()
+                return spells:has(spellRecord)
+            end)
+            if okHasByRecord and valueByRecord == true then
+                return true
+            end
+        end
     end
 
     return true
+end
+
+local function unseenHandEnabled()
+    if enabledOverride ~= nil then
+        return enabledOverride == true
+    end
+
+    return interfaceSaysEnabled()
 end
 
 local function getEquippedSecurityTool()
@@ -47,7 +69,7 @@ local function getEquippedSecurityTool()
         return leftItem
     end
 
-    return nil
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
 end
 
 local function getPlayerSpells()
@@ -170,13 +192,13 @@ local function removeSpell(spells)
     return false, tostring(errById) .. " | " .. tostring(errByRecord)
 end
 
-local function refreshBurglarsInstinctAbility()
+local function refreshBurglarsInstinctAbility(forceDisable)
     local spells = getPlayerSpells()
     if spells == nil then
         return
     end
 
-    local shouldHave = unseenHandEnabled() and getEquippedSecurityTool() ~= nil
+    local shouldHave = (not forceDisable) and unseenHandEnabled() and getEquippedSecurityTool() ~= nil
     local hasSpell = spellBookHasSpell(spells)
 
     if shouldHave and not hasSpell then
@@ -189,7 +211,8 @@ local function refreshBurglarsInstinctAbility()
             return
         end
         addSpellFailureLogged = false
-    elseif (not shouldHave) and hasSpell then
+        spellAddedByRuntime = true
+    elseif (not shouldHave) and (hasSpell or spellAddedByRuntime) then
         local okRemove, removeError = removeSpell(spells)
         if not okRemove then
             if not removeSpellFailureLogged then
@@ -199,12 +222,38 @@ local function refreshBurglarsInstinctAbility()
             return
         end
         removeSpellFailureLogged = false
+        spellAddedByRuntime = false
     end
+end
+
+local function onPlayerToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    enabledOverride = data.enable == true
+    if not enabledOverride then
+        refreshBurglarsInstinctAbility(true)
+        return
+    end
+
+    refreshBurglarsInstinctAbility(false)
+end
+
+local function onLoad()
+    enabledOverride = nil
+    spellAddedByRuntime = false
+    refreshBurglarsInstinctAbility(false)
 end
 
 return {
     engineHandlers = {
-        onUpdate = refreshBurglarsInstinctAbility,
-        onLoad = refreshBurglarsInstinctAbility,
+        onUpdate = function()
+            refreshBurglarsInstinctAbility(false)
+        end,
+        onLoad = onLoad,
+    },
+    eventHandlers = {
+        [PLAYER_TOGGLE_EVENT] = onPlayerToggle,
     },
 }

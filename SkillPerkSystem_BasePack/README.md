@@ -35,7 +35,7 @@ PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 
 Lucky Find uses a Lucky Coin misc record for drops. If `sps_lucky_coin` exists in content files it is used directly; otherwise the runtime attempts to generate a custom Lucky Coin record from `gold_001` (weight `0.01`) and reuses the generated record ID for future drops.
 
-Burglar's Instinct now expects `sps_security_burglars_instinct_ability` to be authored by your content files. The player runtime simply adds/removes that ability while a lockpick or probe is equipped and the perk effect is enabled.
+Burglar's Instinct expects `sps_security_burglars_instinct_ability` to be authored by your content files. Effect `onAcquire`/`onRemove` callbacks broadcast enable state, the global runtime forwards that state to the player, and the player runtime adds/removes the ability while a lockpick or probe is equipped.
 
 ## Authoring guidance for addon packs
 

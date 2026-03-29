@@ -4,11 +4,14 @@ local world = require("openmw.world")
 
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
 local ENABLED_KEY = "security.lucky_find.enabled"
+local FORTUNES_HABIT_ENABLED_KEY = "security.fortunes_habit.enabled"
 local COIN_RECORD_ID_KEY = "security.lucky_find.coin_record_id"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_LuckyFind_Toggle"
+local FORTUNES_HABIT_TOGGLE_EVENT = "SkillPerkSystem_BasePack_FortunesHabit_Toggle"
 local GOLD_TEMPLATE_RECORD_ID = "gold_001"
 local CONFIGURED_LUCKY_COIN_RECORD_ID = "sps_lucky_coin"
-local FIND_CHANCE = 0.02
+local BASE_FIND_CHANCE = 0.015
+local FORTUNES_HABIT_FIND_CHANCE = 0.025
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
@@ -18,6 +21,17 @@ local activeLuckyCoinRecordId = nil
 
 local function luckyFindEnabled()
     return effectsSection:get(ENABLED_KEY) == true
+end
+
+local function fortunesHabitEnabled()
+    return effectsSection:get(FORTUNES_HABIT_ENABLED_KEY) == true
+end
+
+local function findChance()
+    if fortunesHabitEnabled() then
+        return FORTUNES_HABIT_FIND_CHANCE
+    end
+    return BASE_FIND_CHANCE
 end
 
 local function objectKey(object)
@@ -175,7 +189,7 @@ local function onActivate(object, actor)
         return
     end
 
-    local foundCoin = math.random() <= FIND_CHANCE
+    local foundCoin = math.random() <= findChance()
     if foundCoin and not ensureLuckyCoinRecord() then
         return
     end
@@ -198,6 +212,7 @@ local function onLoad(savedData)
     luckyCoinRecordReady = false
     activeLuckyCoinRecordId = nil
     effectsSection:set(ENABLED_KEY, false)
+    effectsSection:set(FORTUNES_HABIT_ENABLED_KEY, false)
 
     if type(savedData) == "table" and type(savedData.checkedContainers) == "table" then
         checkedContainers = savedData.checkedContainers
@@ -209,7 +224,16 @@ local function onNewGame()
     luckyCoinRecordReady = false
     activeLuckyCoinRecordId = nil
     effectsSection:set(ENABLED_KEY, false)
+    effectsSection:set(FORTUNES_HABIT_ENABLED_KEY, false)
     effectsSection:set(COIN_RECORD_ID_KEY, nil)
+end
+
+local function handleFortunesHabitToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    effectsSection:set(FORTUNES_HABIT_ENABLED_KEY, data.enable == true)
 end
 
 return {
@@ -221,5 +245,6 @@ return {
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,
+        [FORTUNES_HABIT_TOGGLE_EVENT] = handleFortunesHabitToggle,
     },
 }

@@ -118,6 +118,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.lucky_find_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.lucky_find_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.fortunes_habit_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.fortunes_habit_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

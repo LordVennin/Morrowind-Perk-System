@@ -9,7 +9,7 @@ local BASE_MAX_STACKS = 5
 local BOOSTED_BONUS_PER_FAILED_ATTEMPT = 2
 local BOOSTED_MAX_STACKS = 10
 local SHARED_DECAY_SECONDS = 10
-local BASE_INITIAL_STACKS = 1
+local BASE_INITIAL_STACKS = 0
 local BOOSTED_INITIAL_STACKS = 0
 
 local function isPerkActive(playerApi, perkID)

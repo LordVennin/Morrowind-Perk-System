@@ -18,7 +18,7 @@ end
 return {
     id = "security_tumbler_sense_effect",
     name = "Tumbler Sense",
-    description = "Starts at 1 stack (+1 Security). Failed lockpick attempts grant +1 Security per stack (max 5) with a shared 10s decay timer.",
+    description = "Starts at 0 stacks. Failed lockpick attempts grant +1 Security per stack (max 5) with a shared 10s decay timer.",
     onAcquire = function(context)
         syncTumblerSense(context)
     end,

@@ -96,10 +96,6 @@ local function resolveSpellRecordId()
 end
 
 unseenHandEnabled = function()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
@@ -109,11 +105,12 @@ unseenHandEnabled = function()
         return false
     end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(PERK_ID) then
-        return false
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(PERK_ID)
     end
 
-    return true
+    -- Fallback for older interface versions where per-effect toggles are unavailable.
+    return effectsSection:get(ENABLED_KEY) == true
 end
 
 local function getEquippedSecurityTool()
@@ -164,6 +161,13 @@ local function getPlayerSpells()
 end
 
 local function ensureSpellState(shouldHave)
+    if not shouldHave and (type(activeUnseenHandSpellRecordId) ~= "string" or activeUnseenHandSpellRecordId == "") then
+        local storedSpellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
+        if type(storedSpellRecordId) ~= "string" or storedSpellRecordId == "" then
+            return
+        end
+    end
+
     local spellRecordId = resolveSpellRecordId()
     if spellRecordId == nil then
         return

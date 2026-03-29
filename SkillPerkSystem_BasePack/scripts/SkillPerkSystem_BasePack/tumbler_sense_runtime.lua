@@ -238,8 +238,12 @@ local function getMaxStacks()
     return math.max(1, math.floor(maxStacks))
 end
 
-local function getBonusPerStack()
-    return normalizeBonus(effectsSection:get(BONUS_PER_STACK_KEY))
+local function getBonusPerFailedAttempt()
+    local increment = tonumber(effectsSection:get(BONUS_PER_STACK_KEY))
+    if type(increment) ~= "number" then
+        return 1
+    end
+    return math.max(1, math.floor(increment))
 end
 
 local function getSharedDecaySeconds()
@@ -257,8 +261,8 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local currentApplied = clamp(appliedSkillBonus, 0, getMaxStacks())
-    local desiredApplied = clamp(math.floor(tonumber(targetBonus) or 0), 0, getMaxStacks())
+    local currentApplied = clamp(tonumber(appliedSkillBonus) or 0, 0, getMaxStacks())
+    local desiredApplied = clamp(tonumber(targetBonus) or 0, 0, getMaxStacks())
     if currentApplied == desiredApplied then
         return
     end
@@ -269,7 +273,7 @@ local function applySecuritySkillBonus(targetBonus)
     end
 
     -- Apply stack bonus via non-base modifier channel so Security base is never mutated.
-    local newModifier = math.floor(stat.modifier - currentApplied + desiredApplied)
+    local newModifier = stat.modifier - currentApplied + desiredApplied
     stat.modifier = newModifier
     appliedSkillBonus = desiredApplied
 
@@ -318,7 +322,7 @@ end
 
 local function currentBonus()
     local stackCount = clamp(tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0, 0, getMaxStacks())
-    local bonus = stackCount * getBonusPerStack()
+    local bonus = stackCount / 100
     effectsSection:set(ACTIVE_BONUS_KEY, bonus)
     applySecuritySkillBonus(stackCount)
     return stackCount, bonus
@@ -353,7 +357,8 @@ local function handleToggle(data)
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
     if enabled then
-        appliedSkillBonus = 0
+        clearStacks("reconfigured")
+
         local initialStacks = clamp(
             tonumber(effectsSection:get(INITIAL_STACKS_KEY)) or DEFAULT_INITIAL_STACKS,
             0,
@@ -371,9 +376,9 @@ local function handleToggle(data)
     end
 
     log(string.format(
-        "[SkillPerkSystem_BasePack][TumblerSense] %s (bonusPerStack=%.2f maxStacks=%d decaySeconds=%.2f)",
+        "[SkillPerkSystem_BasePack][TumblerSense] %s (bonusPerFailedAttempt=%.2f maxStacks=%d decaySeconds=%.2f)",
         enabled and "enabled" or "disabled",
-        getBonusPerStack(),
+        getBonusPerFailedAttempt(),
         getMaxStacks(),
         getSharedDecaySeconds()
     ))
@@ -421,7 +426,7 @@ local function handleFailure(data)
     clearExpiredStacks("failure-precheck")
 
     local previousStacks = clamp(tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0, 0, getMaxStacks())
-    local nextStacks = math.min(previousStacks + 1, getMaxStacks())
+    local nextStacks = math.min(previousStacks + getBonusPerFailedAttempt(), getMaxStacks())
     local expiry = nowTimestamp() + getSharedDecaySeconds()
     effectsSection:set(STACK_COUNT_KEY, nextStacks)
     effectsSection:set(EXPIRY_TIMESTAMP_KEY, expiry)

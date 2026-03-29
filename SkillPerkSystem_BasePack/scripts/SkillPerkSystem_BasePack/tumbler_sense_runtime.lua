@@ -261,8 +261,8 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local currentApplied = clamp(appliedSkillBonus, 0, getMaxStacks())
-    local desiredApplied = clamp(math.floor(tonumber(targetBonus) or 0), 0, getMaxStacks())
+    local currentApplied = clamp(tonumber(appliedSkillBonus) or 0, 0, getMaxStacks())
+    local desiredApplied = clamp(tonumber(targetBonus) or 0, 0, getMaxStacks())
     if currentApplied == desiredApplied then
         return
     end
@@ -273,7 +273,7 @@ local function applySecuritySkillBonus(targetBonus)
     end
 
     -- Apply stack bonus via non-base modifier channel so Security base is never mutated.
-    local newModifier = math.floor(stat.modifier - currentApplied + desiredApplied)
+    local newModifier = stat.modifier - currentApplied + desiredApplied
     stat.modifier = newModifier
     appliedSkillBonus = desiredApplied
 

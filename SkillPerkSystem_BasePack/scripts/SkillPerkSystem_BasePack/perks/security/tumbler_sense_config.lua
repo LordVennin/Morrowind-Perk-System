@@ -9,7 +9,8 @@ local BASE_MAX_STACKS = 5
 local BOOSTED_BONUS_PER_FAILED_ATTEMPT = 2
 local BOOSTED_MAX_STACKS = 10
 local SHARED_DECAY_SECONDS = 10
-local INITIAL_STACKS = 1
+local BASE_INITIAL_STACKS = 1
+local BOOSTED_INITIAL_STACKS = 0
 
 local function isPerkActive(playerApi, perkID)
     if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
@@ -37,7 +38,7 @@ local function buildPayload()
         enable = tumblerSenseActive,
         bonusPerFailedAttempt = boosted and BOOSTED_BONUS_PER_FAILED_ATTEMPT or BASE_BONUS_PER_FAILED_ATTEMPT,
         maxStacks = boosted and BOOSTED_MAX_STACKS or BASE_MAX_STACKS,
-        initialStacks = INITIAL_STACKS,
+        initialStacks = boosted and BOOSTED_INITIAL_STACKS or BASE_INITIAL_STACKS,
         sharedDecaySeconds = SHARED_DECAY_SECONDS,
     }
 end

@@ -357,7 +357,12 @@ local function handleToggle(data)
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
     if enabled then
-        clearStacks("reconfigured")
+        if (tonumber(appliedSkillBonus) or 0) > 0 then
+            applySecuritySkillBonus(0)
+        end
+        effectsSection:set(STACK_COUNT_KEY, 0)
+        effectsSection:set(EXPIRY_TIMESTAMP_KEY, nil)
+        effectsSection:set(ACTIVE_BONUS_KEY, 0.0)
 
         local initialStacks = clamp(
             tonumber(effectsSection:get(INITIAL_STACKS_KEY)) or DEFAULT_INITIAL_STACKS,

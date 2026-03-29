@@ -3,7 +3,7 @@ local config = require("scripts.SkillPerkSystem_BasePack.perks.security.tumbler_
 
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Toggle"
 
-local function syncTumblerSense(context)
+local function syncPerfectPressure(context)
     local payload = config.buildPayload()
 
     local player = type(context) == "table" and context.player or nil
@@ -16,13 +16,13 @@ local function syncTumblerSense(context)
 end
 
 return {
-    id = "security_tumbler_sense_effect",
-    name = "Tumbler Sense",
-    description = "Starts at 1 stack (+1 Security). Failed lockpick attempts grant +1 Security per stack (max 5) with a shared 10s decay timer.",
+    id = "security_perfect_pressure_effect",
+    name = "Perfect Pressure",
+    description = "Tumbler Sense now grants +2 Security per failed attempt and can stack up to +10 Security.",
     onAcquire = function(context)
-        syncTumblerSense(context)
+        syncPerfectPressure(context)
     end,
     onRemove = function(context)
-        syncTumblerSense(context)
+        syncPerfectPressure(context)
     end,
 }

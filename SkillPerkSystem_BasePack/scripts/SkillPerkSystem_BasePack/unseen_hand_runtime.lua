@@ -3,7 +3,6 @@ local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
-local world = require("openmw.world")
 
 local Actor = types.Actor
 local Lockpick = types.Lockpick
@@ -20,7 +19,6 @@ local LOG_TAG = "[SkillPerkSystem_BasePack][UnseenHand]"
 
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 
-local unseenHandSpellRecordReady = false
 local activeUnseenHandSpellRecordId = nil
 local spellRecordResolutionFailureState = nil
 local playerSpellsFailureState = nil
@@ -63,119 +61,16 @@ local function spellRecordExists(spellRecordId)
     return records[spellRecordId] ~= nil
 end
 
-local function parseCreatedRecordId(createdRecord)
-    if type(createdRecord) == "string" and createdRecord ~= "" then
-        return createdRecord
-    end
-
-    if createdRecord ~= nil then
-        local okId, idValue = pcall(function()
-            return createdRecord.id
-        end)
-        if okId and type(idValue) == "string" and idValue ~= "" then
-            return idValue
-        end
-    end
-
-    return nil
-end
-
-local function createUnseenHandSpellRecord()
-    if type(types.Spell) ~= "table" then
-        return nil
-    end
-
-    if type(types.Spell.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
-        return nil
-    end
-
-    local effectType = core.magic and core.magic.EFFECT_TYPE
-    local spellType = core.magic and core.magic.SPELL_TYPE
-    local range = core.magic and core.magic.RANGE
-    if type(effectType) ~= "table" or type(spellType) ~= "table" or type(range) ~= "table" then
-        return nil
-    end
-
-    local okDraft, recordDraft = pcall(types.Spell.createRecordDraft, {
-        name = "Burglar's Instinct",
-        type = spellType.Ability,
-        cost = 0,
-        effects = {
-            {
-                id = effectType.Chameleon,
-                range = range.Self,
-                magnitudeMin = 15,
-                magnitudeMax = 15,
-                duration = 1,
-                area = 0,
-            },
-            {
-                id = effectType.Sanctuary,
-                range = range.Self,
-                magnitudeMin = 15,
-                magnitudeMax = 15,
-                duration = 1,
-                area = 0,
-            },
-        },
-    })
-    if not okDraft or recordDraft == nil then
-        return nil
-    end
-
-    local okCreate, createdRecord = pcall(world.createRecord, recordDraft)
-    if not okCreate then
-        return nil
-    end
-
-    return parseCreatedRecordId(createdRecord)
-end
-
-local function ensureUnseenHandSpellRecord()
-    if unseenHandSpellRecordReady then
-        return true
-    end
-
-    if type(activeUnseenHandSpellRecordId) == "string"
-        and activeUnseenHandSpellRecordId ~= ""
-        and spellRecordExists(activeUnseenHandSpellRecordId)
-    then
-        unseenHandSpellRecordReady = true
-        return true
-    end
-
-    if spellRecordExists(DEFAULT_SPELL_RECORD_ID) then
-        activeUnseenHandSpellRecordId = DEFAULT_SPELL_RECORD_ID
-        effectsSection:set(SPELL_RECORD_ID_KEY, activeUnseenHandSpellRecordId)
-        unseenHandSpellRecordReady = true
-        return true
-    end
-
-    local savedRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
-    if spellRecordExists(savedRecordId) then
-        activeUnseenHandSpellRecordId = savedRecordId
-        unseenHandSpellRecordReady = true
-        return true
-    end
-
-    local createdId = createUnseenHandSpellRecord()
-    if type(createdId) ~= "string" or createdId == "" then
-        return false
-    end
-
-    activeUnseenHandSpellRecordId = createdId
-    effectsSection:set(SPELL_RECORD_ID_KEY, activeUnseenHandSpellRecordId)
-    unseenHandSpellRecordReady = true
-    return true
-end
-
 local function resolveSpellRecordId()
-    if not ensureUnseenHandSpellRecord() then
-        logFirstFailure("record-not-ready", "spell record not ready; unable to provision unseen-hand ability")
-        return nil
+    local spellRecordId = activeUnseenHandSpellRecordId
+    if (type(spellRecordId) ~= "string" or spellRecordId == "") and spellRecordExists(DEFAULT_SPELL_RECORD_ID) then
+        spellRecordId = DEFAULT_SPELL_RECORD_ID
     end
 
-    local spellRecordId = activeUnseenHandSpellRecordId
+    if type(spellRecordId) ~= "string" or spellRecordId == "" then
+        spellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
+    end
+
     if type(spellRecordId) ~= "string" or spellRecordId == "" then
         logFirstFailure("record-empty", "resolved spell record id is empty")
         return nil
@@ -325,20 +220,17 @@ local function handleToggle(data)
     if type(spellRecordId) == "string" and spellRecordId ~= "" then
         effectsSection:set(SPELL_RECORD_ID_KEY, spellRecordId)
         activeUnseenHandSpellRecordId = spellRecordId
-        unseenHandSpellRecordReady = false
     end
 
     refreshUnseenHandAbility()
 end
 
 local function onLoad()
-    unseenHandSpellRecordReady = false
-    activeUnseenHandSpellRecordId = nil
+    activeUnseenHandSpellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
     refreshUnseenHandAbility()
 end
 
 local function onNewGame()
-    unseenHandSpellRecordReady = false
     activeUnseenHandSpellRecordId = nil
     effectsSection:set(SPELL_RECORD_ID_KEY, nil)
     refreshUnseenHandAbility()

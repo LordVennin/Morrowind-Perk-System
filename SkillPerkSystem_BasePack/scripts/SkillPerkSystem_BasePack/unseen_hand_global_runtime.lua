@@ -180,6 +180,7 @@ local function onLoad()
     spellReady = false
     lastForwardedEnabled = nil
     lastForwardedSpellRecordId = nil
+    ensureSpellRecord()
     forwardToggleToPlayer()
 end
 
@@ -190,6 +191,7 @@ local function onNewGame()
     lastForwardedSpellRecordId = nil
     effectsSection:set(ENABLED_KEY, false)
     effectsSection:set(SPELL_RECORD_ID_KEY, nil)
+    ensureSpellRecord()
     forwardToggleToPlayer()
 end
 

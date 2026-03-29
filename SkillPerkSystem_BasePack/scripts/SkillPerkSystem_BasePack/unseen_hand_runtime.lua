@@ -8,7 +8,7 @@ local Actor = types.Actor
 local Lockpick = types.Lockpick
 local Probe = types.Probe
 
-local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
+local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
 local ENABLED_KEY = "security.unseen_hand.enabled"
 local SPELL_RECORD_ID_KEY = "security.unseen_hand.spell_record_id"
 local DEFAULT_SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
@@ -17,13 +17,14 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local PERK_ID = "security_unseen_hand"
 local LOG_TAG = "[SkillPerkSystem_BasePack][UnseenHand]"
 
-local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 
 local activeUnseenHandSpellRecordId = nil
 local spellRecordResolutionFailureState = nil
 local playerSpellsFailureState = nil
 local addSpellFailureLogged = false
 local removeSpellFailureLogged = false
+local provisionRequestSent = false
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
@@ -72,6 +73,10 @@ local function resolveSpellRecordId()
     end
 
     if type(spellRecordId) ~= "string" or spellRecordId == "" then
+        if unseenHandEnabled() and not provisionRequestSent then
+            provisionRequestSent = true
+            core.sendGlobalEvent(TOGGLE_EVENT, { enable = true })
+        end
         logFirstFailure("record-empty", "resolved spell record id is empty")
         return nil
     end
@@ -85,6 +90,7 @@ local function resolveSpellRecordId()
     end
 
     clearSpellResolutionFailure()
+    provisionRequestSent = false
     return spellRecordId
 end
 

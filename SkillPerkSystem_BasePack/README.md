@@ -7,7 +7,7 @@ Bundled default perk content pack for SkillPerkSystem.
 - Default Long Blade and Block perk modules under `scripts/SkillPerkSystem_BasePack/perks/`.
 - Direct registration script at `scripts/SkillPerkSystem_BasePack/register.lua`.
 - GLOBAL runtime bootstrap at `scripts/SkillPerkSystem_BasePack/global.lua` for non-consume item handlers.
-- Additional security runtime handlers in `treasure_sense_runtime.lua`, `lucky_find_runtime.lua`, and `unseen_hand_runtime.lua`.
+- Additional security runtime handlers in `treasure_sense_runtime.lua`, `lucky_find_runtime.lua`, `unseen_hand_global_runtime.lua`, and `unseen_hand_runtime.lua`.
 
 ## How it loads
 
@@ -24,6 +24,7 @@ PLAYER:scripts/SkillPerkSystem_BasePack/quick_pick_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/treasure_sense_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/lucky_find_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/lucky_find_player_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/unseen_hand_global_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/unseen_hand_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 ```
@@ -33,6 +34,8 @@ PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 `register.lua` runs in PLAYER context and directly calls `openmw.interfaces.SkillPerkSystem.registerPerk` / `registerTreeNode`, matching the `example_Mod` direct registration style. Effect state toggling remains authored in `perks/security/steady_hands_effect.lua` through `onAcquire`/`onRemove`.
 
 Lucky Find uses a Lucky Coin misc record for drops. If `sps_lucky_coin` exists in content files it is used directly; otherwise the runtime attempts to generate a custom Lucky Coin record from `gold_001` (weight `0.01`) and reuses the generated record ID for future drops.
+
+Burglar's Instinct now provisions its ability spell from GLOBAL context. If `sps_security_burglars_instinct_ability` does not exist in content files, the runtime creates an Ability spell record with Chameleon 15% and Sanctuary 15 pts, persists the generated record ID, and forwards it to the player runtime.
 
 ## Authoring guidance for addon packs
 

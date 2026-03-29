@@ -172,6 +172,9 @@ local function ensureSpellRecord()
 
     local createdSpellRecordId = createUnseenHandSpellRecord()
     if type(createdSpellRecordId) ~= "string" or createdSpellRecordId == "" then
+        if type(lastFailureKey) == "string" and string.sub(lastFailureKey, 1, 7) == "create:" then
+            return nil
+        end
         logFailureOnce(
             "ensure:created-record-id-invalid",
             string.format("ensureSpellRecord early return: parsed created record id value=%s", tostring(createdSpellRecordId))

@@ -1,12 +1,10 @@
 local core = require("openmw.core")
 
-local TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_Toggle"
-local SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
+local PLAYER_TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle"
 
-local function setUnseenHandEnabled(enable)
-    core.sendGlobalEvent(TOGGLE_EVENT, {
+local function setEnabled(enable)
+    core.sendGlobalEvent(PLAYER_TOGGLE_EVENT, {
         enable = enable == true,
-        spellRecordId = SPELL_RECORD_ID,
     })
 end
 
@@ -15,9 +13,9 @@ return {
     name = "Burglar's Instinct",
     description = "While a lockpick or probe is equipped, gain Chameleon 15% and Sanctuary 15 pts.",
     onAcquire = function(_context)
-        setUnseenHandEnabled(true)
+        setEnabled(true)
     end,
     onRemove = function(_context)
-        setUnseenHandEnabled(false)
+        setEnabled(false)
     end,
 }

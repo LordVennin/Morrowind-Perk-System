@@ -264,19 +264,20 @@ local function applySecuritySkillBonus(targetBonus)
     end
 
     local stat = accessor(pself)
-    if stat == nil or type(stat.base) ~= "number" then
+    if stat == nil or type(stat.modifier) ~= "number" then
         return
     end
 
-    local newBase = math.max(0, math.floor(stat.base - currentApplied + desiredApplied))
-    stat.base = newBase
+    -- Apply stack bonus via non-base modifier channel so Security base is never mutated.
+    local newModifier = math.floor(stat.modifier - currentApplied + desiredApplied)
+    stat.modifier = newModifier
     appliedSkillBonus = desiredApplied
 
     log(string.format(
-        "[SkillPerkSystem_BasePack][TumblerSense] security base adjusted appliedBonus=%d->%d resultingBase=%d",
+        "[SkillPerkSystem_BasePack][TumblerSense] security modifier adjusted appliedBonus=%d->%d resultingModifier=%d",
         currentApplied,
         desiredApplied,
-        newBase
+        newModifier
     ))
 end
 

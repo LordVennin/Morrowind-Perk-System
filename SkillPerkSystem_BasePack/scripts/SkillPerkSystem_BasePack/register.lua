@@ -126,6 +126,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.perfect_pressure_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.perfect_pressure_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.unseen_hand_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.unseen_hand_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

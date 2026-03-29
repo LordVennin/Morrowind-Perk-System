@@ -11,7 +11,7 @@ end
 return {
     id = "security_lucky_find_effect",
     name = "Lucky Find",
-    description = "First checks on containers have a small chance to hide a Lucky Coin. Each Lucky Coin carried grants +1 Luck.",
+    description = "On first-time container checks, there is a small chance to find a Lucky Coin. Each Lucky Coin carried grants +1 Luck.",
     onAcquire = function(_context)
         setLuckyFindEnabled(true)
     end,

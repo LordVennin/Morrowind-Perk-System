@@ -60,7 +60,7 @@ return {
             x = -220,
             y = 280,
             title = "Lucky Find",
-            description = "Rarely discover Lucky Coins in containers during first-time checks.",
+            description = "On first-time container checks, there is a small chance to find a Lucky Coin. Each Lucky Coin carried grants +1 Luck.",
         },
         {
             id = "security_fortunes_habit",

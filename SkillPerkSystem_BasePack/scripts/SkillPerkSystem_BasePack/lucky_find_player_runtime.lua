@@ -137,21 +137,26 @@ end
 
 local function applyLuckBonus(targetBonus)
     local desired = clampNonNegativeInteger(targetBonus)
+    if desired > 0 and not luckyFindEnabled() then
+        desired = 0
+    end
     local current = clampNonNegativeInteger(appliedLuckBonus)
     if desired == current then
         return
     end
 
     local stat = resolveLuckStat()
-    if stat == nil or type(stat.base) ~= "number" then
-        log("unable to resolve writable luck stat for player")
+    if stat == nil or type(stat.modifier) ~= "number" then
+        log("unable to resolve writable luck modifier stat for player")
         return
     end
 
-    local newBase = math.max(0, math.floor(stat.base - current + desired))
-    stat.base = newBase
+    -- Apply Lucky Coin bonus through the dedicated non-base modifier channel
+    -- so base Luck is untouched and only our tracked coin contribution changes.
+    local newModifier = math.floor(stat.modifier - current + desired)
+    stat.modifier = newModifier
     appliedLuckBonus = desired
-    log(string.format("applied luck bonus %d -> %d (new base=%d)", current, desired, newBase))
+    log(string.format("applied luck bonus %d -> %d (new modifier=%d)", current, desired, newModifier))
 end
 
 local function refreshLuckBonus()

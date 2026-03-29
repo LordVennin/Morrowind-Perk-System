@@ -62,21 +62,29 @@ local function spellRecordExists(spellRecordId)
     return records[spellRecordId] ~= nil
 end
 
-local function createUnseenHandSpellRecord()
-    local spellTypeTableExists = type(types.Spell) == "table"
-    if not spellTypeTableExists then
-        logFailureOnce("create:types-spell-missing", "createUnseenHandSpellRecord early return: types.Spell exists=false")
-        return nil
+local function resolveSpellRecordDraftCreator()
+    if type(types.Spell) == "table" and type(types.Spell.createRecordDraft) == "function" then
+        return types.Spell.createRecordDraft, "types.Spell.createRecordDraft"
     end
 
-    local createRecordDraftExists = type(types.Spell.createRecordDraft) == "function"
+    if core.magic and core.magic.spells and type(core.magic.spells.createRecordDraft) == "function" then
+        return core.magic.spells.createRecordDraft, "core.magic.spells.createRecordDraft"
+    end
+
+    return nil, nil
+end
+
+local function createUnseenHandSpellRecord()
+    local createRecordDraftFn, createRecordDraftSource = resolveSpellRecordDraftCreator()
     local worldCreateRecordExists = type(world.createRecord) == "function"
-    if not createRecordDraftExists or not worldCreateRecordExists then
+    if type(createRecordDraftFn) ~= "function" or not worldCreateRecordExists then
         logFailureOnce(
             "create:record-api-missing",
             string.format(
-                "createUnseenHandSpellRecord early return: types.Spell.createRecordDraft exists=%s world.createRecord exists=%s",
-                tostring(createRecordDraftExists),
+                "createUnseenHandSpellRecord early return: types.Spell exists=%s types.Spell.createRecordDraft exists=%s core.magic.spells.createRecordDraft exists=%s world.createRecord exists=%s",
+                tostring(type(types.Spell) == "table"),
+                tostring(type(types.Spell) == "table" and type(types.Spell.createRecordDraft) == "function"),
+                tostring(core.magic and core.magic.spells and type(core.magic.spells.createRecordDraft) == "function"),
                 tostring(worldCreateRecordExists)
             )
         )
@@ -90,7 +98,7 @@ local function createUnseenHandSpellRecord()
         return nil
     end
 
-    local okDraft, recordDraft = pcall(types.Spell.createRecordDraft, {
+    local okDraft, recordDraft = pcall(createRecordDraftFn, {
         name = "Burglar's Instinct",
         type = spellType.Ability,
         cost = 0,
@@ -116,7 +124,7 @@ local function createUnseenHandSpellRecord()
     if not okDraft or recordDraft == nil then
         logFailureOnce(
             "create:draft-failed",
-            string.format("createUnseenHandSpellRecord draft creation failed exception=%s", tostring(recordDraft))
+            string.format("createUnseenHandSpellRecord draft creation failed source=%s exception=%s", tostring(createRecordDraftSource), tostring(recordDraft))
         )
         return nil
     end

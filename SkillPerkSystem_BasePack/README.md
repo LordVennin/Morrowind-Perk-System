@@ -35,7 +35,7 @@ PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
 
 Lucky Find uses a Lucky Coin misc record for drops. If `sps_lucky_coin` exists in content files it is used directly; otherwise the runtime attempts to generate a custom Lucky Coin record from `gold_001` (weight `0.01`) and reuses the generated record ID for future drops.
 
-Burglar's Instinct now provisions its ability spell from GLOBAL context. If `sps_security_burglars_instinct_ability` does not exist in content files, the runtime creates an Ability spell record with Chameleon 15% and Sanctuary 15 pts, persists the generated record ID, and forwards it to the player runtime.
+Burglar's Instinct now expects `sps_security_burglars_instinct_ability` to be authored by your content files. The player runtime simply adds/removes that ability while a lockpick or probe is equipped and the perk effect is enabled.
 
 ## Authoring guidance for addon packs
 

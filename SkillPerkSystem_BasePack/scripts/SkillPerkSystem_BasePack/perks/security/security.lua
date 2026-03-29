@@ -48,7 +48,7 @@ return {
             x = 220,
             y = 140,
             title = "Quick Pick",
-            description = "Lockpick and probe actions are 75% faster while a security tool is equipped.",
+            description = "Lockpick and probe actions are 75% faster.",
         },
         {
             id = "security_lucky_find",
@@ -72,7 +72,7 @@ return {
             x = -130,
             y = 420,
             title = "Fortune's Habit",
-            description = "Lucky Find chance rises to 2.5%. Treasure Sense scales with Luck faster and grants 10% more bonus gold.",
+            description = "Lucky Find chance rises. Treasure Sense scales with Luck faster and grants 10% more bonus gold.",
         },
         {
             id = "security_perfect_pressure",

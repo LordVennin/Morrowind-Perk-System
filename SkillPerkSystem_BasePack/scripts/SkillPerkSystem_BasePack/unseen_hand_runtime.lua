@@ -1,105 +1,25 @@
-local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
-local storage = require("openmw.storage")
 local types = require("openmw.types")
 
 local Actor = types.Actor
 local Lockpick = types.Lockpick
 local Probe = types.Probe
 
-local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
-local ENABLED_KEY = "security.unseen_hand.enabled"
-local SPELL_RECORD_ID_KEY = "security.unseen_hand.spell_record_id"
-local DEFAULT_SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
-local TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_Toggle"
+local SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local PERK_ID = "security_unseen_hand"
 local LOG_TAG = "[SkillPerkSystem_BasePack][UnseenHand]"
 
-local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
-
-local activeUnseenHandSpellRecordId = nil
-local spellRecordResolutionFailureState = nil
-local playerSpellsFailureState = nil
 local addSpellFailureLogged = false
 local removeSpellFailureLogged = false
-local provisionRequestSent = false
-local enabledOverride = nil
-local unseenHandEnabled
+local playerSpellsFailureState = nil
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
 end
 
-local function logFirstFailure(stateKey, message)
-    if stateKey == nil then
-        return
-    end
-
-    if stateKey == spellRecordResolutionFailureState then
-        return
-    end
-
-    spellRecordResolutionFailureState = stateKey
-    logDebug(message)
-end
-
-local function clearSpellResolutionFailure()
-    spellRecordResolutionFailureState = nil
-end
-
-local function spellRecordExists(spellRecordId)
-    if type(spellRecordId) ~= "string" or spellRecordId == "" then
-        return false
-    end
-
-    local okRecords, records = pcall(function()
-        return core.magic.spells.records
-    end)
-    if not okRecords or type(records) ~= "table" then
-        return false
-    end
-
-    return records[spellRecordId] ~= nil
-end
-
-local function resolveSpellRecordId()
-    local spellRecordId = activeUnseenHandSpellRecordId
-    if (type(spellRecordId) ~= "string" or spellRecordId == "") and spellRecordExists(DEFAULT_SPELL_RECORD_ID) then
-        spellRecordId = DEFAULT_SPELL_RECORD_ID
-    end
-
-    if type(spellRecordId) ~= "string" or spellRecordId == "" then
-        spellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
-    end
-
-    if type(spellRecordId) ~= "string" or spellRecordId == "" then
-        if unseenHandEnabled() and not provisionRequestSent then
-            provisionRequestSent = true
-            core.sendGlobalEvent(TOGGLE_EVENT, {
-                enable = true,
-                spellRecordId = DEFAULT_SPELL_RECORD_ID,
-            })
-        end
-        logFirstFailure("record-empty", "resolved spell record id is empty")
-        return nil
-    end
-
-    if not spellRecordExists(spellRecordId) then
-        logFirstFailure(
-            "record-unknown:" .. spellRecordId,
-            string.format("resolved spell record id is unknown: %s", spellRecordId)
-        )
-        return nil
-    end
-
-    clearSpellResolutionFailure()
-    provisionRequestSent = false
-    return spellRecordId
-end
-
-unseenHandEnabled = function()
+local function unseenHandEnabled()
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
@@ -113,34 +33,18 @@ unseenHandEnabled = function()
         return playerApi.isPerkEffectEnabled(PERK_ID)
     end
 
-    if enabledOverride ~= nil then
-        return enabledOverride == true
-    end
-
-    -- Fallback for older interface versions where per-effect toggles are unavailable.
-    return effectsSection:get(ENABLED_KEY) == true
+    return true
 end
 
 local function getEquippedSecurityTool()
-    local right = nil
-    local left = nil
-
     local okRight, rightItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedRight)
-    if okRight then
-        right = rightItem
+    if okRight and rightItem and (Lockpick.objectIsInstance(rightItem) or Probe.objectIsInstance(rightItem)) then
+        return rightItem
     end
 
     local okLeft, leftItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedLeft)
-    if okLeft then
-        left = leftItem
-    end
-
-    if right and (Lockpick.objectIsInstance(right) or Probe.objectIsInstance(right)) then
-        return right
-    end
-
-    if left and (Lockpick.objectIsInstance(left) or Probe.objectIsInstance(left)) then
-        return left
+    if okLeft and leftItem and (Lockpick.objectIsInstance(leftItem) or Probe.objectIsInstance(leftItem)) then
+        return leftItem
     end
 
     return nil
@@ -150,7 +54,7 @@ local function getPlayerSpells()
     if Actor == nil or type(Actor.spells) ~= "function" then
         if playerSpellsFailureState ~= "unavailable" then
             playerSpellsFailureState = "unavailable"
-            logDebug("Actor.spells(pself) unavailable; cannot adjust unseen-hand spell state")
+            logDebug("Actor.spells(pself) unavailable; cannot adjust burglar's instinct state")
         end
         return nil
     end
@@ -159,7 +63,7 @@ local function getPlayerSpells()
     if not okSpells then
         if playerSpellsFailureState ~= "error" then
             playerSpellsFailureState = "error"
-            logDebug("Actor.spells(pself) errored; cannot adjust unseen-hand spell state")
+            logDebug("Actor.spells(pself) errored; cannot adjust burglar's instinct state")
         end
         return nil
     end
@@ -168,28 +72,18 @@ local function getPlayerSpells()
     return spells
 end
 
-local function ensureSpellState(shouldHave)
-    if not shouldHave and (type(activeUnseenHandSpellRecordId) ~= "string" or activeUnseenHandSpellRecordId == "") then
-        local storedSpellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
-        if type(storedSpellRecordId) ~= "string" or storedSpellRecordId == "" then
-            return
-        end
-    end
-
-    local spellRecordId = resolveSpellRecordId()
-    if spellRecordId == nil then
-        return
-    end
-
+local function refreshBurglarsInstinctAbility()
     local spells = getPlayerSpells()
     if spells == nil then
         return
     end
 
+    local shouldHave = unseenHandEnabled() and getEquippedSecurityTool() ~= nil
+
     local hasSpell = false
     if type(spells.has) == "function" then
         local okHas, value = pcall(function()
-            return spells:has(spellRecordId)
+            return spells:has(SPELL_RECORD_ID)
         end)
         if okHas and value == true then
             hasSpell = true
@@ -198,24 +92,24 @@ local function ensureSpellState(shouldHave)
 
     if shouldHave and not hasSpell and type(spells.add) == "function" then
         local okAdd, addError = pcall(function()
-            spells:add(spellRecordId)
+            spells:add(SPELL_RECORD_ID)
         end)
         if not okAdd then
             if not addSpellFailureLogged then
                 addSpellFailureLogged = true
-                logDebug(string.format("spells:add(%s) failed: %s", spellRecordId, tostring(addError)))
+                logDebug(string.format("spells:add(%s) failed: %s", SPELL_RECORD_ID, tostring(addError)))
             end
             return
         end
         addSpellFailureLogged = false
     elseif (not shouldHave) and hasSpell and type(spells.remove) == "function" then
         local okRemove, removeError = pcall(function()
-            spells:remove(spellRecordId)
+            spells:remove(SPELL_RECORD_ID)
         end)
         if not okRemove then
             if not removeSpellFailureLogged then
                 removeSpellFailureLogged = true
-                logDebug(string.format("spells:remove(%s) failed: %s", spellRecordId, tostring(removeError)))
+                logDebug(string.format("spells:remove(%s) failed: %s", SPELL_RECORD_ID, tostring(removeError)))
             end
             return
         end
@@ -223,38 +117,9 @@ local function ensureSpellState(shouldHave)
     end
 end
 
-local function refreshUnseenHandAbility()
-    local shouldHave = unseenHandEnabled() and getEquippedSecurityTool() ~= nil
-    ensureSpellState(shouldHave)
-end
-
-local function handleToggle(data)
-    if type(data) ~= "table" then
-        return
-    end
-
-    enabledOverride = data.enable == true
-
-    local spellRecordId = data.spellRecordId
-    if type(spellRecordId) == "string" and spellRecordId ~= "" then
-        activeUnseenHandSpellRecordId = spellRecordId
-    end
-
-    refreshUnseenHandAbility()
-end
-
-local function onLoad()
-    enabledOverride = nil
-    activeUnseenHandSpellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
-    refreshUnseenHandAbility()
-end
-
 return {
     engineHandlers = {
-        onUpdate = refreshUnseenHandAbility,
-        onLoad = onLoad,
-    },
-    eventHandlers = {
-        [TOGGLE_EVENT] = handleToggle,
+        onUpdate = refreshBurglarsInstinctAbility,
+        onLoad = refreshBurglarsInstinctAbility,
     },
 }

@@ -25,6 +25,7 @@ local playerSpellsFailureState = nil
 local addSpellFailureLogged = false
 local removeSpellFailureLogged = false
 local provisionRequestSent = false
+local unseenHandEnabled
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
@@ -94,7 +95,7 @@ local function resolveSpellRecordId()
     return spellRecordId
 end
 
-local function unseenHandEnabled()
+unseenHandEnabled = function()
     if effectsSection:get(ENABLED_KEY) ~= true then
         return false
     end

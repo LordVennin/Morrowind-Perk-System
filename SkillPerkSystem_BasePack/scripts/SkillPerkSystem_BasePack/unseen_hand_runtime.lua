@@ -69,7 +69,7 @@ local function getEquippedSecurityTool()
         return leftItem
     end
 
-    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+    return nil
 end
 
 local function getPlayerSpells()
@@ -198,7 +198,8 @@ local function refreshBurglarsInstinctAbility(forceDisable)
         return
     end
 
-    local shouldHave = (not forceDisable) and unseenHandEnabled() and getEquippedSecurityTool() ~= nil
+    local equippedTool = getEquippedSecurityTool()
+    local shouldHave = (not forceDisable) and unseenHandEnabled() and (equippedTool ~= nil)
     local hasSpell = spellBookHasSpell(spells)
 
     if shouldHave and not hasSpell then

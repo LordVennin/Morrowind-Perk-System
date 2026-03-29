@@ -137,21 +137,27 @@ end
 
 local function applyLuckBonus(targetBonus)
     local desired = clampNonNegativeInteger(targetBonus)
+    if desired > 0 and not luckyFindEnabled() then
+        desired = 0
+    end
     local current = clampNonNegativeInteger(appliedLuckBonus)
     if desired == current then
         return
     end
 
     local stat = resolveLuckStat()
-    if stat == nil or type(stat.base) ~= "number" then
-        log("unable to resolve writable luck stat for player")
+    if stat == nil or type(stat.damage) ~= "number" then
+        log("unable to resolve writable non-base luck stat for player")
         return
     end
 
-    local newBase = math.max(0, math.floor(stat.base - current + desired))
-    stat.base = newBase
+    -- Apply Lucky Coin bonus through attribute damage so we never mutate Luck base.
+    -- Negative damage acts as a temporary fortify channel and can be cleanly replaced
+    -- by removing our previously applied amount before adding the new one.
+    local newDamage = math.floor(stat.damage + current - desired)
+    stat.damage = newDamage
     appliedLuckBonus = desired
-    log(string.format("applied luck bonus %d -> %d (new base=%d)", current, desired, newBase))
+    log(string.format("applied luck bonus %d -> %d (new damage=%d)", current, desired, newDamage))
 end
 
 local function refreshLuckBonus()

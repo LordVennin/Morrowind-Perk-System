@@ -122,6 +122,10 @@ local effectModules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.fortunes_habit_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.fortunes_habit_effect"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.security.perfect_pressure_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.security.perfect_pressure_effect"),
+    },
 }
 
 local function registerEffectSafe(effectData, source)

@@ -1,4 +1,3 @@
-local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
@@ -29,12 +28,23 @@ local function interfaceSaysEnabled()
         return false
     end
 
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(PERK_ID) then
-        return false
-    end
+    if type(spells.has) == "function" then
+        local okHasById, valueById = pcall(function()
+            return spells:has(SPELL_RECORD_ID)
+        end)
+        if okHasById and valueById == true then
+            return true
+        end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" then
-        return playerApi.isPerkEffectEnabled(PERK_ID)
+        local spellRecord = resolveSpellRecord()
+        if spellRecord ~= nil then
+            local okHasByRecord, valueByRecord = pcall(function()
+                return spells:has(spellRecord)
+            end)
+            if okHasByRecord and valueByRecord == true then
+                return true
+            end
+        end
     end
 
     return true
@@ -59,7 +69,7 @@ local function getEquippedSecurityTool()
         return leftItem
     end
 
-    return nil
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
 end
 
 local function getPlayerSpells()

@@ -8,12 +8,27 @@ local ENABLED_KEY = "security.unseen_hand.enabled"
 local SPELL_RECORD_ID_KEY = "security.unseen_hand.spell_record_id"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_Toggle"
 local DEFAULT_SPELL_RECORD_ID = "sps_security_burglars_instinct_ability"
+local LOG_TAG = "[SkillPerkSystem_BasePack][UnseenHand][Global] "
 
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 local activeSpellRecordId = nil
 local spellReady = false
 local lastForwardedEnabled = nil
 local lastForwardedSpellRecordId = nil
+local lastFailureKey = nil
+
+local function logDebug(message)
+    print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
+end
+
+local function logFailureOnce(failureKey, message)
+    if lastFailureKey == failureKey then
+        return
+    end
+
+    lastFailureKey = failureKey
+    logDebug(message)
+end
 
 local function parseCreatedRecordId(createdRecord)
     if type(createdRecord) == "string" and createdRecord ~= "" then
@@ -48,11 +63,23 @@ local function spellRecordExists(spellRecordId)
 end
 
 local function createUnseenHandSpellRecord()
-    if type(types.Spell) ~= "table" then
+    local spellTypeTableExists = type(types.Spell) == "table"
+    if not spellTypeTableExists then
+        logFailureOnce("create:types-spell-missing", "createUnseenHandSpellRecord early return: types.Spell exists=false")
         return nil
     end
 
-    if type(types.Spell.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+    local createRecordDraftExists = type(types.Spell.createRecordDraft) == "function"
+    local worldCreateRecordExists = type(world.createRecord) == "function"
+    if not createRecordDraftExists or not worldCreateRecordExists then
+        logFailureOnce(
+            "create:record-api-missing",
+            string.format(
+                "createUnseenHandSpellRecord early return: types.Spell.createRecordDraft exists=%s world.createRecord exists=%s",
+                tostring(createRecordDraftExists),
+                tostring(worldCreateRecordExists)
+            )
+        )
         return nil
     end
 
@@ -87,15 +114,36 @@ local function createUnseenHandSpellRecord()
         },
     })
     if not okDraft or recordDraft == nil then
+        logFailureOnce(
+            "create:draft-failed",
+            string.format("createUnseenHandSpellRecord draft creation failed exception=%s", tostring(recordDraft))
+        )
         return nil
     end
 
     local okCreate, createdRecord = pcall(world.createRecord, recordDraft)
     if not okCreate then
+        logFailureOnce(
+            "create:record-create-failed",
+            string.format("createUnseenHandSpellRecord createRecord failed exception=%s", tostring(createdRecord))
+        )
         return nil
     end
 
-    return parseCreatedRecordId(createdRecord)
+    local parsedCreatedRecordId = parseCreatedRecordId(createdRecord)
+    if type(parsedCreatedRecordId) ~= "string" or parsedCreatedRecordId == "" then
+        logFailureOnce(
+            "create:parsed-record-id-invalid",
+            string.format(
+                "createUnseenHandSpellRecord parsed created record id value=%s",
+                tostring(parsedCreatedRecordId)
+            )
+        )
+        return nil
+    end
+
+    lastFailureKey = nil
+    return parsedCreatedRecordId
 end
 
 local function ensureSpellRecord()
@@ -124,12 +172,17 @@ local function ensureSpellRecord()
 
     local createdSpellRecordId = createUnseenHandSpellRecord()
     if type(createdSpellRecordId) ~= "string" or createdSpellRecordId == "" then
+        logFailureOnce(
+            "ensure:created-record-id-invalid",
+            string.format("ensureSpellRecord early return: parsed created record id value=%s", tostring(createdSpellRecordId))
+        )
         return nil
     end
 
     activeSpellRecordId = createdSpellRecordId
     effectsSection:set(SPELL_RECORD_ID_KEY, activeSpellRecordId)
     spellReady = true
+    lastFailureKey = nil
     return activeSpellRecordId
 end
 

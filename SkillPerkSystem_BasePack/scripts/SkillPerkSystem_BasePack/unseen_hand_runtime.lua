@@ -77,7 +77,10 @@ local function resolveSpellRecordId()
     if type(spellRecordId) ~= "string" or spellRecordId == "" then
         if unseenHandEnabled() and not provisionRequestSent then
             provisionRequestSent = true
-            core.sendGlobalEvent(TOGGLE_EVENT, { enable = true })
+            core.sendGlobalEvent(TOGGLE_EVENT, {
+                enable = true,
+                spellRecordId = DEFAULT_SPELL_RECORD_ID,
+            })
         end
         logFirstFailure("record-empty", "resolved spell record id is empty")
         return nil
@@ -246,17 +249,10 @@ local function onLoad()
     refreshUnseenHandAbility()
 end
 
-local function onNewGame()
-    enabledOverride = false
-    activeUnseenHandSpellRecordId = nil
-    refreshUnseenHandAbility()
-end
-
 return {
     engineHandlers = {
         onUpdate = refreshUnseenHandAbility,
         onLoad = onLoad,
-        onNewGame = onNewGame,
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,

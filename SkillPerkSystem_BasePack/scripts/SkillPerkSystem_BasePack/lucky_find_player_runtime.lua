@@ -11,6 +11,7 @@ local DEBUG_LUCKY_FIND = true
 local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 local appliedLuckBonus = 0
 local lastLoggedCoinCount = nil
+local enabledOverride = nil
 
 local function log(message)
     if not DEBUG_LUCKY_FIND then
@@ -20,6 +21,9 @@ local function log(message)
 end
 
 local function luckyFindEnabled()
+    if enabledOverride ~= nil then
+        return enabledOverride == true
+    end
     return effectsSection:get(ENABLED_KEY) == true
 end
 
@@ -170,7 +174,7 @@ end
 
 local function handleToggle(data)
     if type(data) == "table" then
-        effectsSection:set(ENABLED_KEY, data.enable == true)
+        enabledOverride = data.enable == true
         log(string.format("toggle enable=%s", tostring(data.enable == true)))
     end
     refreshLuckBonus()
@@ -179,12 +183,7 @@ end
 local function onLoad()
     appliedLuckBonus = 0
     lastLoggedCoinCount = nil
-    refreshLuckBonus()
-end
-
-local function onNewGame()
-    appliedLuckBonus = 0
-    lastLoggedCoinCount = nil
+    enabledOverride = nil
     refreshLuckBonus()
 end
 
@@ -192,7 +191,6 @@ return {
     engineHandlers = {
         onUpdate = refreshLuckBonus,
         onLoad = onLoad,
-        onNewGame = onNewGame,
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,

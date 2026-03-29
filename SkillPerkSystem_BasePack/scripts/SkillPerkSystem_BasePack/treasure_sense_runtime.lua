@@ -5,7 +5,9 @@ local world = require("openmw.world")
 
 local ENABLED_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
 local ENABLED_KEY = "security.treasure_sense.enabled"
+local FORTUNES_HABIT_ENABLED_KEY = "security.fortunes_habit.enabled"
 local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TreasureSense_Toggle"
+local FORTUNES_HABIT_TOGGLE_EVENT = "SkillPerkSystem_BasePack_FortunesHabit_Toggle"
 local GOLD_RECORD_ID = "gold_001"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local TREASURE_SENSE_PERK_ID = "security_treasure_sense"
@@ -39,6 +41,10 @@ local function treasureSenseEnabled()
     end
 
     return perkInterfaceSaysEnabled()
+end
+
+local function fortunesHabitEnabled()
+    return enabledSection:get(FORTUNES_HABIT_ENABLED_KEY) == true
 end
 
 local function stringHasChest(value)
@@ -141,10 +147,14 @@ local function goldFromLuck(actor)
         luck = math.max(0, math.floor(modified))
     end
 
-    local bonus = math.floor(luck / 10)
+    local luckDivisor = fortunesHabitEnabled() and 8 or 10
+    local bonus = math.floor(luck / luckDivisor)
     local rollA = math.random(1, 20)
     local rollB = math.random(0, bonus)
     local amount = rollA + rollB
+    if fortunesHabitEnabled() then
+        amount = math.floor(amount * 1.10)
+    end
 
     return math.max(1, math.floor(amount))
 end
@@ -164,6 +174,14 @@ local function handleToggle(data)
     end
 
     enabledSection:set(ENABLED_KEY, data.enable == true)
+end
+
+local function handleFortunesHabitToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    enabledSection:set(FORTUNES_HABIT_ENABLED_KEY, data.enable == true)
 end
 
 local function onActivate(object, actor)
@@ -209,6 +227,7 @@ end
 
 local function onNewGame()
     rewardedChests = {}
+    enabledSection:set(FORTUNES_HABIT_ENABLED_KEY, false)
 end
 
 return {
@@ -220,5 +239,6 @@ return {
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,
+        [FORTUNES_HABIT_TOGGLE_EVENT] = handleFortunesHabitToggle,
     },
 }

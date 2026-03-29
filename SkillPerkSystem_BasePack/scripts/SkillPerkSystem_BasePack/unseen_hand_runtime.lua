@@ -72,6 +72,104 @@ local function getPlayerSpells()
     return spells
 end
 
+local function resolveSpellRecord()
+    local okRecords, records = pcall(function()
+        return core.magic.spells.records
+    end)
+    if not okRecords or type(records) ~= "table" then
+        return nil
+    end
+
+    return records[SPELL_RECORD_ID]
+end
+
+local function spellBookHasSpell(spells)
+    if spells == nil then
+        return false
+    end
+
+    if type(spells.has) == "function" then
+        local okHasById, valueById = pcall(function()
+            return spells:has(SPELL_RECORD_ID)
+        end)
+        if okHasById and valueById == true then
+            return true
+        end
+
+        local spellRecord = resolveSpellRecord()
+        if spellRecord ~= nil then
+            local okHasByRecord, valueByRecord = pcall(function()
+                return spells:has(spellRecord)
+            end)
+            if okHasByRecord and valueByRecord == true then
+                return true
+            end
+        end
+    end
+
+    for _, spell in pairs(spells) do
+        if type(spell) == "table" and spell.id == SPELL_RECORD_ID then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function addSpell(spells)
+    if type(spells.add) ~= "function" then
+        return false, "spells.add unavailable"
+    end
+
+    local okAddById, errById = pcall(function()
+        spells:add(SPELL_RECORD_ID)
+    end)
+    if okAddById then
+        return true, nil
+    end
+
+    local spellRecord = resolveSpellRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okAddByRecord, errByRecord = pcall(function()
+        spells:add(spellRecord)
+    end)
+    if okAddByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function removeSpell(spells)
+    if type(spells.remove) ~= "function" then
+        return false, "spells.remove unavailable"
+    end
+
+    local okRemoveById, errById = pcall(function()
+        spells:remove(SPELL_RECORD_ID)
+    end)
+    if okRemoveById then
+        return true, nil
+    end
+
+    local spellRecord = resolveSpellRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okRemoveByRecord, errByRecord = pcall(function()
+        spells:remove(spellRecord)
+    end)
+    if okRemoveByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
 local function refreshBurglarsInstinctAbility()
     local spells = getPlayerSpells()
     if spells == nil then
@@ -79,37 +177,24 @@ local function refreshBurglarsInstinctAbility()
     end
 
     local shouldHave = unseenHandEnabled() and getEquippedSecurityTool() ~= nil
+    local hasSpell = spellBookHasSpell(spells)
 
-    local hasSpell = false
-    if type(spells.has) == "function" then
-        local okHas, value = pcall(function()
-            return spells:has(SPELL_RECORD_ID)
-        end)
-        if okHas and value == true then
-            hasSpell = true
-        end
-    end
-
-    if shouldHave and not hasSpell and type(spells.add) == "function" then
-        local okAdd, addError = pcall(function()
-            spells:add(SPELL_RECORD_ID)
-        end)
+    if shouldHave and not hasSpell then
+        local okAdd, addError = addSpell(spells)
         if not okAdd then
             if not addSpellFailureLogged then
                 addSpellFailureLogged = true
-                logDebug(string.format("spells:add(%s) failed: %s", SPELL_RECORD_ID, tostring(addError)))
+                logDebug(string.format("failed to add %s: %s", SPELL_RECORD_ID, tostring(addError)))
             end
             return
         end
         addSpellFailureLogged = false
-    elseif (not shouldHave) and hasSpell and type(spells.remove) == "function" then
-        local okRemove, removeError = pcall(function()
-            spells:remove(SPELL_RECORD_ID)
-        end)
+    elseif (not shouldHave) and hasSpell then
+        local okRemove, removeError = removeSpell(spells)
         if not okRemove then
             if not removeSpellFailureLogged then
                 removeSpellFailureLogged = true
-                logDebug(string.format("spells:remove(%s) failed: %s", SPELL_RECORD_ID, tostring(removeError)))
+                logDebug(string.format("failed to remove %s: %s", SPELL_RECORD_ID, tostring(removeError)))
             end
             return
         end

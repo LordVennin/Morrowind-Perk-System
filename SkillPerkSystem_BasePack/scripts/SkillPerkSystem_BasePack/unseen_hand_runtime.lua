@@ -25,6 +25,7 @@ local playerSpellsFailureState = nil
 local addSpellFailureLogged = false
 local removeSpellFailureLogged = false
 local provisionRequestSent = false
+local enabledOverride = nil
 local unseenHandEnabled
 
 local function logDebug(message)
@@ -76,7 +77,10 @@ local function resolveSpellRecordId()
     if type(spellRecordId) ~= "string" or spellRecordId == "" then
         if unseenHandEnabled() and not provisionRequestSent then
             provisionRequestSent = true
-            core.sendGlobalEvent(TOGGLE_EVENT, { enable = true })
+            core.sendGlobalEvent(TOGGLE_EVENT, {
+                enable = true,
+                spellRecordId = DEFAULT_SPELL_RECORD_ID,
+            })
         end
         logFirstFailure("record-empty", "resolved spell record id is empty")
         return nil
@@ -107,6 +111,10 @@ unseenHandEnabled = function()
 
     if type(playerApi.isPerkEffectEnabled) == "function" then
         return playerApi.isPerkEffectEnabled(PERK_ID)
+    end
+
+    if enabledOverride ~= nil then
+        return enabledOverride == true
     end
 
     -- Fallback for older interface versions where per-effect toggles are unavailable.
@@ -225,11 +233,10 @@ local function handleToggle(data)
         return
     end
 
-    effectsSection:set(ENABLED_KEY, data.enable == true)
+    enabledOverride = data.enable == true
 
     local spellRecordId = data.spellRecordId
     if type(spellRecordId) == "string" and spellRecordId ~= "" then
-        effectsSection:set(SPELL_RECORD_ID_KEY, spellRecordId)
         activeUnseenHandSpellRecordId = spellRecordId
     end
 
@@ -237,13 +244,8 @@ local function handleToggle(data)
 end
 
 local function onLoad()
+    enabledOverride = nil
     activeUnseenHandSpellRecordId = effectsSection:get(SPELL_RECORD_ID_KEY)
-    refreshUnseenHandAbility()
-end
-
-local function onNewGame()
-    activeUnseenHandSpellRecordId = nil
-    effectsSection:set(SPELL_RECORD_ID_KEY, nil)
     refreshUnseenHandAbility()
 end
 
@@ -251,7 +253,6 @@ return {
     engineHandlers = {
         onUpdate = refreshUnseenHandAbility,
         onLoad = onLoad,
-        onNewGame = onNewGame,
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,

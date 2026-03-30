@@ -13,14 +13,10 @@ local Repair = types.Repair
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][BlockEnchant]"
+
 local SHIELD_FUNDAMENTALS_PERK_ID = "block_shield_fundamentals"
 local GUARDIANS_HABIT_PERK_ID = "block_guardians_habit"
 local REACTIVE_ENCHANTING_PERK_ID = "block_reactive_enchanting"
-local BLOCK_PERKS = {
-    "block_shield_fundamentals",
-    "block_guardians_habit",
-    "block_reactive_enchanting",
-}
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -41,6 +37,7 @@ local runtimeTime = 0
 
 local baseCombatInterface = nil
 local wasSuccessfulShieldBlock
+local shouldApplyShieldFundamentalsBonus
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -84,10 +81,12 @@ local function getBaseCombatFunction(name)
     if baseCombatInterface == nil then
         return nil
     end
+
     local fn = baseCombatInterface[name]
     if type(fn) == "function" then
         return fn
     end
+
     return nil
 end
 
@@ -99,29 +98,6 @@ local function passthrough(name)
         end
         return nil
     end
-end
-
-local function blockPerkRank()
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return 0
-    end
-
-    local rank = 0
-    for _, perkId in ipairs(BLOCK_PERKS) do
-        local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(perkId)
-        if hasPerk then
-            local enabled = true
-            if type(playerApi.isPerkEffectEnabled) == "function" then
-                enabled = playerApi.isPerkEffectEnabled(perkId)
-            end
-            if enabled then
-                rank = rank + 1
-            end
-        end
-    end
-
-    return rank
 end
 
 local function getEquippedItem(actor, slot)
@@ -217,22 +193,6 @@ local function isOneHandedWeapon(item)
     if weaponType == nil then
         return true
     end
-
-    -- Morrowind/OpenMW weapon type ids:
-    -- 0 ShortBladeOneHand
-    -- 1 LongBladeOneHand
-    -- 2 LongBladeTwoHand
-    -- 3 BluntOneHand
-    -- 4 BluntTwoClose
-    -- 5 BluntTwoWide
-    -- 6 SpearTwoWide
-    -- 7 AxeOneHand
-    -- 8 AxeTwoHand
-    -- 9 MarksmanBow
-    -- 10 MarksmanCrossbow
-    -- 11 MarksmanThrown
-    -- 12 Arrow
-    -- 13 Bolt
 
     if weaponType == 2 then
         return false
@@ -337,17 +297,6 @@ local function reactiveEnchantingEnabled()
     return true
 end
 
-local function getGuardiansHabitFatigueRestore()
-    local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
-    if type(blockAccessor) ~= "function" then
-        return 1
-    end
-
-    local blockStat = blockAccessor(pself)
-    local blockSkill = blockStat ~= nil and tonumber(blockStat.base) or 0
-    return math.max(1, math.floor(blockSkill / 5))
-end
-
 local function getBlockSkillBonus()
     local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
     if type(blockAccessor) ~= "function" then
@@ -363,7 +312,52 @@ local function getBlockSkillBonus()
     return math.floor(blockSkill / 5)
 end
 
-local function shouldApplyShieldFundamentalsBonus()
+local function getGuardiansHabitFatigueRestore()
+    local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
+    if type(blockAccessor) ~= "function" then
+        return 1
+    end
+
+    local blockStat = blockAccessor(pself)
+    local blockSkill = blockStat ~= nil and tonumber(blockStat.base) or 0
+    return math.max(1, math.floor(blockSkill / 5))
+end
+
+local function adjustDamageForArmorWithShieldFundamentals(damage, actor)
+    local fn = getBaseCombatFunction("adjustDamageForArmor")
+    if fn == nil then
+        return damage
+    end
+
+    local actualActor = actor or pself
+    local adjusted = fn(damage, actualActor)
+
+    if actualActor ~= pself then
+        return adjusted
+    end
+
+    if not shouldApplyShieldFundamentalsBonus() then
+        return adjusted
+    end
+
+    local bonusArmor = getBlockSkillBonus()
+    if bonusArmor <= 0 then
+        return adjusted
+    end
+
+    local result = (tonumber(adjusted) or 0) * 100 / (100 + bonusArmor)
+
+    logDebug(string.format(
+        "shield fundamentals damage reduction in=%.3f bonusArmor=%d out=%.3f",
+        tonumber(adjusted) or 0,
+        bonusArmor,
+        result
+    ))
+
+    return result
+end
+
+shouldApplyShieldFundamentalsBonus = function()
     if not shieldFundamentalsEnabled() then
         return false
     end
@@ -527,10 +521,10 @@ local function applyGuardiansHabit(attack)
         end
     end
 
-   core.sendGlobalEvent("ModifyItemCondition", {
+    core.sendGlobalEvent("ModifyItemCondition", {
         actor = pself,
         item = shield,
-        amount = 1,
+        amount = math.max(1, math.floor(getBlockSkillBonus() / 2)),
     })
 
     logDebug(string.format(
@@ -846,7 +840,7 @@ return {
         version = 1,
 
         addOnHitHandler = passthrough("addOnHitHandler"),
-        adjustDamageForArmor = passthrough("adjustDamageForArmor"),
+        adjustDamageForArmor = adjustDamageForArmorWithShieldFundamentals,
         adjustDamageForDifficulty = passthrough("adjustDamageForDifficulty"),
         applyArmor = passthrough("applyArmor"),
 

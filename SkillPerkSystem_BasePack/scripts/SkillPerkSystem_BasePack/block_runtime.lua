@@ -76,6 +76,27 @@ local function resolveObjectKey(object)
     return tostring(object)
 end
 
+local function getBaseCombatFunction(name)
+    if baseCombatInterface == nil then
+        return nil
+    end
+    local fn = baseCombatInterface[name]
+    if type(fn) == "function" then
+        return fn
+    end
+    return nil
+end
+
+local function passthrough(name)
+    return function(...)
+        local fn = getBaseCombatFunction(name)
+        if fn ~= nil then
+            return fn(...)
+        end
+        return nil
+    end
+end
+
 local function blockPerkRank()
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
@@ -99,42 +120,55 @@ local function blockPerkRank()
     return rank
 end
 
-local function getEquippedShield(actor)
+local function getEquippedItem(actor, slot)
     if actor == nil or Actor == nil or type(Actor.getEquipment) ~= "function" then
         return nil
     end
 
+    local ok, equipped = pcall(Actor.getEquipment, actor, slot)
+    if not ok then
+        return nil
+    end
+
+    return equipped
+end
+
+local function getEquippedShield(actor)
+    if actor == nil or Actor == nil then
+        return nil, nil
+    end
+
     local carriedLeftSlot = Actor.EQUIPMENT_SLOT ~= nil and Actor.EQUIPMENT_SLOT.CarriedLeft or nil
     if carriedLeftSlot == nil then
-        return nil
+        return nil, nil
     end
 
-    local ok, equipped = pcall(Actor.getEquipment, actor, carriedLeftSlot)
-    if not ok or equipped == nil then
-        return nil
+    local equipped = getEquippedItem(actor, carriedLeftSlot)
+    if equipped == nil then
+        return nil, nil
     end
 
-    if Armor ~= nil and type(Armor.objectIsInstance) == "function" and not Armor.objectIsInstance(equipped) then
-        return nil
+    if Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(equipped) then
+        return nil, nil
     end
 
     local record = nil
-    if equipped.type ~= nil and type(equipped.type.record) == "function" then
-        local okRecord, value = pcall(equipped.type.record, equipped)
+    if type(Armor.record) == "function" then
+        local okRecord, value = pcall(Armor.record, equipped)
         if okRecord then
             record = value
         end
     end
 
     if record == nil or record.type ~= Armor.TYPE.Shield then
-        return nil
+        return nil, nil
     end
 
     return equipped, record
 end
 
 local function getEquippedRightHand(actor)
-    if actor == nil or Actor == nil or type(Actor.getEquipment) ~= "function" then
+    if actor == nil or Actor == nil then
         return nil
     end
 
@@ -143,12 +177,26 @@ local function getEquippedRightHand(actor)
         return nil
     end
 
-    local ok, equipped = pcall(Actor.getEquipment, actor, rightSlot)
-    if not ok then
+    return getEquippedItem(actor, rightSlot)
+end
+
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
         return nil
     end
 
-    return equipped
+    if type(Weapon.record) == "function" then
+        local ok, record = pcall(Weapon.record, item)
+        if ok and record ~= nil then
+            return record
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    return nil
 end
 
 local function isOneHandedWeapon(item)
@@ -156,34 +204,61 @@ local function isOneHandedWeapon(item)
         return false
     end
 
-    local record = nil
-    if item.type ~= nil and type(item.type.record) == "function" then
-        local okRecord, value = pcall(item.type.record, item)
-        if okRecord then
-            record = value
-        end
+    local record = getWeaponRecord(item)
+    if record == nil then
+        return true
     end
 
-    local weaponType = record ~= nil and record.type or nil
+    local weaponType = tonumber(record.type)
     if weaponType == nil then
         return true
     end
 
-    local typeEnum = Weapon.TYPE
-    if type(typeEnum) == "table" then
-        for key, value in pairs(typeEnum) do
-            if value == weaponType then
-                local normalized = string.lower(tostring(key))
-                if
-                    normalized:find("twohand", 1, true) ~= nil
-                    or normalized:find("marksman", 1, true) ~= nil
-                    or normalized:find("bow", 1, true) ~= nil
-                    or normalized:find("crossbow", 1, true) ~= nil
-                then
-                    return false
-                end
-            end
-        end
+    -- Morrowind/OpenMW weapon type ids:
+    -- 0 ShortBladeOneHand
+    -- 1 LongBladeOneHand
+    -- 2 LongBladeTwoHand
+    -- 3 BluntOneHand
+    -- 4 BluntTwoClose
+    -- 5 BluntTwoWide
+    -- 6 SpearTwoWide
+    -- 7 AxeOneHand
+    -- 8 AxeTwoHand
+    -- 9 MarksmanBow
+    -- 10 MarksmanCrossbow
+    -- 11 MarksmanThrown
+    -- 12 Arrow
+    -- 13 Bolt
+
+    if weaponType == 2 then
+        return false
+    end
+    if weaponType == 4 then
+        return false
+    end
+    if weaponType == 5 then
+        return false
+    end
+    if weaponType == 6 then
+        return false
+    end
+    if weaponType == 8 then
+        return false
+    end
+    if weaponType == 9 then
+        return false
+    end
+    if weaponType == 10 then
+        return false
+    end
+    if weaponType == 11 then
+        return false
+    end
+    if weaponType == 12 then
+        return false
+    end
+    if weaponType == 13 then
+        return false
     end
 
     return true
@@ -257,13 +332,27 @@ local function shouldApplyShieldFundamentalsBonus()
     return isOneHandedWeapon(rightHand) or isTool(rightHand)
 end
 
-local function getArmorRatingWithShieldFundamentals(actor)
-    if baseCombatInterface == nil or type(baseCombatInterface.getArmorRating) ~= "function" then
+local function getArmorRecord(item)
+    if item == nil or Armor == nil or type(Armor.record) ~= "function" then
         return nil
     end
 
-    local baseArmor = baseCombatInterface.getArmorRating(actor)
-    if actor ~= pself then
+    local ok, record = pcall(Armor.record, item)
+    if ok then
+        return record
+    end
+    return nil
+end
+
+local function getArmorRatingWithShieldFundamentals(actor)
+    local fn = getBaseCombatFunction("getArmorRating")
+    if fn == nil then
+        return nil
+    end
+
+    local actualActor = actor or pself
+    local baseArmor = fn(actualActor)
+    if actualActor ~= pself then
         return baseArmor
     end
 
@@ -276,16 +365,34 @@ local function getArmorRatingWithShieldFundamentals(actor)
         return baseArmor
     end
 
+    logDebug(string.format("armor bonus applied base=%s bonus=%d actor=%s",
+        tostring(baseArmor), bonus, tostring(actualActor)))
+
     return (tonumber(baseArmor) or 0) + bonus
 end
 
-local function getEffectiveArmorRatingWithShieldFundamentals(actor, ...)
-    if baseCombatInterface == nil or type(baseCombatInterface.getEffectiveArmorRating) ~= "function" then
+local function getEffectiveArmorRatingWithShieldFundamentals(item, actor)
+    local fn = getBaseCombatFunction("getEffectiveArmorRating")
+    if fn == nil then
         return nil
     end
 
-    local baseArmor = baseCombatInterface.getEffectiveArmorRating(actor, ...)
-    if actor ~= pself then
+    local actualActor = actor or pself
+    local baseArmor = fn(item, actualActor)
+    if actualActor ~= pself then
+        return baseArmor
+    end
+
+    if item == nil then
+        return baseArmor
+    end
+
+    if Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(item) then
+        return baseArmor
+    end
+
+    local record = getArmorRecord(item)
+    if record == nil or record.type ~= Armor.TYPE.Shield then
         return baseArmor
     end
 
@@ -625,13 +732,29 @@ local function initializeDefaults()
     end
 end
 
-interfaces.Combat.addOnHitHandler(processShieldEnchantProc)
+local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(addOnHitHandler) == "function" then
+    addOnHitHandler(processShieldEnchantProc)
+end
 
 return {
     interfaceName = "Combat",
     interface = {
+        version = 1,
+
+        addOnHitHandler = passthrough("addOnHitHandler"),
+        adjustDamageForArmor = passthrough("adjustDamageForArmor"),
+        adjustDamageForDifficulty = passthrough("adjustDamageForDifficulty"),
+        applyArmor = passthrough("applyArmor"),
+
         getArmorRating = getArmorRatingWithShieldFundamentals,
+        getArmorSkill = passthrough("getArmorSkill"),
         getEffectiveArmorRating = getEffectiveArmorRatingWithShieldFundamentals,
+        getSkillAdjustedArmorRating = passthrough("getSkillAdjustedArmorRating"),
+
+        onHit = passthrough("onHit"),
+        pickRandomArmor = passthrough("pickRandomArmor"),
+        spawnBloodEffect = passthrough("spawnBloodEffect"),
     },
     engineHandlers = {
         onUpdate = function(dt)

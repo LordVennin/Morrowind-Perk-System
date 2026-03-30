@@ -66,7 +66,7 @@ return {
             x = 140,
             y = 240,
             title = "Reactive Enchanting",
-            description = "While using a shield and a one-handed weapon or tool, successful shield blocks restore fatigue equal to max(1, floor(Block / 10)) and refund part of the shield condition lost from that block.",
+            description = "While using a shield with a one-handed weapon, successful shield blocks restore fatigue and shield condition based on skill level.",
         },
     },
 }

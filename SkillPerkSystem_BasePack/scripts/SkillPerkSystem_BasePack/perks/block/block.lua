@@ -66,7 +66,7 @@ return {
             x = 140,
             y = 240,
             title = "Reactive Enchanting",
-            description = "General tree capstone placeholder for the planned enchant-on-block behavior. No gameplay effect yet.",
+            description = "While using a shield and a one-handed weapon or tool, successful shield blocks restore fatigue equal to max(1, floor(Block / 10)) and refund part of the shield condition lost from that block.",
         },
     },
 }

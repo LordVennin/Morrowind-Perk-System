@@ -279,6 +279,28 @@ local function getArmorRatingWithShieldFundamentals(actor)
     return (tonumber(baseArmor) or 0) + bonus
 end
 
+local function getEffectiveArmorRatingWithShieldFundamentals(actor, ...)
+    if baseCombatInterface == nil or type(baseCombatInterface.getEffectiveArmorRating) ~= "function" then
+        return nil
+    end
+
+    local baseArmor = baseCombatInterface.getEffectiveArmorRating(actor, ...)
+    if actor ~= pself then
+        return baseArmor
+    end
+
+    if not shouldApplyShieldFundamentalsBonus() then
+        return baseArmor
+    end
+
+    local bonus = getBlockSkillBonus()
+    if bonus <= 0 then
+        return baseArmor
+    end
+
+    return (tonumber(baseArmor) or 0) + bonus
+end
+
 local function wasSuccessfulShieldBlock(attack)
     if type(attack) ~= "table" then
         return false
@@ -609,6 +631,7 @@ return {
     interfaceName = "Combat",
     interface = {
         getArmorRating = getArmorRatingWithShieldFundamentals,
+        getEffectiveArmorRating = getEffectiveArmorRatingWithShieldFundamentals,
     },
     engineHandlers = {
         onUpdate = function(dt)

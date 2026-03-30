@@ -14,6 +14,8 @@ local Repair = types.Repair
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][BlockEnchant]"
 local SHIELD_FUNDAMENTALS_PERK_ID = "block_shield_fundamentals"
+local GUARDIANS_HABIT_PERK_ID = "block_guardians_habit"
+local REACTIVE_ENCHANTING_PERK_ID = "block_reactive_enchanting"
 local BLOCK_PERKS = {
     "block_shield_fundamentals",
     "block_guardians_habit",
@@ -36,7 +38,9 @@ local DEFAULT_COOLDOWN_SECONDS = 0.75
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
 local pairCooldowns = {}
 local runtimeTime = 0
+
 local baseCombatInterface = nil
+local wasSuccessfulShieldBlock
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -299,6 +303,51 @@ local function shieldFundamentalsEnabled()
     return true
 end
 
+local function guardiansHabitEnabled()
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    if type(playerApi.hasPerk) ~= "function" or not playerApi.hasPerk(GUARDIANS_HABIT_PERK_ID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(GUARDIANS_HABIT_PERK_ID)
+    end
+
+    return true
+end
+
+local function reactiveEnchantingEnabled()
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    if type(playerApi.hasPerk) ~= "function" or not playerApi.hasPerk(REACTIVE_ENCHANTING_PERK_ID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(REACTIVE_ENCHANTING_PERK_ID)
+    end
+
+    return true
+end
+
+local function getGuardiansHabitFatigueRestore()
+    local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
+    if type(blockAccessor) ~= "function" then
+        return 1
+    end
+
+    local blockStat = blockAccessor(pself)
+    local blockSkill = blockStat ~= nil and tonumber(blockStat.base) or 0
+    return math.max(1, math.floor(blockSkill / 5))
+end
+
 local function getBlockSkillBonus()
     local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
     if type(blockAccessor) ~= "function" then
@@ -408,7 +457,7 @@ local function getEffectiveArmorRatingWithShieldFundamentals(item, actor)
     return (tonumber(baseArmor) or 0) + bonus
 end
 
-local function wasSuccessfulShieldBlock(attack)
+wasSuccessfulShieldBlock = function(attack)
     if type(attack) ~= "table" then
         return false
     end
@@ -440,6 +489,43 @@ local function wasSuccessfulShieldBlock(attack)
     end
 
     return false
+end
+
+local function applyGuardiansHabit(attack)
+    if not guardiansHabitEnabled() then
+        return
+    end
+
+    if not wasSuccessfulShieldBlock(attack) then
+        return
+    end
+
+    if not shouldApplyShieldFundamentalsBonus() then
+        return
+    end
+
+    local shield = getEquippedShield(pself)
+    if shield == nil then
+        return
+    end
+
+    local fatigueRestore = getGuardiansHabitFatigueRestore()
+    pself:sendEvent("ModifyStat", {
+        name = "fatigue",
+        amount = fatigueRestore,
+    })
+
+    core.sendGlobalEvent("ModifyItemCondition", {
+        actor = pself,
+        item = shield,
+        amount = 1,
+    })
+
+    logDebug(string.format(
+        "guardian's habit applied fatigue=%d shield=%s",
+        fatigueRestore,
+        tostring(shield.recordId)
+    ))
 end
 
 local function resolveEnchantmentRecord(shieldRecord)
@@ -613,8 +699,7 @@ local function getEnchantmentCost(enchantment)
 end
 
 local function processShieldEnchantProc(attack)
-    local rank = blockPerkRank()
-    if rank <= 0 then
+    if not reactiveEnchantingEnabled() then
         return
     end
 
@@ -642,17 +727,18 @@ local function processShieldEnchantProc(attack)
     end
 
     local baseProc = readConfigNumber(BASE_PROC_CHANCE_KEY, DEFAULT_BASE_PROC_CHANCE)
-    local procPerRank = readConfigNumber(PROC_PER_RANK_KEY, DEFAULT_PROC_PER_RANK)
     local scalingEnabled = readConfigBoolean(ENABLE_PROC_SCALING_KEY, DEFAULT_ENABLE_PROC_SCALING)
+    local procPerRank = readConfigNumber(PROC_PER_RANK_KEY, DEFAULT_PROC_PER_RANK)
+
     local procChance = baseProc
     if scalingEnabled then
-        procChance = baseProc + procPerRank * math.max(rank - 1, 0)
+        procChance = baseProc + procPerRank
     end
     procChance = math.max(0, math.min(1, procChance))
 
     local roll = math.random()
     if roll > procChance then
-        logDebug(string.format("proc failed by chance roll=%.3f chance=%.3f rank=%d", roll, procChance, rank))
+        logDebug(string.format("proc failed by chance roll=%.3f chance=%.3f", roll, procChance))
         return
     end
 
@@ -732,9 +818,14 @@ local function initializeDefaults()
     end
 end
 
+local function processBlockPerks(attack)
+    applyGuardiansHabit(attack)
+    processShieldEnchantProc(attack)
+end
+
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then
-    addOnHitHandler(processShieldEnchantProc)
+    addOnHitHandler(processBlockPerks)
 end
 
 return {

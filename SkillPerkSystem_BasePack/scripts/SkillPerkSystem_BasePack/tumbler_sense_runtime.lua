@@ -50,7 +50,20 @@ local function log(...)
 end
 
 log("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
+local trackedToolState = nil
 local appliedSkillBonus = 0
+
+local EQUIPMENT_SLOT = (types.Actor ~= nil and types.Actor.EQUIPMENT_SLOT) or {}
+local TRACKED_SLOTS = {
+    {
+        slot = EQUIPMENT_SLOT.CarriedRight,
+        label = "CarriedRight",
+    },
+    {
+        slot = EQUIPMENT_SLOT.CarriedLeft,
+        label = "CarriedLeft",
+    },
+}
 
 local function clamp(value, minValue, maxValue)
     if type(value) ~= "number" then
@@ -77,6 +90,123 @@ end
 
 local function nowTimestamp()
     return core.getSimulationTime()
+end
+
+local function classifySecurityTool(item)
+    if item == nil then
+        return nil
+    end
+    if types.Lockpick.objectIsInstance(item) then
+        return "Lockpick"
+    end
+    if types.Probe.objectIsInstance(item) then
+        return "Probe"
+    end
+    return nil
+end
+
+local function toolMaxCondition(item)
+    if item == nil then
+        return nil
+    end
+
+    local recordId = item.recordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    if types.Lockpick.objectIsInstance(item) and type(types.Lockpick.records) == "table" then
+        local record = types.Lockpick.records[recordId]
+        if type(record) == "table" and type(record.maxCondition) == "number" then
+            return record.maxCondition
+        end
+    end
+
+    if types.Probe.objectIsInstance(item) and type(types.Probe.records) == "table" then
+        local record = types.Probe.records[recordId]
+        if type(record) == "table" and type(record.maxCondition) == "number" then
+            return record.maxCondition
+        end
+    end
+
+    return nil
+end
+
+local function resolveItemCondition(item)
+    if item == nil then
+        return nil
+    end
+
+    if types.Item ~= nil and type(types.Item.itemData) == "function" then
+        local ok, data = pcall(types.Item.itemData, item)
+        if ok and data ~= nil and type(data.condition) == "number" then
+            return data.condition
+        end
+    end
+
+    if type(item.type) == "table" and type(item.type.itemData) == "function" then
+        local ok, data = pcall(item.type.itemData, item)
+        if ok and data ~= nil and type(data.condition) == "number" then
+            return data.condition
+        end
+    end
+
+    return toolMaxCondition(item)
+end
+
+local function getEquippedItem(slot)
+    if types.Actor == nil or type(types.Actor.getEquipment) ~= "function" or slot == nil then
+        return nil
+    end
+
+    local ok, item = pcall(types.Actor.getEquipment, pself, slot)
+    if not ok then
+        return nil
+    end
+    return item
+end
+
+local function findEquippedSecurityTool()
+    for _, slotInfo in ipairs(TRACKED_SLOTS) do
+        local item = getEquippedItem(slotInfo.slot)
+        local toolType = classifySecurityTool(item)
+        if toolType ~= nil then
+            return {
+                item = item,
+                slot = slotInfo.slot,
+                slotName = slotInfo.label,
+                toolType = toolType,
+                condition = resolveItemCondition(item),
+                lastComparableCondition = nil,
+            }
+        end
+    end
+    return nil
+end
+
+local function sameItem(a, b)
+    if a == nil or b == nil then
+        return false
+    end
+    return a.item == b.item and a.slot == b.slot
+end
+
+local function withLastComparableCondition(previousState, currentState)
+    if currentState == nil then
+        return nil
+    end
+
+    if type(currentState.condition) == "number" then
+        currentState.lastComparableCondition = currentState.condition
+        return currentState
+    end
+
+    if previousState ~= nil and sameItem(previousState, currentState) and type(previousState.lastComparableCondition) == "number" then
+        currentState.lastComparableCondition = previousState.lastComparableCondition
+        return currentState
+    end
+
+    return currentState
 end
 
 local function tumblerSenseEnabled()
@@ -371,40 +501,39 @@ local function requestRefreshChance(data)
     return getActiveBonusPercentPoints()
 end
 
-local skillProgression = interfaces.SkillProgression
-local securityUseTypes = skillProgression ~= nil and skillProgression.SKILL_USE_TYPES or {}
-local SECURITY_USE_TYPE_BY_TOOL = {
-    lockpick = securityUseTypes.Security_PickLock,
-    probe = securityUseTypes.Security_DisarmTrap,
-}
-
-local function isSecurityToolUse(useType)
-    return useType == SECURITY_USE_TYPE_BY_TOOL.lockpick
-        or useType == SECURITY_USE_TYPE_BY_TOOL.probe
-end
-
-local function onSecuritySkillUsed(skillId, params)
-    if skillId ~= "security" or type(params) ~= "table" then
-        return
-    end
-
-    local useType = params.useType
-    if not isSecurityToolUse(useType) then
-        return
-    end
-
-    handleFailure({
-        source = CONDITION_FAILURE_SOURCE,
-        probe = useType == SECURITY_USE_TYPE_BY_TOOL.probe,
-    })
-end
-
-if skillProgression ~= nil and type(skillProgression.addSkillUsedHandler) == "function" then
-    skillProgression.addSkillUsedHandler(onSecuritySkillUsed)
-end
-
 local function onUpdate()
     clearExpiredStacks("onUpdate")
+
+    if not tumblerSenseEnabled() then
+        trackedToolState = nil
+        return
+    end
+
+    local previousState = trackedToolState
+    local currentState = withLastComparableCondition(previousState, findEquippedSecurityTool())
+    trackedToolState = currentState
+
+    if previousState == nil or currentState == nil or not sameItem(previousState, currentState) then
+        return
+    end
+
+    local oldCondition = previousState.lastComparableCondition
+    local newCondition = currentState.condition
+    if type(oldCondition) ~= "number" or type(newCondition) ~= "number" or newCondition >= oldCondition then
+        return
+    end
+
+    local spentPoints = math.floor(oldCondition - newCondition)
+    if spentPoints < 1 then
+        spentPoints = 1
+    end
+
+    for _ = 1, spentPoints do
+        handleFailure({
+            source = CONDITION_FAILURE_SOURCE,
+            probe = currentState.toolType == "Probe",
+        })
+    end
 end
 
 return {

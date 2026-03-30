@@ -44,7 +44,7 @@ return {
             x = 140,
             y = 0,
             title = "Shield Fundamentals",
-            description = "General tree starter. Reserved for practical all-around shield improvements.",
+            description = "While using a shield and a one-handed weapon or tool, gain armor equal to your Block skill / 5 (rounded down).",
         },
         {
             id = "block_guardians_habit",

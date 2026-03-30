@@ -6,14 +6,18 @@ local types = require("openmw.types")
 
 local Actor = types.Actor
 local Armor = types.Armor
+local Weapon = types.Weapon
+local Lockpick = types.Lockpick
+local Probe = types.Probe
+local Repair = types.Repair
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][BlockEnchant]"
+local SHIELD_FUNDAMENTALS_PERK_ID = "block_shield_fundamentals"
 local BLOCK_PERKS = {
-    "block_basic_guard",
-    "block_reactive_guard",
-    "block_bulwark_stance",
-    "block_iron_wall",
+    "block_shield_fundamentals",
+    "block_guardians_habit",
+    "block_reactive_enchanting",
 }
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
@@ -32,6 +36,7 @@ local DEFAULT_COOLDOWN_SECONDS = 0.75
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
 local pairCooldowns = {}
 local runtimeTime = 0
+local baseCombatInterface = nil
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -126,6 +131,152 @@ local function getEquippedShield(actor)
     end
 
     return equipped, record
+end
+
+local function getEquippedRightHand(actor)
+    if actor == nil or Actor == nil or type(Actor.getEquipment) ~= "function" then
+        return nil
+    end
+
+    local rightSlot = Actor.EQUIPMENT_SLOT ~= nil and Actor.EQUIPMENT_SLOT.CarriedRight or nil
+    if rightSlot == nil then
+        return nil
+    end
+
+    local ok, equipped = pcall(Actor.getEquipment, actor, rightSlot)
+    if not ok then
+        return nil
+    end
+
+    return equipped
+end
+
+local function isOneHandedWeapon(item)
+    if item == nil or Weapon == nil or type(Weapon.objectIsInstance) ~= "function" or not Weapon.objectIsInstance(item) then
+        return false
+    end
+
+    local record = nil
+    if item.type ~= nil and type(item.type.record) == "function" then
+        local okRecord, value = pcall(item.type.record, item)
+        if okRecord then
+            record = value
+        end
+    end
+
+    local weaponType = record ~= nil and record.type or nil
+    if weaponType == nil then
+        return true
+    end
+
+    local typeEnum = Weapon.TYPE
+    if type(typeEnum) == "table" then
+        for key, value in pairs(typeEnum) do
+            if value == weaponType then
+                local normalized = string.lower(tostring(key))
+                if
+                    normalized:find("twohand", 1, true) ~= nil
+                    or normalized:find("marksman", 1, true) ~= nil
+                    or normalized:find("bow", 1, true) ~= nil
+                    or normalized:find("crossbow", 1, true) ~= nil
+                then
+                    return false
+                end
+            end
+        end
+    end
+
+    return true
+end
+
+local function isTool(item)
+    if item == nil then
+        return false
+    end
+
+    if Lockpick ~= nil and type(Lockpick.objectIsInstance) == "function" and Lockpick.objectIsInstance(item) then
+        return true
+    end
+    if Probe ~= nil and type(Probe.objectIsInstance) == "function" and Probe.objectIsInstance(item) then
+        return true
+    end
+    if Repair ~= nil and type(Repair.objectIsInstance) == "function" and Repair.objectIsInstance(item) then
+        return true
+    end
+
+    return false
+end
+
+local function shieldFundamentalsEnabled()
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    if type(playerApi.hasPerk) ~= "function" or not playerApi.hasPerk(SHIELD_FUNDAMENTALS_PERK_ID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(SHIELD_FUNDAMENTALS_PERK_ID)
+    end
+
+    return true
+end
+
+local function getBlockSkillBonus()
+    local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
+    if type(blockAccessor) ~= "function" then
+        return 0
+    end
+
+    local blockStat = blockAccessor(pself)
+    local blockSkill = blockStat ~= nil and tonumber(blockStat.base) or 0
+    if blockSkill <= 0 then
+        return 0
+    end
+
+    return math.floor(blockSkill / 5)
+end
+
+local function shouldApplyShieldFundamentalsBonus()
+    if not shieldFundamentalsEnabled() then
+        return false
+    end
+
+    local shield = getEquippedShield(pself)
+    if shield == nil then
+        return false
+    end
+
+    local rightHand = getEquippedRightHand(pself)
+    if rightHand == nil then
+        return false
+    end
+
+    return isOneHandedWeapon(rightHand) or isTool(rightHand)
+end
+
+local function getArmorRatingWithShieldFundamentals(actor)
+    if baseCombatInterface == nil or type(baseCombatInterface.getArmorRating) ~= "function" then
+        return nil
+    end
+
+    local baseArmor = baseCombatInterface.getArmorRating(actor)
+    if actor ~= pself then
+        return baseArmor
+    end
+
+    if not shouldApplyShieldFundamentalsBonus() then
+        return baseArmor
+    end
+
+    local bonus = getBlockSkillBonus()
+    if bonus <= 0 then
+        return baseArmor
+    end
+
+    return (tonumber(baseArmor) or 0) + bonus
 end
 
 local function wasSuccessfulShieldBlock(attack)
@@ -455,6 +606,10 @@ end
 interfaces.Combat.addOnHitHandler(processShieldEnchantProc)
 
 return {
+    interfaceName = "Combat",
+    interface = {
+        getArmorRating = getArmorRatingWithShieldFundamentals,
+    },
     engineHandlers = {
         onUpdate = function(dt)
             runtimeTime = runtimeTime + (tonumber(dt) or 0)
@@ -463,6 +618,9 @@ return {
             runtimeTime = 0
             pairCooldowns = {}
             initializeDefaults()
+        end,
+        onInterfaceOverride = function(base)
+            baseCombatInterface = base
         end,
     },
 }

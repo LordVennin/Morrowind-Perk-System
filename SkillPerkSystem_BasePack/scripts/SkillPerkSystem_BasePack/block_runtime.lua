@@ -510,12 +510,24 @@ local function applyGuardiansHabit(attack)
     end
 
     local fatigueRestore = getGuardiansHabitFatigueRestore()
-    pself:sendEvent("ModifyStat", {
-        name = "fatigue",
-        amount = fatigueRestore,
-    })
 
-    core.sendGlobalEvent("ModifyItemCondition", {
+    local fatigueStatAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.fatigue
+
+    if type(fatigueStatAccessor) == "function" then
+        local fatigueStat = fatigueStatAccessor(pself)
+        if fatigueStat ~= nil then
+            local current = tonumber(fatigueStat.current) or 0
+            local base = tonumber(fatigueStat.base) or current
+            local modifier = tonumber(fatigueStat.modifier) or 0
+            local maxFatigue = math.max(0, base + modifier)
+            fatigueStat.current = math.min(current + fatigueRestore, maxFatigue)
+        end
+    end
+
+   core.sendGlobalEvent("ModifyItemCondition", {
         actor = pself,
         item = shield,
         amount = 1,

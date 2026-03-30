@@ -3,6 +3,7 @@ local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
+local paladinConfig = require("scripts.SkillPerkSystem_BasePack.perks.block.paladin_shielding_config")
 
 local Actor = types.Actor
 local Armor = types.Armor
@@ -29,8 +30,18 @@ local DEFAULT_BASE_PROC_CHANCE = 0.15
 local DEFAULT_PROC_PER_RANK = 0.08
 local DEFAULT_COOLDOWN_SECONDS = 0.75
 
+local PALADIN_PERKS = {
+    arcaneBulwark = "block_arcane_bulwark",
+    wardedRebuke = "block_warded_rebuke",
+    mirrorAegis = "block_mirror_aegis",
+    guardiansPulse = "block_guardians_pulse",
+}
+
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
+local paladinSection = paladinConfig.section()
 local pairCooldowns = {}
+local wardExpiresAt = 0
+local supportPulseReadyAt = 0
 local runtimeTime = 0
 
 local function logDebug(message)
@@ -53,6 +64,23 @@ local function readConfigBoolean(key, fallback)
         return value
     end
     return fallback
+end
+
+local function readPaladinNumber(keyName)
+    local key = paladinConfig.KEYS[keyName]
+    local fallback = paladinConfig.DEFAULTS[keyName]
+    local value = tonumber(paladinSection:get(key))
+    if type(value) ~= "number" then
+        return fallback
+    end
+    return value
+end
+
+local function debugPaladin(message)
+    local debugKey = paladinConfig.KEYS.debugLogging
+    if paladinSection:get(debugKey) == true then
+        print(string.format("[SkillPerkSystem_BasePack][BlockPaladin][debug] %s", tostring(message)))
+    end
 end
 
 local function resolveObjectKey(object)
@@ -324,6 +352,104 @@ local function getCurrentCharge(shield, enchantment)
     return currentCharge, maxCharge
 end
 
+local function perkActive(perkId)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
+        return false
+    end
+    if not playerApi.hasPerk(perkId) then
+        return false
+    end
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(perkId)
+    end
+    return true
+end
+
+local function isLikelyHostileSpellAttack(attack)
+    if type(attack) ~= "table" then
+        return false
+    end
+    local sourceText = string.lower(string.format(
+        "%s %s %s %s",
+        tostring(attack.type or ""),
+        tostring(attack.attackType or ""),
+        tostring(attack.source or ""),
+        tostring(attack.hitSource or "")
+    ))
+    if sourceText:find("spell", 1, true) ~= nil or sourceText:find("magic", 1, true) ~= nil then
+        return true
+    end
+
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    return (tonumber(damage.magicka) or 0) > 0
+end
+
+local function restoreBlockedDamage(attack, multiplier)
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    local health = (tonumber(damage.health) or 0) * multiplier
+    local magicka = (tonumber(damage.magicka) or 0) * multiplier
+    local fatigue = (tonumber(damage.fatigue) or 0) * multiplier
+
+    if health > 0 then
+        pself:sendEvent("ModifyStat", { name = "health", amount = health })
+    end
+    if magicka > 0 then
+        pself:sendEvent("ModifyStat", { name = "magicka", amount = magicka })
+    end
+    if fatigue > 0 then
+        pself:sendEvent("ModifyStat", { name = "fatigue", amount = fatigue })
+    end
+end
+
+local function applyPaladinShielding(attack)
+    if not wasSuccessfulShieldBlock(attack) then
+        return
+    end
+
+    local hostileSpell = isLikelyHostileSpellAttack(attack)
+    if hostileSpell and perkActive(PALADIN_PERKS.arcaneBulwark) then
+        local passiveResist = math.max(0, math.min(0.95, readPaladinNumber("passiveMagicResist")))
+        restoreBlockedDamage(attack, passiveResist)
+        debugPaladin(string.format("Arcane Bulwark mitigated hostile spell by %.2f%%", passiveResist * 100))
+    end
+
+    if perkActive(PALADIN_PERKS.wardedRebuke) then
+        wardExpiresAt = runtimeTime + math.max(0, readPaladinNumber("wardDurationSeconds"))
+        if hostileSpell and runtimeTime <= wardExpiresAt then
+            local absorbPercent = math.max(0, math.min(0.95, readPaladinNumber("wardAbsorbPercent")))
+            local damage = type(attack.damage) == "table" and attack.damage or {}
+            local total = (tonumber(damage.health) or 0) + (tonumber(damage.magicka) or 0) + (tonumber(damage.fatigue) or 0)
+            if total > 0 then
+                pself:sendEvent("ModifyStat", { name = "magicka", amount = total * absorbPercent })
+                debugPaladin(string.format("Warded Rebuke absorbed %.2f magicka", total * absorbPercent))
+            end
+        end
+    end
+
+    if hostileSpell and runtimeTime <= wardExpiresAt and perkActive(PALADIN_PERKS.mirrorAegis) then
+        local reflectionChance = math.max(0, math.min(1, readPaladinNumber("reflectionChance")))
+        if math.random() <= reflectionChance then
+            local reflectionPercent = math.max(0, math.min(0.95, readPaladinNumber("reflectionPercent")))
+            local damage = type(attack.damage) == "table" and attack.damage or {}
+            local reflected = ((tonumber(damage.health) or 0) + (tonumber(damage.magicka) or 0)) * reflectionPercent
+            local attacker = attack.attacker
+            if reflected > 0 and attacker ~= nil and type(attacker.sendEvent) == "function" then
+                attacker:sendEvent("ModifyStat", { name = "health", amount = -reflected })
+                debugPaladin(string.format("Mirror Aegis reflected %.2f damage", reflected))
+            end
+        end
+    end
+
+    if perkActive(PALADIN_PERKS.guardiansPulse) and runtimeTime >= supportPulseReadyAt then
+        local healAmount = math.max(0, readPaladinNumber("supportPulseHeal"))
+        if healAmount > 0 then
+            pself:sendEvent("ModifyStat", { name = "health", amount = healAmount })
+        end
+        supportPulseReadyAt = runtimeTime + math.max(0, readPaladinNumber("supportPulseCooldownSeconds"))
+    end
+end
+
 local function getEnchantmentCost(enchantment)
     local cost = tonumber(enchantment.cost or enchantment.enchantmentCost or enchantment.castCost)
     if type(cost) ~= "number" or cost <= 0 then
@@ -352,6 +478,8 @@ local function processShieldEnchantProc(attack)
         logDebug("block ignored: event did not qualify as successful shield block")
         return
     end
+
+    applyPaladinShielding(attack)
 
     local cooldown = math.max(0, readConfigNumber(COOLDOWN_SECONDS_KEY, DEFAULT_COOLDOWN_SECONDS))
     local pairKey = resolveObjectKey(pself) .. "|" .. resolveObjectKey(attacker)
@@ -450,6 +578,7 @@ local function initializeDefaults()
     if configSection:get(COOLDOWN_SECONDS_KEY) == nil then
         configSection:set(COOLDOWN_SECONDS_KEY, DEFAULT_COOLDOWN_SECONDS)
     end
+    paladinConfig.initializeDefaults()
 end
 
 interfaces.Combat.addOnHitHandler(processShieldEnchantProc)
@@ -462,6 +591,8 @@ return {
         onLoad = function()
             runtimeTime = 0
             pairCooldowns = {}
+            wardExpiresAt = 0
+            supportPulseReadyAt = 0
             initializeDefaults()
         end,
     },

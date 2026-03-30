@@ -98,6 +98,22 @@ local modules = {
 
 local effectModules = {
     {
+        source = "scripts.SkillPerkSystem_BasePack.perks.block.arcane_bulwark_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.block.arcane_bulwark_effect"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.block.warded_rebuke_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.block.warded_rebuke_effect"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.block.mirror_aegis_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.block.mirror_aegis_effect"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.block.guardians_pulse_effect",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.block.guardians_pulse_effect"),
+    },
+    {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect"),
     },

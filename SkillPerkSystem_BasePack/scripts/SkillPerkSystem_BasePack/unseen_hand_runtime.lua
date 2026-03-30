@@ -1,4 +1,5 @@
 local interfaces = require("openmw.interfaces")
+local core = require("openmw.core")
 local pself = require("openmw.self")
 local types = require("openmw.types")
 
@@ -28,23 +29,12 @@ local function interfaceSaysEnabled()
         return false
     end
 
-    if type(spells.has) == "function" then
-        local okHasById, valueById = pcall(function()
-            return spells:has(SPELL_RECORD_ID)
-        end)
-        if okHasById and valueById == true then
-            return true
-        end
+    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(PERK_ID) then
+        return false
+    end
 
-        local spellRecord = resolveSpellRecord()
-        if spellRecord ~= nil then
-            local okHasByRecord, valueByRecord = pcall(function()
-                return spells:has(spellRecord)
-            end)
-            if okHasByRecord and valueByRecord == true then
-                return true
-            end
-        end
+    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(PERK_ID) then
+        return false
     end
 
     return true

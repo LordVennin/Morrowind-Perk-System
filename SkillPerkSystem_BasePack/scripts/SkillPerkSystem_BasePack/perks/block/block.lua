@@ -55,7 +55,7 @@ return {
             x = 140,
             y = 120,
             title = "Guardian's Habit",
-            description = "General tree tier 2 placeholder. Future perk effect to be implemented and tested separately.",
+            description = "Successful shield blocks restore fatigue and repair shield condition based on your Block skill.",
         },
         {
             id = "block_reactive_enchanting",
@@ -66,7 +66,7 @@ return {
             x = -120,
             y = 280,
             title = "Reactive Enchanting",
-            description = "While using a shield with a one-handed weapon, successful shield blocks restore fatigue and shield condition based on skill level.",
+            description = "Successful shield blocks trigger your shield's enchantment: self effects apply to you, and touch or target effects apply to your attacker.",
         },
         {
             id = "block_steady_wall",
@@ -76,8 +76,8 @@ return {
             cost = 1,
             x = 140,
             y = 240,
-            title = "Steady Wall",
-            description = "Your shield arm is conditioned for repeated impact; blocking with a shield reduces stagger taken and improves guard stability in long fights.",
+            title = "Guard Momentum",
+            description = "Each successful shield block grants 1 stack of Guard Momentum for 5 seconds, up to 5 stacks. Each stack fortifies Block by 4 and increases Armor by 3 while using a shield.",
         },
     },
 }

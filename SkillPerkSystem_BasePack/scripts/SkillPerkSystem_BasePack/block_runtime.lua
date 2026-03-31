@@ -16,65 +16,27 @@ local LOG_TAG = "[SkillPerkSystem_BasePack][BlockEnchant]"
 
 local SHIELD_FUNDAMENTALS_PERK_ID = "block_shield_fundamentals"
 local GUARDIANS_HABIT_PERK_ID = "block_guardians_habit"
-local REACTIVE_ENCHANTING_PERK_ID = "block_reactive_enchanting"
+local STEADY_WALL_PERK_ID = "block_steady_wall"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
-local ENABLE_PROC_SCALING_KEY = "block.enchant.proc_scaling"
-local BASE_PROC_CHANCE_KEY = "block.enchant.base_proc_chance"
-local PROC_PER_RANK_KEY = "block.enchant.proc_per_rank"
-local COOLDOWN_SECONDS_KEY = "block.enchant.cooldown_seconds"
 
 local DEFAULT_DEBUG_LOGGING = false
-local DEFAULT_ENABLE_PROC_SCALING = true
-local DEFAULT_BASE_PROC_CHANCE = 0.15
-local DEFAULT_PROC_PER_RANK = 0.08
-local DEFAULT_COOLDOWN_SECONDS = 0.75
+
+local STEADY_WALL_MAX_STACKS = 5
+local STEADY_WALL_DURATION = 5.0
+local STEADY_WALL_BLOCK_PER_STACK = 4
+local STEADY_WALL_ARMOR_PER_STACK = 3
 
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
-local pairCooldowns = {}
-local runtimeTime = 0
-
 local baseCombatInterface = nil
-local wasSuccessfulShieldBlock
-local shouldApplyShieldFundamentalsBonus
+local momentumExpirations = {}
+local runtimeTime = 0
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
         print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
     end
-end
-
-local function readConfigNumber(key, fallback)
-    local value = tonumber(configSection:get(key))
-    if type(value) ~= "number" then
-        return fallback
-    end
-    return value
-end
-
-local function readConfigBoolean(key, fallback)
-    local value = configSection:get(key)
-    if type(value) == "boolean" then
-        return value
-    end
-    return fallback
-end
-
-local function resolveObjectKey(object)
-    if object == nil then
-        return "<nil>"
-    end
-
-    if type(object.id) == "string" and object.id ~= "" then
-        return object.id
-    end
-
-    if type(object.recordId) == "string" and object.recordId ~= "" then
-        return object.recordId .. "@" .. tostring(object)
-    end
-
-    return tostring(object)
 end
 
 local function getBaseCombatFunction(name)
@@ -194,36 +156,16 @@ local function isOneHandedWeapon(item)
         return true
     end
 
-    if weaponType == 2 then
-        return false
-    end
-    if weaponType == 4 then
-        return false
-    end
-    if weaponType == 5 then
-        return false
-    end
-    if weaponType == 6 then
-        return false
-    end
-    if weaponType == 8 then
-        return false
-    end
-    if weaponType == 9 then
-        return false
-    end
-    if weaponType == 10 then
-        return false
-    end
-    if weaponType == 11 then
-        return false
-    end
-    if weaponType == 12 then
-        return false
-    end
-    if weaponType == 13 then
-        return false
-    end
+    if weaponType == 2 then return false end
+    if weaponType == 4 then return false end
+    if weaponType == 5 then return false end
+    if weaponType == 6 then return false end
+    if weaponType == 8 then return false end
+    if weaponType == 9 then return false end
+    if weaponType == 10 then return false end
+    if weaponType == 11 then return false end
+    if weaponType == 12 then return false end
+    if weaponType == 13 then return false end
 
     return true
 end
@@ -246,55 +188,56 @@ local function isTool(item)
     return false
 end
 
-local function shieldFundamentalsEnabled()
+local function perkOwned(perkId)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
     end
 
-    if type(playerApi.hasPerk) ~= "function" or not playerApi.hasPerk(SHIELD_FUNDAMENTALS_PERK_ID) then
+    return type(playerApi.hasPerk) == "function" and playerApi.hasPerk(perkId) or false
+end
+
+local function perkEffectEnabled(perkId)
+    if not perkOwned(perkId) then
+        return false
+    end
+
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
         return false
     end
 
     if type(playerApi.isPerkEffectEnabled) == "function" then
-        return playerApi.isPerkEffectEnabled(SHIELD_FUNDAMENTALS_PERK_ID)
+        return playerApi.isPerkEffectEnabled(perkId)
     end
 
     return true
+end
+
+local function shieldFundamentalsEnabled()
+    return perkEffectEnabled(SHIELD_FUNDAMENTALS_PERK_ID)
 end
 
 local function guardiansHabitEnabled()
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
-    end
-
-    if type(playerApi.hasPerk) ~= "function" or not playerApi.hasPerk(GUARDIANS_HABIT_PERK_ID) then
-        return false
-    end
-
-    if type(playerApi.isPerkEffectEnabled) == "function" then
-        return playerApi.isPerkEffectEnabled(GUARDIANS_HABIT_PERK_ID)
-    end
-
-    return true
+    return perkEffectEnabled(GUARDIANS_HABIT_PERK_ID)
 end
 
-local function reactiveEnchantingEnabled()
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
+local function steadyWallEnabled()
+    return perkEffectEnabled(STEADY_WALL_PERK_ID)
+end
+
+local function hasValidShieldSetup()
+    local shield = getEquippedShield(pself)
+    if shield == nil then
         return false
     end
 
-    if type(playerApi.hasPerk) ~= "function" or not playerApi.hasPerk(REACTIVE_ENCHANTING_PERK_ID) then
+    local rightHand = getEquippedRightHand(pself)
+    if rightHand == nil then
         return false
     end
 
-    if type(playerApi.isPerkEffectEnabled) == "function" then
-        return playerApi.isPerkEffectEnabled(REACTIVE_ENCHANTING_PERK_ID)
-    end
-
-    return true
+    return isOneHandedWeapon(rightHand) or isTool(rightHand)
 end
 
 local function getBlockSkillBonus()
@@ -323,7 +266,68 @@ local function getGuardiansHabitFatigueRestore()
     return math.max(1, math.floor(blockSkill / 5))
 end
 
-local function adjustDamageForArmorWithShieldFundamentals(damage, actor)
+local function pruneMomentumStacks()
+    local kept = {}
+    for _, expiresAt in ipairs(momentumExpirations) do
+        if expiresAt > runtimeTime then
+            kept[#kept + 1] = expiresAt
+        end
+    end
+    momentumExpirations = kept
+end
+
+local function getMomentumStackCount()
+    pruneMomentumStacks()
+    return #momentumExpirations
+end
+
+local function getMomentumArmorBonus()
+    if not steadyWallEnabled() then
+        return 0
+    end
+    if not hasValidShieldSetup() then
+        return 0
+    end
+    return getMomentumStackCount() * STEADY_WALL_ARMOR_PER_STACK
+end
+
+local function getMomentumBlockBonus()
+    if not steadyWallEnabled() then
+        return 0
+    end
+    if not hasValidShieldSetup() then
+        return 0
+    end
+    return getMomentumStackCount() * STEADY_WALL_BLOCK_PER_STACK
+end
+
+local function applyMomentumBlockModifier()
+    local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
+    if type(blockAccessor) ~= "function" then
+        return
+    end
+
+    local blockStat = blockAccessor(pself)
+    if blockStat == nil then
+        return
+    end
+
+    local desiredModifier = getMomentumBlockBonus()
+    local currentModifier = tonumber(blockStat.modifier) or 0
+    if currentModifier ~= desiredModifier then
+        blockStat.modifier = desiredModifier
+    end
+end
+
+local function shouldApplyShieldFundamentalsBonus()
+    if not shieldFundamentalsEnabled() then
+        return false
+    end
+
+    return hasValidShieldSetup()
+end
+
+local function adjustDamageForArmorWithShieldBonuses(damage, actor)
     local fn = getBaseCombatFunction("adjustDamageForArmor")
     if fn == nil then
         return damage
@@ -336,11 +340,12 @@ local function adjustDamageForArmorWithShieldFundamentals(damage, actor)
         return adjusted
     end
 
-    if not shouldApplyShieldFundamentalsBonus() then
-        return adjusted
+    local bonusArmor = 0
+    if shouldApplyShieldFundamentalsBonus() then
+        bonusArmor = bonusArmor + getBlockSkillBonus()
     end
+    bonusArmor = bonusArmor + getMomentumArmorBonus()
 
-    local bonusArmor = getBlockSkillBonus()
     if bonusArmor <= 0 then
         return adjusted
     end
@@ -348,31 +353,13 @@ local function adjustDamageForArmorWithShieldFundamentals(damage, actor)
     local result = (tonumber(adjusted) or 0) * 100 / (100 + bonusArmor)
 
     logDebug(string.format(
-        "shield fundamentals damage reduction in=%.3f bonusArmor=%d out=%.3f",
+        "shield bonus damage reduction in=%.3f bonusArmor=%d out=%.3f",
         tonumber(adjusted) or 0,
         bonusArmor,
         result
     ))
 
     return result
-end
-
-shouldApplyShieldFundamentalsBonus = function()
-    if not shieldFundamentalsEnabled() then
-        return false
-    end
-
-    local shield = getEquippedShield(pself)
-    if shield == nil then
-        return false
-    end
-
-    local rightHand = getEquippedRightHand(pself)
-    if rightHand == nil then
-        return false
-    end
-
-    return isOneHandedWeapon(rightHand) or isTool(rightHand)
 end
 
 local function getArmorRecord(item)
@@ -387,7 +374,7 @@ local function getArmorRecord(item)
     return nil
 end
 
-local function getArmorRatingWithShieldFundamentals(actor)
+local function getArmorRatingWithShieldBonuses(actor)
     local fn = getBaseCombatFunction("getArmorRating")
     if fn == nil then
         return nil
@@ -399,22 +386,20 @@ local function getArmorRatingWithShieldFundamentals(actor)
         return baseArmor
     end
 
-    if not shouldApplyShieldFundamentalsBonus() then
-        return baseArmor
+    local bonus = 0
+    if shouldApplyShieldFundamentalsBonus() then
+        bonus = bonus + getBlockSkillBonus()
     end
+    bonus = bonus + getMomentumArmorBonus()
 
-    local bonus = getBlockSkillBonus()
     if bonus <= 0 then
         return baseArmor
     end
 
-    logDebug(string.format("armor bonus applied base=%s bonus=%d actor=%s",
-        tostring(baseArmor), bonus, tostring(actualActor)))
-
     return (tonumber(baseArmor) or 0) + bonus
 end
 
-local function getEffectiveArmorRatingWithShieldFundamentals(item, actor)
+local function getEffectiveArmorRatingWithShieldBonuses(item, actor)
     local fn = getBaseCombatFunction("getEffectiveArmorRating")
     if fn == nil then
         return nil
@@ -439,11 +424,12 @@ local function getEffectiveArmorRatingWithShieldFundamentals(item, actor)
         return baseArmor
     end
 
-    if not shouldApplyShieldFundamentalsBonus() then
-        return baseArmor
+    local bonus = 0
+    if shouldApplyShieldFundamentalsBonus() then
+        bonus = bonus + getBlockSkillBonus()
     end
+    bonus = bonus + getMomentumArmorBonus()
 
-    local bonus = getBlockSkillBonus()
     if bonus <= 0 then
         return baseArmor
     end
@@ -451,7 +437,7 @@ local function getEffectiveArmorRatingWithShieldFundamentals(item, actor)
     return (tonumber(baseArmor) or 0) + bonus
 end
 
-wasSuccessfulShieldBlock = function(attack)
+local function wasSuccessfulShieldBlock(attack)
     if type(attack) ~= "table" then
         return false
     end
@@ -494,7 +480,7 @@ local function applyGuardiansHabit(attack)
         return
     end
 
-    if not shouldApplyShieldFundamentalsBonus() then
+    if not hasValidShieldSetup() then
         return
     end
 
@@ -526,307 +512,46 @@ local function applyGuardiansHabit(attack)
         item = shield,
         amount = math.max(1, math.floor(getBlockSkillBonus() / 2)),
     })
-
-    logDebug(string.format(
-        "guardian's habit applied fatigue=%d shield=%s",
-        fatigueRestore,
-        tostring(shield.recordId)
-    ))
 end
 
-local function resolveEnchantmentRecord(shieldRecord)
-    if type(shieldRecord) ~= "table" then
-        return nil, nil
-    end
-
-    local enchantmentId = shieldRecord.enchant or shieldRecord.enchantment
-    if type(enchantmentId) == "table" and type(enchantmentId.id) == "string" then
-        enchantmentId = enchantmentId.id
-    end
-    if type(enchantmentId) ~= "string" or enchantmentId == "" then
-        return nil, nil
-    end
-
-    local records = core.magic ~= nil and core.magic.enchantments ~= nil and core.magic.enchantments.records or nil
-    if type(records) ~= "table" then
-        return nil, nil
-    end
-
-    local enchantment = records[enchantmentId]
-    return enchantment, enchantmentId
-end
-
-local function resolveRange(effect)
-    local rawRange = type(effect) == "table" and (effect.range or effect.castType) or nil
-    if rawRange == nil then
-        return "self"
-    end
-
-    if type(rawRange) == "string" then
-        local normalized = string.lower(rawRange)
-        if normalized == "self" or normalized == "touch" or normalized == "target" then
-            return normalized
-        end
-    end
-
-    local magic = core.magic or {}
-    local rangeType = magic.RANGE_TYPE or magic.RANGE or {}
-    if rawRange == rangeType.Self then
-        return "self"
-    end
-    if rawRange == rangeType.Touch then
-        return "touch"
-    end
-    if rawRange == rangeType.Target then
-        return "target"
-    end
-
-    return nil
-end
-
-local EFFECT_TO_STAT = {
-    damagedhealth = "health",
-    damagedmagicka = "magicka",
-    damagedfatigue = "fatigue",
-    restorehealth = "health",
-    restoremagicka = "magicka",
-    restorefatigue = "fatigue",
-    drainhealth = "health",
-    drainmagicka = "magicka",
-    drainfatigue = "fatigue",
-    firedamage = "health",
-    frostdamage = "health",
-    shockdamage = "health",
-    poisondamage = "health",
-    sundamage = "health",
-}
-
-local POSITIVE_EFFECTS = {
-    restorehealth = true,
-    restoremagicka = true,
-    restorefatigue = true,
-}
-
-local function resolveEffectKey(effect)
-    if type(effect) ~= "table" then
-        return nil
-    end
-
-    local raw = effect.id or effect.effect
-    if type(raw) == "table" then
-        raw = raw.id
-    end
-
-    if type(raw) ~= "string" then
-        return nil
-    end
-
-    local normalized = string.lower(raw)
-    normalized = normalized:gsub("[^a-z]", "")
-    return normalized
-end
-
-local function rollMagnitude(effect)
-    local minValue = tonumber(effect.magnitudeMin or effect.minMagnitude or effect.min) or 0
-    local maxValue = tonumber(effect.magnitudeMax or effect.maxMagnitude or effect.max) or minValue
-    if maxValue < minValue then
-        minValue, maxValue = maxValue, minValue
-    end
-
-    if maxValue == minValue then
-        return minValue
-    end
-
-    return minValue + math.random() * (maxValue - minValue)
-end
-
-local function applySupportedEffect(effect, blocker, attacker)
-    local key = resolveEffectKey(effect)
-    local stat = key ~= nil and EFFECT_TO_STAT[key] or nil
-    if key == nil or stat == nil then
-        return false, "unsupported-effect"
-    end
-
-    local range = resolveRange(effect)
-    if range == nil then
-        return false, "unsupported-cast-type"
-    end
-
-    local recipient = blocker
-    if range == "touch" or range == "target" then
-        recipient = attacker
-    end
-
-    if recipient == nil or type(recipient.sendEvent) ~= "function" then
-        return false, "recipient-unavailable"
-    end
-
-    local magnitude = rollMagnitude(effect)
-    local duration = tonumber(effect.duration) or 1
-    if duration < 1 then
-        duration = 1
-    end
-
-    local amount = magnitude * duration
-    if not POSITIVE_EFFECTS[key] then
-        amount = -amount
-    end
-
-    recipient:sendEvent("ModifyStat", {
-        name = stat,
-        amount = amount,
-    })
-
-    return true, string.format("target=%s stat=%s amount=%.2f", resolveObjectKey(recipient), stat, amount)
-end
-
-local function getCurrentCharge(shield, enchantment)
-    local itemData = (types.Item ~= nil and type(types.Item.itemData) == "function") and types.Item.itemData(shield) or nil
-    if type(itemData) ~= "table" then
-        return nil, nil
-    end
-
-    local maxCharge = tonumber(enchantment.charge or enchantment.maxCharge or enchantment.enchantmentCharge)
-    local currentCharge = tonumber(itemData.enchantmentCharge)
-
-    if currentCharge == nil and type(maxCharge) == "number" then
-        currentCharge = maxCharge
-    end
-
-    return currentCharge, maxCharge
-end
-
-local function getEnchantmentCost(enchantment)
-    local cost = tonumber(enchantment.cost or enchantment.enchantmentCost or enchantment.castCost)
-    if type(cost) ~= "number" or cost <= 0 then
-        return 0
-    end
-    return cost
-end
-
-local function processShieldEnchantProc(attack)
-    if not reactiveEnchantingEnabled() then
-        return
-    end
-
-    local attacker = attack.attacker
-    if attacker == nil then
-        return
-    end
-
-    local shield, shieldRecord = getEquippedShield(pself)
-    if shield == nil then
+local function applySteadyWallMomentum(attack)
+    if not steadyWallEnabled() then
         return
     end
 
     if not wasSuccessfulShieldBlock(attack) then
-        logDebug("block ignored: event did not qualify as successful shield block")
         return
     end
 
-    local cooldown = math.max(0, readConfigNumber(COOLDOWN_SECONDS_KEY, DEFAULT_COOLDOWN_SECONDS))
-    local pairKey = resolveObjectKey(pself) .. "|" .. resolveObjectKey(attacker)
-    local readyAt = pairCooldowns[pairKey] or 0
-    if runtimeTime < readyAt then
-        logDebug(string.format("cooldown active pair=%s readyIn=%.2f", pairKey, readyAt - runtimeTime))
+    if not hasValidShieldSetup() then
         return
     end
 
-    local baseProc = readConfigNumber(BASE_PROC_CHANCE_KEY, DEFAULT_BASE_PROC_CHANCE)
-    local scalingEnabled = readConfigBoolean(ENABLE_PROC_SCALING_KEY, DEFAULT_ENABLE_PROC_SCALING)
-    local procPerRank = readConfigNumber(PROC_PER_RANK_KEY, DEFAULT_PROC_PER_RANK)
-
-    local procChance = baseProc
-    if scalingEnabled then
-        procChance = baseProc + procPerRank
-    end
-    procChance = math.max(0, math.min(1, procChance))
-
-    local roll = math.random()
-    if roll > procChance then
-        logDebug(string.format("proc failed by chance roll=%.3f chance=%.3f", roll, procChance))
-        return
-    end
-
-    local enchantment, enchantmentId = resolveEnchantmentRecord(shieldRecord)
-    if enchantment == nil then
-        logDebug("shield has no enchantment record")
-        return
-    end
-
-    local enchantCost = getEnchantmentCost(enchantment)
-    local currentCharge, maxCharge = getCurrentCharge(shield, enchantment)
-    if currentCharge == nil then
-        logDebug(string.format("could not resolve shield charge for enchantment=%s", tostring(enchantmentId)))
-        return
-    end
-
-    if enchantCost > 0 and currentCharge < enchantCost then
-        logDebug(string.format(
-            "insufficient charge enchantment=%s current=%.2f required=%.2f",
-            tostring(enchantmentId),
-            currentCharge,
-            enchantCost
-        ))
-        return
-    end
-
-    local effects = type(enchantment.effects) == "table" and enchantment.effects or {}
-    local appliedEffects = 0
-    for _, effect in ipairs(effects) do
-        local applied, detail = applySupportedEffect(effect, pself, attacker)
-        if applied then
-            appliedEffects = appliedEffects + 1
-            logDebug("effect applied " .. tostring(detail))
-        else
-            logDebug("effect skipped reason=" .. tostring(detail))
-        end
-    end
-
-    if appliedEffects <= 0 then
-        return
-    end
-
-    if enchantCost > 0 then
-        local itemData = types.Item.itemData(shield)
-        local nextCharge = math.max(0, currentCharge - enchantCost)
-        itemData.enchantmentCharge = nextCharge
-        logDebug(string.format(
-            "charge consumed enchantment=%s before=%.2f after=%.2f max=%.2f cost=%.2f",
-            tostring(enchantmentId),
-            currentCharge,
-            nextCharge,
-            tonumber(maxCharge) or -1,
-            enchantCost
-        ))
+    pruneMomentumStacks()
+    if #momentumExpirations < STEADY_WALL_MAX_STACKS then
+        momentumExpirations[#momentumExpirations + 1] = runtimeTime + STEADY_WALL_DURATION
     else
-        logDebug(string.format("zero enchantment cost for %s; no charge consumed", tostring(enchantmentId)))
+        local oldestIndex = 1
+        local oldestTime = momentumExpirations[1]
+        for i = 2, #momentumExpirations do
+            if momentumExpirations[i] < oldestTime then
+                oldestTime = momentumExpirations[i]
+                oldestIndex = i
+            end
+        end
+        momentumExpirations[oldestIndex] = runtimeTime + STEADY_WALL_DURATION
     end
-
-    pairCooldowns[pairKey] = runtimeTime + cooldown
 end
 
 local function initializeDefaults()
     if configSection:get(DEBUG_LOGGING_KEY) == nil then
         configSection:set(DEBUG_LOGGING_KEY, DEFAULT_DEBUG_LOGGING)
     end
-    if configSection:get(ENABLE_PROC_SCALING_KEY) == nil then
-        configSection:set(ENABLE_PROC_SCALING_KEY, DEFAULT_ENABLE_PROC_SCALING)
-    end
-    if configSection:get(BASE_PROC_CHANCE_KEY) == nil then
-        configSection:set(BASE_PROC_CHANCE_KEY, DEFAULT_BASE_PROC_CHANCE)
-    end
-    if configSection:get(PROC_PER_RANK_KEY) == nil then
-        configSection:set(PROC_PER_RANK_KEY, DEFAULT_PROC_PER_RANK)
-    end
-    if configSection:get(COOLDOWN_SECONDS_KEY) == nil then
-        configSection:set(COOLDOWN_SECONDS_KEY, DEFAULT_COOLDOWN_SECONDS)
-    end
 end
 
 local function processBlockPerks(attack)
     applyGuardiansHabit(attack)
-    processShieldEnchantProc(attack)
+    applySteadyWallMomentum(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -840,13 +565,13 @@ return {
         version = 1,
 
         addOnHitHandler = passthrough("addOnHitHandler"),
-        adjustDamageForArmor = adjustDamageForArmorWithShieldFundamentals,
+        adjustDamageForArmor = adjustDamageForArmorWithShieldBonuses,
         adjustDamageForDifficulty = passthrough("adjustDamageForDifficulty"),
         applyArmor = passthrough("applyArmor"),
 
-        getArmorRating = getArmorRatingWithShieldFundamentals,
+        getArmorRating = getArmorRatingWithShieldBonuses,
         getArmorSkill = passthrough("getArmorSkill"),
-        getEffectiveArmorRating = getEffectiveArmorRatingWithShieldFundamentals,
+        getEffectiveArmorRating = getEffectiveArmorRatingWithShieldBonuses,
         getSkillAdjustedArmorRating = passthrough("getSkillAdjustedArmorRating"),
 
         onHit = passthrough("onHit"),
@@ -854,13 +579,16 @@ return {
         spawnBloodEffect = passthrough("spawnBloodEffect"),
     },
     engineHandlers = {
+        onLoad = function()
+            initializeDefaults()
+            runtimeTime = 0
+            momentumExpirations = {}
+            applyMomentumBlockModifier()
+        end,
         onUpdate = function(dt)
             runtimeTime = runtimeTime + (tonumber(dt) or 0)
-        end,
-        onLoad = function()
-            runtimeTime = 0
-            pairCooldowns = {}
-            initializeDefaults()
+            pruneMomentumStacks()
+            applyMomentumBlockModifier()
         end,
         onInterfaceOverride = function(base)
             baseCombatInterface = base

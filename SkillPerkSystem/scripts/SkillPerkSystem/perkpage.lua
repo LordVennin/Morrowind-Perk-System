@@ -2360,10 +2360,6 @@ local function onFrame(dt)
             local upDown = anyKeyDown({"UpArrow", "Up", "W"})
             local downDown = anyKeyDown({"DownArrow", "Down", "S"})
 
-            if leftDown or rightDown or upDown or downDown then
-                print(string.format("[%s][DEBUG] onFrame keys L=%s R=%s U=%s D=%s dt=%.4f panDelta=%.2f", MOD_NAME, tostring(leftDown), tostring(rightDown), tostring(upDown), tostring(downDown), dt, panDelta))
-            end
-
             if leftDown then
                 pan.x = pan.x - panDelta
                 moved = true

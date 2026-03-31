@@ -33,7 +33,7 @@ return {
             x = -360,
             y = 280,
             title = "Bulwark of Light",
-            description = "Paladin tree capstone placeholder. No gameplay effect yet.",
+            description = "Successful shield blocks cloak you in holy light for 3 seconds and scorch nearby Undead and Daedra creatures.",
         },
         {
             id = "block_shield_fundamentals",

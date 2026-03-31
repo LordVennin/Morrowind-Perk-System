@@ -17,7 +17,6 @@ local LOG_TAG = "[SkillPerkSystem_BasePack][BlockEnchant]"
 local SHIELD_FUNDAMENTALS_PERK_ID = "block_shield_fundamentals"
 local GUARDIANS_HABIT_PERK_ID = "block_guardians_habit"
 local STEADY_WALL_PERK_ID = "block_steady_wall"
-local BULWARK_OF_LIGHT_PERK_ID = "block_bulwark_of_light"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -29,10 +28,9 @@ local STEADY_WALL_DURATION = 5.0
 local STEADY_WALL_BLOCK_PER_STACK = 4
 local STEADY_WALL_ARMOR_PER_STACK = 3
 
-local BULWARK_SELF_SPELL_ID = "sps_bullightself"
-
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
 local baseCombatInterface = nil
+local wasSuccessfulShieldBlock
 local momentumExpirations = {}
 local runtimeTime = 0
 
@@ -229,10 +227,6 @@ local function steadyWallEnabled()
     return perkEffectEnabled(STEADY_WALL_PERK_ID)
 end
 
-local function bulwarkOfLightEnabled()
-    return perkEffectEnabled(BULWARK_OF_LIGHT_PERK_ID)
-end
-
 local function hasValidShieldSetup()
     local shield = getEquippedShield(pself)
     if shield == nil then
@@ -334,7 +328,7 @@ local function shouldApplyShieldFundamentalsBonus()
     return hasValidShieldSetup()
 end
 
-local function adjustDamageForArmorWithShieldBonuses(damage, actor)
+local function adjustDamageForArmorWithShieldFundamentals(damage, actor)
     local fn = getBaseCombatFunction("adjustDamageForArmor")
     if fn == nil then
         return damage
@@ -444,7 +438,7 @@ local function getEffectiveArmorRatingWithShieldBonuses(item, actor)
     return (tonumber(baseArmor) or 0) + bonus
 end
 
-local function wasSuccessfulShieldBlock(attack)
+wasSuccessfulShieldBlock = function(attack)
     if type(attack) ~= "table" then
         return false
     end
@@ -550,31 +544,6 @@ local function applySteadyWallMomentum(attack)
     end
 end
 
-local function applyBulwarkOfLight(attack)
-    if not bulwarkOfLightEnabled() then
-        return
-    end
-
-    if not wasSuccessfulShieldBlock(attack) then
-        return
-    end
-
-    if not hasValidShieldSetup() then
-        return
-    end
-
-    Actor.activeSpells(pself):add({
-        id = BULWARK_SELF_SPELL_ID,
-        effects = { 0 },
-        caster = pself,
-        stackable = false,
-    })
-
-    core.sendGlobalEvent("SkillPerkSystem_ApplyBulwarkOfLight", {
-        blocker = pself,
-    })
-end
-
 local function initializeDefaults()
     if configSection:get(DEBUG_LOGGING_KEY) == nil then
         configSection:set(DEBUG_LOGGING_KEY, DEFAULT_DEBUG_LOGGING)
@@ -584,7 +553,6 @@ end
 local function processBlockPerks(attack)
     applyGuardiansHabit(attack)
     applySteadyWallMomentum(attack)
-    applyBulwarkOfLight(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -598,7 +566,7 @@ return {
         version = 1,
 
         addOnHitHandler = passthrough("addOnHitHandler"),
-        adjustDamageForArmor = adjustDamageForArmorWithShieldBonuses,
+        adjustDamageForArmor = adjustDamageForArmorWithShieldFundamentals,
         adjustDamageForDifficulty = passthrough("adjustDamageForDifficulty"),
         applyArmor = passthrough("applyArmor"),
 

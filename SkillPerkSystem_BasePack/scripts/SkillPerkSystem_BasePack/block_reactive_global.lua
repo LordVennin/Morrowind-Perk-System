@@ -4,6 +4,324 @@ local types = require("openmw.types")
 local Item = types.Item
 local Actor = types.Actor
 
+local REACTIVE_DEFAULT_VFX_MODEL = "meshes\\e\\magic_hit_myst.nif"
+local REACTIVE_DEFAULT_SOUND_FILE = "Sound\\Fx\\magic\\mystH.wav"
+
+local PRESENTATION_BY_EFFECT_ID = {
+    -- Destruction / elemental damage
+    firedamage = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    frostdamage = {
+        vfx = "meshes\\e\\magic_hit_frost.nif",
+        sound = "Sound\\Fx\\magic\\frstH.wav",
+    },
+    shockdamage = {
+        vfx = "meshes\\e\\magic_hit_s.nif",
+        sound = "Sound\\Fx\\magic\\shokH.wav",
+    },
+
+    -- Destruction / generic hostile damage-drain effects
+    damagehealth = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damagefatigue = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damagemagicka = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damageattribute = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damageskill = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainhealth = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainfatigue = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainmagicka = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainattribute = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainskill = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessfire = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessfrost = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessshock = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessmagicka = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknesscommondisease = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessblightdisease = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknesscorprusdisease = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknesspoison = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    poison = {
+        vfx = "meshes\\e\\magic_hit_poison.nif",
+        sound = "Sound\\Fx\\magic\\poisH.wav",
+    },
+
+    -- Mysticism
+    absorbhealth = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbfatigue = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbmagicka = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbattribute = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbskill = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    telekinesis = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    detectkey = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    detectanimal = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    detectenchantment = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    mark = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    recall = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    dispel = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    soultrap = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+
+    -- Restoration / beneficial effects
+    restorehealth = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    restorefatigue = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    restoremagicka = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyhealth = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyfatigue = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifymagicka = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyattribute = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyskill = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+
+    -- Illusion
+    sanctuary = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    chameleon = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    invisibility = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    blind = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    light = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    nighteye = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    calmcreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    calmanimal = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    calmhumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    frenzycreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    frenzyhumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    demoralizecreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    demoralizehumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    rallycreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    rallyhumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+
+    -- Alteration-ish fallback
+    shield = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fireresist = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    frostresist = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    shockresist = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    resistmagicka = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    waterbreathing = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    waterwalking = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    levitate = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    slowfall = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    jump = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    open = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    lock = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+}
+
+local function normalizeEffectId(effectId)
+    if type(effectId) ~= "string" then
+        return nil
+    end
+    return string.lower(effectId)
+end
+
+local function getEffectId(effect)
+    if effect == nil then
+        return nil
+    end
+
+    local ok, value = pcall(function()
+        return effect.id or (effect.effect and effect.effect.id) or effect.effect
+    end)
+    if ok then
+        return normalizeEffectId(value)
+    end
+    return nil
+end
+
 local function resolveRange(effect)
     if effect == nil then
         return nil
@@ -88,6 +406,52 @@ local function splitEffectIndexes(enchantment)
     return selfIndexes, attackerIndexes
 end
 
+local function getPresentationForEnchantment(enchantment)
+    local effects = enchantment and enchantment.effects or nil
+    if effects ~= nil then
+        for _, effect in ipairs(effects) do
+            local effectId = getEffectId(effect)
+            if effectId ~= nil then
+                local mapped = PRESENTATION_BY_EFFECT_ID[effectId]
+                if mapped ~= nil then
+                    return mapped
+                end
+            end
+        end
+    end
+
+    return {
+        vfx = REACTIVE_DEFAULT_VFX_MODEL,
+        sound = REACTIVE_DEFAULT_SOUND_FILE,
+    }
+end
+
+local function addVfx(target, model, vfxId)
+    if target == nil or type(model) ~= "string" or model == "" then
+        return
+    end
+
+    target:sendEvent("AddVfx", {
+        model = model,
+        options = {
+            vfxId = vfxId,
+            loop = false,
+        }
+    })
+end
+
+local function playSound(target, soundFile)
+    if target == nil or type(soundFile) ~= "string" or soundFile == "" then
+        return
+    end
+
+    core.sound.playSoundFile3d(soundFile, target, {
+        volume = 1.0,
+        pitch = 1.0,
+        loop = false,
+    })
+end
+
 local function addEffectsToTarget(target, sourceItemId, effectIndexes, caster, item)
     if target == nil then
         return false
@@ -115,6 +479,15 @@ local function addEffectsToTarget(target, sourceItemId, effectIndexes, caster, i
     end
 
     return result == true
+end
+
+local function applyPresentation(target, presentation, label)
+    if target == nil or presentation == nil then
+        return
+    end
+
+    addVfx(target, presentation.vfx, "sps_reactive_" .. tostring(label))
+    playSound(target, presentation.sound)
 end
 
 local function onApplyReactiveShieldEnchant(e)
@@ -170,12 +543,23 @@ local function onApplyReactiveShieldEnchant(e)
         return
     end
 
+    local presentation = getPresentationForEnchantment(enchantment)
     local appliedAny = false
+
     if #selfIndexes > 0 then
-        appliedAny = addEffectsToTarget(blocker, sourceItemId, selfIndexes, blocker, shield) or appliedAny
+        local appliedSelf = addEffectsToTarget(blocker, sourceItemId, selfIndexes, blocker, shield)
+        appliedAny = appliedSelf or appliedAny
+        if appliedSelf then
+            applyPresentation(blocker, presentation, "self")
+        end
     end
+
     if attacker ~= nil and #attackerIndexes > 0 then
-        appliedAny = addEffectsToTarget(attacker, sourceItemId, attackerIndexes, blocker, shield) or appliedAny
+        local appliedAttacker = addEffectsToTarget(attacker, sourceItemId, attackerIndexes, blocker, shield)
+        appliedAny = appliedAttacker or appliedAny
+        if appliedAttacker then
+            applyPresentation(attacker, presentation, "target")
+        end
     end
 
     if not appliedAny then

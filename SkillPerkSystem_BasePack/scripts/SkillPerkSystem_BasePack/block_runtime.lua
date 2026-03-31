@@ -14,10 +14,12 @@ local Repair = types.Repair
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][BlockEnchant]"
 
+local HALLOWED_GUARD_PERK_ID = "block_hallowed_guard"
 local SHIELD_FUNDAMENTALS_PERK_ID = "block_shield_fundamentals"
 local GUARDIANS_HABIT_PERK_ID = "block_guardians_habit"
 local STEADY_WALL_PERK_ID = "block_steady_wall"
 local BULWARK_OF_LIGHT_PERK_ID = "block_bulwark_of_light"
+local AEGIS_RITE_PERK_ID = "block_aegis_rite"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -29,12 +31,19 @@ local STEADY_WALL_DURATION = 5.0
 local STEADY_WALL_BLOCK_PER_STACK = 4
 local STEADY_WALL_ARMOR_PER_STACK = 3
 
+local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local BULWARK_SELF_SPELL_ID = "sps_bullightself"
+local AEGIS_RITE_WINDOW = 3.0
+local AEGIS_RITE_MAGICKA_COST = 5
 
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
 local baseCombatInterface = nil
 local momentumExpirations = {}
 local runtimeTime = 0
+local hallowedGuardApplied = false
+local hallowedGuardAddFailureLogged = false
+local hallowedGuardRemoveFailureLogged = false
+local hallowedGuardSpellBookFailureState = nil
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -217,6 +226,10 @@ local function perkEffectEnabled(perkId)
     return true
 end
 
+local function hallowedGuardEnabled()
+    return perkEffectEnabled(HALLOWED_GUARD_PERK_ID)
+end
+
 local function shieldFundamentalsEnabled()
     return perkEffectEnabled(SHIELD_FUNDAMENTALS_PERK_ID)
 end
@@ -233,6 +246,10 @@ local function bulwarkOfLightEnabled()
     return perkEffectEnabled(BULWARK_OF_LIGHT_PERK_ID)
 end
 
+local function aegisRiteEnabled()
+    return perkEffectEnabled(AEGIS_RITE_PERK_ID)
+end
+
 local function hasValidShieldSetup()
     local shield = getEquippedShield(pself)
     if shield == nil then
@@ -247,6 +264,160 @@ local function hasValidShieldSetup()
     return isOneHandedWeapon(rightHand) or isTool(rightHand)
 end
 
+local function getPlayerSpells()
+    if Actor == nil or type(Actor.spells) ~= "function" then
+        if hallowedGuardSpellBookFailureState ~= "unavailable" then
+            hallowedGuardSpellBookFailureState = "unavailable"
+            logDebug("Actor.spells(pself) unavailable; cannot adjust hallowed guard state")
+        end
+        return nil
+    end
+
+    local okSpells, spells = pcall(Actor.spells, pself)
+    if not okSpells then
+        if hallowedGuardSpellBookFailureState ~= "error" then
+            hallowedGuardSpellBookFailureState = "error"
+            logDebug("Actor.spells(pself) errored; cannot adjust hallowed guard state")
+        end
+        return nil
+    end
+
+    hallowedGuardSpellBookFailureState = nil
+    return spells
+end
+
+local function resolveHallowedGuardSpellRecord()
+    local okRecords, records = pcall(function()
+        return core.magic.spells.records
+    end)
+    if not okRecords or type(records) ~= "table" then
+        return nil
+    end
+
+    return records[HALLOWED_GUARD_ABILITY_ID]
+end
+
+local function spellBookHasHallowedGuard(spells)
+    if spells == nil then
+        return false
+    end
+
+    if type(spells.has) == "function" then
+        local okHasById, valueById = pcall(function()
+            return spells:has(HALLOWED_GUARD_ABILITY_ID)
+        end)
+        if okHasById and valueById == true then
+            return true
+        end
+
+        local spellRecord = resolveHallowedGuardSpellRecord()
+        if spellRecord ~= nil then
+            local okHasByRecord, valueByRecord = pcall(function()
+                return spells:has(spellRecord)
+            end)
+            if okHasByRecord and valueByRecord == true then
+                return true
+            end
+        end
+    end
+
+    for _, spell in pairs(spells) do
+        if type(spell) == "table" and spell.id == HALLOWED_GUARD_ABILITY_ID then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function addHallowedGuardSpell(spells)
+    if type(spells.add) ~= "function" then
+        return false, "spells.add unavailable"
+    end
+
+    local okAddById, errById = pcall(function()
+        spells:add(HALLOWED_GUARD_ABILITY_ID)
+    end)
+    if okAddById then
+        return true, nil
+    end
+
+    local spellRecord = resolveHallowedGuardSpellRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okAddByRecord, errByRecord = pcall(function()
+        spells:add(spellRecord)
+    end)
+    if okAddByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function removeHallowedGuardSpell(spells)
+    if type(spells.remove) ~= "function" then
+        return false, "spells.remove unavailable"
+    end
+
+    local okRemoveById, errById = pcall(function()
+        spells:remove(HALLOWED_GUARD_ABILITY_ID)
+    end)
+    if okRemoveById then
+        return true, nil
+    end
+
+    local spellRecord = resolveHallowedGuardSpellRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okRemoveByRecord, errByRecord = pcall(function()
+        spells:remove(spellRecord)
+    end)
+    if okRemoveByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function updateHallowedGuardAbility()
+    local spells = getPlayerSpells()
+    if spells == nil then
+        return
+    end
+
+    local shouldHaveAbility = hallowedGuardEnabled() and hasValidShieldSetup()
+    local hasSpell = spellBookHasHallowedGuard(spells)
+
+    if shouldHaveAbility and not hasSpell then
+        local okAdd, addError = addHallowedGuardSpell(spells)
+        if not okAdd then
+            if not hallowedGuardAddFailureLogged then
+                hallowedGuardAddFailureLogged = true
+                logDebug(string.format("failed to add %s: %s", HALLOWED_GUARD_ABILITY_ID, tostring(addError)))
+            end
+            return
+        end
+        hallowedGuardAddFailureLogged = false
+        hallowedGuardApplied = true
+    elseif (not shouldHaveAbility) and (hasSpell or hallowedGuardApplied) then
+        local okRemove, removeError = removeHallowedGuardSpell(spells)
+        if not okRemove then
+            if not hallowedGuardRemoveFailureLogged then
+                hallowedGuardRemoveFailureLogged = true
+                logDebug(string.format("failed to remove %s: %s", HALLOWED_GUARD_ABILITY_ID, tostring(removeError)))
+            end
+            return
+        end
+        hallowedGuardRemoveFailureLogged = false
+        hallowedGuardApplied = false
+    end
+end
+
 local function getBlockSkillBonus()
     local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
     if type(blockAccessor) ~= "function" then
@@ -259,7 +430,7 @@ local function getBlockSkillBonus()
         return 0
     end
 
-    return math.floor(blockSkill / 5)
+    return math.floor(blockSkill / 7)
 end
 
 local function getGuardiansHabitFatigueRestore()
@@ -478,6 +649,51 @@ local function wasSuccessfulShieldBlock(attack)
     return false
 end
 
+local function trySpendMagicka(amount)
+    if amount <= 0 then
+        return true
+    end
+
+    local magickaAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.magicka
+
+    if type(magickaAccessor) ~= "function" then
+        return false
+    end
+
+    local magickaStat = magickaAccessor(pself)
+    if magickaStat == nil then
+        return false
+    end
+
+    local current = tonumber(magickaStat.current) or 0
+    if current < amount then
+        return false
+    end
+
+    magickaStat.current = current - amount
+    return true
+end
+
+local function onTryConsumeAegisRite(data)
+    if not aegisRiteEnabled() then
+        return
+    end
+    if type(data) ~= "table" or data.target == nil then
+        return
+    end
+    if not trySpendMagicka(AEGIS_RITE_MAGICKA_COST) then
+        return
+    end
+
+    core.sendGlobalEvent("SkillPerkSystem_ApplyAegisRiteEffect", {
+        attacker = pself,
+        target = data.target,
+    })
+end
+
 local function applyGuardiansHabit(attack)
     if not guardiansHabitEnabled() then
         return
@@ -550,6 +766,30 @@ local function applySteadyWallMomentum(attack)
     end
 end
 
+local function primeAegisRite(attack)
+    if not aegisRiteEnabled() then
+        return
+    end
+
+    if not wasSuccessfulShieldBlock(attack) then
+        return
+    end
+
+    if not hasValidShieldSetup() then
+        return
+    end
+
+    if attack.attacker == nil then
+        return
+    end
+
+    core.sendGlobalEvent("SkillPerkSystem_PrimeAegisRite", {
+        blocker = pself,
+        attacker = attack.attacker,
+        duration = AEGIS_RITE_WINDOW,
+    })
+end
+
 local function applyBulwarkOfLight(attack)
     if not bulwarkOfLightEnabled() then
         return
@@ -584,6 +824,7 @@ end
 local function processBlockPerks(attack)
     applyGuardiansHabit(attack)
     applySteadyWallMomentum(attack)
+    primeAegisRite(attack)
     applyBulwarkOfLight(attack)
 end
 
@@ -611,17 +852,23 @@ return {
         pickRandomArmor = passthrough("pickRandomArmor"),
         spawnBloodEffect = passthrough("spawnBloodEffect"),
     },
+    eventHandlers = {
+        SkillPerkSystem_TryConsumeAegisRite = onTryConsumeAegisRite,
+    },
     engineHandlers = {
         onLoad = function()
             initializeDefaults()
             runtimeTime = 0
             momentumExpirations = {}
+            hallowedGuardApplied = false
             applyMomentumBlockModifier()
+            updateHallowedGuardAbility()
         end,
         onUpdate = function(dt)
             runtimeTime = runtimeTime + (tonumber(dt) or 0)
             pruneMomentumStacks()
             applyMomentumBlockModifier()
+            updateHallowedGuardAbility()
         end,
         onInterfaceOverride = function(base)
             baseCombatInterface = base

@@ -14,4 +14,5 @@ PLAYER:scripts/SkillPerkSystem_BasePack/block_reactive_local.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/block_bulwark_global.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/block_aegis_rite_global.lua
 CUSTOM:scripts/SkillPerkSystem_BasePack/aegis_rite_target.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/apprentice_hammer_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua

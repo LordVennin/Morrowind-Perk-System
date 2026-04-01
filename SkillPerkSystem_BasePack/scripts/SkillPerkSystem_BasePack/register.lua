@@ -94,6 +94,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.security",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.security"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.armorer.armorer",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.armorer.armorer"),
+    },
 }
 
 local effectModules = {

@@ -10,7 +10,7 @@ return {
             x = -220,
             y = 0,
             title = "Apprentice Hammer",
-            description = "UI-only placeholder perk.",
+            description = "Using repair hammers and prongs lets you over-repair equipped weapons and armor to 110% condition for a short window.",
         },
         {
             id = "armorer_temper_study",

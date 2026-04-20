@@ -1101,9 +1101,12 @@ local function buildMultilineTextRows(lines, rowWidth, rowHeight, maxVisibleRows
 end
 
 local function estimateWrapMaxChars(usableTextWidth, minChars)
-    local safeMinChars = math.max(20, tonumber(minChars) or 20)
+    local safeMinChars = math.max(4, tonumber(minChars) or 4)
     local usablePixelWidth = math.max(1, px(tonumber(usableTextWidth) or 0))
-    local estimatedChars = math.floor((usablePixelWidth + px(6)) / math.max(1, px(6)))
+    local approxCharWidth = math.max(1, px(tonumber(settings.PERK_UI_WRAP_AVG_CHAR_WIDTH) or 8))
+    local wrapWidthSafety = clamp(tonumber(settings.PERK_UI_WRAP_WIDTH_SAFETY) or 0.9, 0.6, 1.0)
+    local safeWrapWidth = math.max(1, math.floor(usablePixelWidth * wrapWidthSafety))
+    local estimatedChars = math.floor((safeWrapWidth + math.floor(approxCharWidth * 0.5)) / approxCharWidth)
     return math.max(safeMinChars, estimatedChars)
 end
 
@@ -1134,7 +1137,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local compactControlHeight = math.max(px(24), requirementRowHeight)
     local rightBoxGap = requirementRowGap
     local descriptionTextWidth = contentWidth - (requirementInset * 4)
-    local descriptionWrapMaxChars = estimateWrapMaxChars(descriptionTextWidth, 20)
+    local descriptionWrapMaxChars = estimateWrapMaxChars(descriptionTextWidth, 8)
     local descriptionLineHeight = math.max(px(16), math.floor(contentHeight * 0.032))
 
     local title = selectedPerkID or skillName or "Perk Details"

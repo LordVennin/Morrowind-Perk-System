@@ -11,14 +11,47 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
-local ROOT_MENU_Y = 0.64
-local SUB_MENU_Y = 0.69
-local ROOT_MENU_WIDTH = 380
-local SUB_MENU_WIDTH = 460
+local BASE_ROOT_MENU_Y = 0.64
+local SUB_MENU_Y_OFFSET = 0.05
+local REFERENCE_SCREEN_HEIGHT = 1440
+local ROOT_MENU_MIN_WIDTH = 300
+local ROOT_MENU_MAX_WIDTH = 360
+local ROOT_MENU_WIDTH_FACTOR = 0.18
+local SUB_MENU_EXTRA_WIDTH = 80
 
 local rootMenuElement = nil
 local subMenuElement = nil
 local customMenuOpen = false
+
+local function clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
+    if value > maxValue then
+        return maxValue
+    end
+    return value
+end
+
+local function getLayoutMetrics()
+    local screenSize = ui.screenSize()
+    local screenWidth = type(screenSize) == "table" and tonumber(screenSize.x) or 1920
+    local screenHeight = type(screenSize) == "table" and tonumber(screenSize.y) or REFERENCE_SCREEN_HEIGHT
+
+    local heightOffsetScale = (REFERENCE_SCREEN_HEIGHT - screenHeight) / REFERENCE_SCREEN_HEIGHT
+    local rootMenuY = clamp(BASE_ROOT_MENU_Y + (heightOffsetScale * 0.08), 0.60, 0.72)
+    local subMenuY = clamp(rootMenuY + SUB_MENU_Y_OFFSET, rootMenuY + 0.03, 0.78)
+
+    local rootMenuWidth = math.floor(clamp(screenWidth * ROOT_MENU_WIDTH_FACTOR, ROOT_MENU_MIN_WIDTH, ROOT_MENU_MAX_WIDTH))
+    local subMenuWidth = rootMenuWidth + SUB_MENU_EXTRA_WIDTH
+
+    return {
+        rootMenuY = rootMenuY,
+        subMenuY = subMenuY,
+        rootMenuWidth = rootMenuWidth,
+        subMenuWidth = subMenuWidth,
+    }
+end
 
 local function logDebug(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -331,6 +364,7 @@ end
 local function openOverRepairMenu(repairToolItem)
     logDebug("openOverRepairMenu")
     closeSubMenu()
+    local layoutMetrics = getLayoutMetrics()
 
     local candidates = collectOverrepairCandidates()
     local contentLayouts = {
@@ -383,14 +417,14 @@ local function openOverRepairMenu(repairToolItem)
                 else
                     showMessage("That item could not be over-repaired.")
                 end
-            end, SUB_MENU_WIDTH))
+            end, layoutMetrics.subMenuWidth))
         end
     end
 
     table.insert(optionLayouts, createButton("Back", function()
         closeSubMenu()
-    end, SUB_MENU_WIDTH))
-    table.insert(contentLayouts, createOptionsFrame(optionLayouts, SUB_MENU_WIDTH))
+    end, layoutMetrics.subMenuWidth))
+    table.insert(contentLayouts, createOptionsFrame(optionLayouts, layoutMetrics.subMenuWidth))
 
     subMenuElement = ui.create({
         layer = "Modal",
@@ -399,7 +433,7 @@ local function openOverRepairMenu(repairToolItem)
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             anchor = util.vector2(0.5, 0),
-            relativePosition = util.vector2(0.5, SUB_MENU_Y),
+            relativePosition = util.vector2(0.5, layoutMetrics.subMenuY),
             autoSize = true,
         },
         content = ui.content({
@@ -424,6 +458,7 @@ local function openRepairExtensionMenu()
     customMenuOpen = true
 
     local repairToolItem = getActiveRepairTool()
+    local layoutMetrics = getLayoutMetrics()
 
     local contentLayouts = {
         {
@@ -447,22 +482,22 @@ local function openRepairExtensionMenu()
     local optionLayouts = {
         createButton("Over Repair", function()
             openOverRepairMenu(repairToolItem)
-        end, ROOT_MENU_WIDTH),
+        end, layoutMetrics.rootMenuWidth),
     }
 
     if isPerkOwnedAndEnabled("armorer_temper_study") then
         table.insert(optionLayouts, createButton("Temper Study (coming soon)", function()
             showMessage("Temper Study action is not implemented yet.")
-        end, ROOT_MENU_WIDTH))
+        end, layoutMetrics.rootMenuWidth))
     end
 
     if isPerkOwnedAndEnabled("armorer_field_mender") then
         table.insert(optionLayouts, createButton("Field Mender (coming soon)", function()
             showMessage("Field Mender action is not implemented yet.")
-        end, ROOT_MENU_WIDTH))
+        end, layoutMetrics.rootMenuWidth))
     end
 
-    table.insert(contentLayouts, createOptionsFrame(optionLayouts, ROOT_MENU_WIDTH))
+    table.insert(contentLayouts, createOptionsFrame(optionLayouts, layoutMetrics.rootMenuWidth))
 
     rootMenuElement = ui.create({
         layer = "Modal",
@@ -471,7 +506,7 @@ local function openRepairExtensionMenu()
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             anchor = util.vector2(0.5, 0),
-            relativePosition = util.vector2(0.5, ROOT_MENU_Y),
+            relativePosition = util.vector2(0.5, layoutMetrics.rootMenuY),
             autoSize = true,
         },
         content = ui.content({

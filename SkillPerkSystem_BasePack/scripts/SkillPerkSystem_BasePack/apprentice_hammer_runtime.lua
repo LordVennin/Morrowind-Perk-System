@@ -11,16 +11,16 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
-local BASE_ROOT_MENU_Y = 0.62
-local HEIGHT_ADJUST_FACTOR = 0.22
-local ROOT_MENU_MIN_Y = 0.61
-local ROOT_MENU_MAX_Y = 0.73
-local SUB_MENU_Y_OFFSET = 0.045
+local BASE_ROOT_MENU_Y = 0.685
+local HEIGHT_ADJUST_FACTOR = 0.12
+local ROOT_MENU_MIN_Y = 0.67
+local ROOT_MENU_MAX_Y = 0.78
+local SUB_MENU_Y_OFFSET = 0.055
 local REFERENCE_SCREEN_HEIGHT = 1440
-local ROOT_MENU_MIN_WIDTH = 300
-local ROOT_MENU_MAX_WIDTH = 360
-local ROOT_MENU_WIDTH_FACTOR = 0.18
-local SUB_MENU_EXTRA_WIDTH = 80
+local ROOT_MENU_MIN_WIDTH = 260
+local ROOT_MENU_MAX_WIDTH = 330
+local ROOT_MENU_WIDTH_FACTOR = 0.16
+local SUB_MENU_EXTRA_WIDTH = 60
 
 local rootMenuElement = nil
 local subMenuElement = nil
@@ -480,7 +480,7 @@ local function openRepairExtensionMenu()
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textNormal,
             props = {
-                text = "Perk actions and custom submenus.",
+                text = "Perk actions",
                 textAlignH = ui.ALIGNMENT.Center,
             },
         },

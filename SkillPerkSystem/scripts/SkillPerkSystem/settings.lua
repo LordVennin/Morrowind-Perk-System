@@ -22,10 +22,15 @@ local defaults = {
     -- Automatic scaling uses current screen width relative to PERK_UI_SCALE_REFERENCE_WIDTH.
     PERK_UI_AUTO_SCALE = true,
     PERK_UI_SCALE_REFERENCE_WIDTH = 1920,
-    PERK_UI_SCALE_MIN = 0.75,
+    -- Keep minimum at 1.0 by default so text does not overflow shrinking containers on sub-1080p displays.
+    PERK_UI_SCALE_MIN = 1.0,
     PERK_UI_SCALE_MAX = 1.6,
     -- Additional multiplier applied after auto-scaling (1.0 = no change).
     PERK_UI_SCALE_MULTIPLIER = 1.0,
+    -- Description/requirements wrapping approximation.
+    -- Increase PERK_UI_WRAP_AVG_CHAR_WIDTH or lower PERK_UI_WRAP_WIDTH_SAFETY for earlier line breaks.
+    PERK_UI_WRAP_AVG_CHAR_WIDTH = 8,
+    PERK_UI_WRAP_WIDTH_SAFETY = 0.9,
     -- Perk UI layout tunables.
     PERK_UI_LEFT_PANE_WIDTH = 540,
     PERK_UI_RIGHT_PANE_WIDTH = 408,

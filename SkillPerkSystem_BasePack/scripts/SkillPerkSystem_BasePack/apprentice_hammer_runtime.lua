@@ -1,22 +1,29 @@
 local async = require("openmw.async")
-local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 
-local PERK_ID = "armorer_apprentice_hammer"
 local MENU_NAME = "SkillPerkSystem_BasePack_ApprenticeHammerMenu"
+local OVERREPAIR_MENU_NAME = "SkillPerkSystem_BasePack_OverRepairMenu"
 local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
+local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
+local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
 
-local defaultRepairPassthroughItem = nil
-local menuElement = nil
+local rootMenuElement = nil
+local subMenuElement = nil
+local customMenuOpen = false
+
+local function logDebug(message)
+    print(string.format("%s %s", LOG_TAG, tostring(message)))
+end
 
 local function isPerkOwnedAndEnabled(perkId)
     local playerApi = interfaces.SkillPerkSystemPlayer
-    if type(playerApi) ~= "table" then
+    if playerApi == nil then
+        logDebug("interfaces.SkillPerkSystemPlayer unavailable")
         return false
     end
 
@@ -29,6 +36,34 @@ local function isPerkOwnedAndEnabled(perkId)
     end
 
     return true
+end
+
+local function apprenticeHammerEnabled()
+    return isPerkOwnedAndEnabled(APPRENTICE_PERK_ID)
+end
+
+local function showMessage(text)
+    ui.showMessage(text, { showInDialogue = false })
+end
+
+local function closeRootMenu()
+    if rootMenuElement ~= nil then
+        rootMenuElement:destroy()
+        rootMenuElement = nil
+    end
+end
+
+local function closeSubMenu()
+    if subMenuElement ~= nil then
+        subMenuElement:destroy()
+        subMenuElement = nil
+    end
+end
+
+local function closeAllMenus()
+    closeSubMenu()
+    closeRootMenu()
+    customMenuOpen = false
 end
 
 local function getItemCondition(item)
@@ -69,6 +104,67 @@ local function getMaxCondition(item)
     return nil
 end
 
+local function getDisplayName(item)
+    if item == nil then
+        return "Unknown Item"
+    end
+
+    local recordId = item.recordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return "Unknown Item"
+    end
+
+    if types.Weapon.objectIsInstance(item) then
+        local record = types.Weapon.records[recordId]
+        if type(record) == "table" and type(record.name) == "string" and record.name ~= "" then
+            return record.name
+        end
+    elseif types.Armor.objectIsInstance(item) then
+        local record = types.Armor.records[recordId]
+        if type(record) == "table" and type(record.name) == "string" and record.name ~= "" then
+            return record.name
+        end
+    end
+
+    return recordId
+end
+
+local function collectOverrepairCandidates()
+    local out = {}
+    if type(types.Actor.inventory) ~= "function" then
+        logDebug("types.Actor.inventory unavailable")
+        return out
+    end
+
+    local okInv, inventory = pcall(types.Actor.inventory, pself)
+    if not okInv or inventory == nil then
+        logDebug("failed to read player inventory")
+        return out
+    end
+
+    for _, item in pairs(inventory) do
+        if item ~= nil and (types.Weapon.objectIsInstance(item) or types.Armor.objectIsInstance(item)) then
+            local currentCondition = getItemCondition(item)
+            local maxCondition = getMaxCondition(item)
+            if type(currentCondition) == "number" and type(maxCondition) == "number" and currentCondition == maxCondition then
+                table.insert(out, {
+                    item = item,
+                    name = getDisplayName(item),
+                    currentCondition = currentCondition,
+                    maxCondition = maxCondition,
+                })
+            end
+        end
+    end
+
+    table.sort(out, function(a, b)
+        return string.lower(a.name) < string.lower(b.name)
+    end)
+
+    logDebug("overrepair candidates=" .. tostring(#out))
+    return out
+end
+
 local function applyOverrepairToItem(item, multiplier)
     local currentCondition, itemData = getItemCondition(item)
     if type(currentCondition) ~= "number" then
@@ -90,26 +186,31 @@ local function applyOverrepairToItem(item, multiplier)
     end
 
     itemData.condition = targetCondition
-    return true
+    return true, targetCondition
 end
 
-local function applyOverrepairToEquippedItems(multiplier)
-    local slots = types.Actor.EQUIPMENT_SLOT
-    if type(slots) ~= "table" then
-        return false
-    end
-
-    local changedAny = false
-    for _, slot in pairs(slots) do
-        local okItem, item = pcall(types.Actor.getEquipment, pself, slot)
-        if okItem and item ~= nil then
-            if types.Weapon.objectIsInstance(item) or types.Armor.objectIsInstance(item) then
-                changedAny = applyOverrepairToItem(item, multiplier) or changedAny
+local function getActiveRepairTool()
+    local inventoryAccessor = types.Player ~= nil and types.Player.inventory or nil
+    if type(inventoryAccessor) == "function" then
+        local okInv, inventory = pcall(inventoryAccessor, pself)
+        if okInv and inventory ~= nil and type(inventory.getAll) == "function" then
+            local okAll, allTools = pcall(inventory.getAll, inventory, types.Repair)
+            if okAll and type(allTools) == "table" and #allTools > 0 then
+                return allTools[1]
             end
         end
     end
 
-    return changedAny
+    if type(types.Actor.getEquipment) == "function" then
+        for _, slot in pairs(types.Actor.EQUIPMENT_SLOT or {}) do
+            local okItem, item = pcall(types.Actor.getEquipment, pself, slot)
+            if okItem and item ~= nil and types.Repair.objectIsInstance(item) then
+                return item
+            end
+        end
+    end
+
+    return nil
 end
 
 local function consumeRepairToolUses(item, usesToConsume)
@@ -122,80 +223,19 @@ local function consumeRepairToolUses(item, usesToConsume)
     return true
 end
 
-local function showMessage(text)
-    ui.showMessage(text, { showInDialogue = false })
-end
-
-local function closeMenu()
-    if menuElement ~= nil then
-        menuElement:destroy()
-        menuElement = nil
-    end
-end
-
-local function runApprenticeOverrepair(item)
-    if not consumeRepairToolUses(item, OVERREPAIR_USES_COST) then
-        showMessage("Not enough hammer uses remaining (need 5).")
+local function setInterfaceMode()
+    local uiApi = interfaces.UI
+    if uiApi == nil or type(uiApi.setMode) ~= "function" then
+        logDebug("interfaces.UI.setMode unavailable for Interface")
         return
     end
 
-    if applyOverrepairToEquippedItems(DEFAULT_MULTIPLIER) then
-        showMessage("Masterwork touch: fully-repaired equipped gear is now at 110% condition.")
-        return
-    end
-
-    showMessage("No equipped weapon/armor qualifies. Items must be at 100% condition first.")
-end
-
-local function openDefaultRepairUi(item)
-    defaultRepairPassthroughItem = item
-    core.sendGlobalEvent("UseItem", {
-        object = item,
-        actor = pself,
+    uiApi.setMode("Interface", {
+        windows = { "Map", "Stats", "Magic", "Inventory" },
     })
 end
 
-local function perkMenuOptions()
-    local options = {
-        {
-            label = "Default Repair UI",
-            action = function(item)
-                openDefaultRepairUi(item)
-            end,
-        },
-    }
-
-    if isPerkOwnedAndEnabled("armorer_apprentice_hammer") then
-        table.insert(options, {
-            label = "Apprentice Hammer: Over-repair (5 uses)",
-            action = function(item)
-                runApprenticeOverrepair(item)
-            end,
-        })
-    end
-
-    if isPerkOwnedAndEnabled("armorer_temper_study") then
-        table.insert(options, {
-            label = "Temper Study (coming soon)",
-            action = function()
-                showMessage("Temper Study action is not implemented yet.")
-            end,
-        })
-    end
-
-    if isPerkOwnedAndEnabled("armorer_field_mender") then
-        table.insert(options, {
-            label = "Field Mender (coming soon)",
-            action = function()
-                showMessage("Field Mender action is not implemented yet.")
-            end,
-        })
-    end
-
-    return options
-end
-
-local function createButton(label, onSelect)
+local function createButton(label, onSelect, width)
     local textLayout = {
         type = ui.TYPE.Text,
         template = interfaces.MWUI.templates.textNormal,
@@ -211,34 +251,42 @@ local function createButton(label, onSelect)
         type = ui.TYPE.Container,
         template = interfaces.MWUI.templates.boxButton,
         props = {
-            size = util.vector2(520, 28),
+            size = util.vector2(width or 540, 28),
         },
         content = ui.content({ textLayout }),
         events = {
             mousePress = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
                     textLayout.template = interfaces.MWUI.templates.textHeader
-                    if menuElement ~= nil then
-                        menuElement:update()
+                    if rootMenuElement ~= nil then
+                        rootMenuElement:update()
+                    end
+                    if subMenuElement ~= nil then
+                        subMenuElement:update()
                     end
                 end
             end),
             mouseRelease = async:callback(function(mouseEvent)
                 if mouseEvent.button == 1 then
-                    closeMenu()
                     onSelect()
                 end
             end),
             focusGain = async:callback(function()
                 textLayout.template = interfaces.MWUI.templates.textHeader
-                if menuElement ~= nil then
-                    menuElement:update()
+                if rootMenuElement ~= nil then
+                    rootMenuElement:update()
+                end
+                if subMenuElement ~= nil then
+                    subMenuElement:update()
                 end
             end),
             focusLoss = async:callback(function()
                 textLayout.template = interfaces.MWUI.templates.textNormal
-                if menuElement ~= nil then
-                    menuElement:update()
+                if rootMenuElement ~= nil then
+                    rootMenuElement:update()
+                end
+                if subMenuElement ~= nil then
+                    subMenuElement:update()
                 end
             end),
         },
@@ -247,15 +295,17 @@ local function createButton(label, onSelect)
     return buttonLayout
 end
 
-local function openPerkMenu(repairToolItem)
-    closeMenu()
+local function openOverRepairMenu(repairToolItem)
+    logDebug("openOverRepairMenu")
+    closeSubMenu()
 
+    local candidates = collectOverrepairCandidates()
     local contentLayouts = {
         {
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textHeader,
             props = {
-                text = "Repair Tool Action",
+                text = "Over Repair",
                 textAlignH = ui.ALIGNMENT.Center,
             },
         },
@@ -263,30 +313,57 @@ local function openPerkMenu(repairToolItem)
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textNormal,
             props = {
-                text = "Choose how to use this hammer.",
+                text = "Select a fully repaired weapon or armor piece.",
                 textAlignH = ui.ALIGNMENT.Center,
             },
         },
     }
 
-    for _, option in ipairs(perkMenuOptions()) do
-        table.insert(contentLayouts, createButton(option.label, function()
-            option.action(repairToolItem)
-        end))
+    if #candidates == 0 then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = "No eligible items at full durability.",
+                textAlignH = ui.ALIGNMENT.Center,
+            },
+        })
+    else
+        for _, entry in ipairs(candidates) do
+            local label = string.format("%s (%d/%d)", entry.name, entry.currentCondition, entry.maxCondition)
+            table.insert(contentLayouts, createButton(label, function()
+                closeAllMenus()
+                if repairToolItem == nil then
+                    showMessage("No repair tool found.")
+                    return
+                end
+                if not consumeRepairToolUses(repairToolItem, OVERREPAIR_USES_COST) then
+                    showMessage("Not enough hammer uses remaining (need 5).")
+                    return
+                end
+
+                local changed, targetCondition = applyOverrepairToItem(entry.item, DEFAULT_MULTIPLIER)
+                if changed then
+                    showMessage(string.format("%s is now at %d condition.", entry.name, targetCondition or 0))
+                else
+                    showMessage("That item could not be over-repaired.")
+                end
+            end, 620))
+        end
     end
 
-    table.insert(contentLayouts, createButton("Cancel", function()
-        showMessage("Repair canceled.")
-    end))
+    table.insert(contentLayouts, createButton("Back", function()
+        closeSubMenu()
+    end, 620))
 
-    menuElement = ui.create({
-        layer = "Windows",
-        name = MENU_NAME,
+    subMenuElement = ui.create({
+        layer = "Modal",
+        name = OVERREPAIR_MENU_NAME,
         type = ui.TYPE.Container,
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
-            anchor = util.vector2(0.5, 0.5),
-            relativePosition = util.vector2(0.5, 0.5),
+            anchor = util.vector2(0.5, 0),
+            relativePosition = util.vector2(0.5, 0.86),
             autoSize = true,
         },
         content = ui.content({
@@ -305,34 +382,117 @@ local function openPerkMenu(repairToolItem)
     })
 end
 
-local function registerItemUseHook()
-    local itemUsage = interfaces.ItemUsage
-    if type(itemUsage) ~= "table" or type(itemUsage.addHandlerForType) ~= "function" then
+local function openRepairExtensionMenu()
+    logDebug("openRepairExtensionMenu")
+    closeAllMenus()
+    customMenuOpen = true
+
+    local repairToolItem = getActiveRepairTool()
+
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = {
+                text = "Repair Extensions",
+                textAlignH = ui.ALIGNMENT.Center,
+            },
+        },
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = {
+                text = "Choose a perk action below. The base repair menu remains open above.",
+                textAlignH = ui.ALIGNMENT.Center,
+            },
+        },
+        createButton("Over Repair", function()
+            openOverRepairMenu(repairToolItem)
+        end, 540),
+    }
+
+    if isPerkOwnedAndEnabled("armorer_temper_study") then
+        table.insert(contentLayouts, createButton("Temper Study (coming soon)", function()
+            showMessage("Temper Study action is not implemented yet.")
+        end, 540))
+    end
+
+    if isPerkOwnedAndEnabled("armorer_field_mender") then
+        table.insert(contentLayouts, createButton("Field Mender (coming soon)", function()
+            showMessage("Field Mender action is not implemented yet.")
+        end, 540))
+    end
+
+    table.insert(contentLayouts, createButton("Close Extension", function()
+        closeAllMenus()
+    end, 540))
+
+    rootMenuElement = ui.create({
+        layer = "Modal",
+        name = MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0),
+            relativePosition = util.vector2(0.5, 0.78),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
+local function handleUiModeChanged(data)
+    if type(data) ~= "table" then
         return
     end
 
-    itemUsage.addHandlerForType(types.Repair, function(repairItem, actor)
-        if actor ~= pself then
+    logDebug(string.format(
+        "UiModeChanged old=%s new=%s apprentice=%s customMenuOpen=%s",
+        tostring(data.oldMode),
+        tostring(data.newMode),
+        tostring(apprenticeHammerEnabled()),
+        tostring(customMenuOpen)
+    ))
+
+    if data.newMode == "Repair" then
+
+        if not apprenticeHammerEnabled() then
+            closeAllMenus()
             return
         end
 
-        if repairItem ~= nil and repairItem == defaultRepairPassthroughItem then
-            defaultRepairPassthroughItem = nil
-            return
-        end
+        openRepairExtensionMenu()
+        return
+    end
 
-        if not isPerkOwnedAndEnabled(PERK_ID) then
-            return
-        end
+    if data.oldMode == "Repair" and data.newMode ~= "Repair" then
+        closeAllMenus()
+    end
 
-        openPerkMenu(repairItem)
-        return false
-    end)
+    if data.newMode == nil or data.newMode == "MainMenu" then
+        closeAllMenus()
+    end
 end
 
-registerItemUseHook()
-
 return {
-    eventHandlers = {},
-    engineHandlers = {},
+    eventHandlers = {
+        UiModeChanged = handleUiModeChanged,
+    },
+    engineHandlers = {
+        onLoad = function()
+            logDebug("onLoad")
+        end,
+    },
 }

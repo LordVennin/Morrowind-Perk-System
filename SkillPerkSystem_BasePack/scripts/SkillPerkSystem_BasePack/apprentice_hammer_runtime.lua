@@ -11,10 +11,10 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
-local ROOT_MENU_Y = 0.62
-local SUB_MENU_Y = 0.66
-local ROOT_MENU_WIDTH = 420
-local SUB_MENU_WIDTH = 500
+local ROOT_MENU_Y = 0.64
+local SUB_MENU_Y = 0.69
+local ROOT_MENU_WIDTH = 380
+local SUB_MENU_WIDTH = 460
 
 local rootMenuElement = nil
 local subMenuElement = nil

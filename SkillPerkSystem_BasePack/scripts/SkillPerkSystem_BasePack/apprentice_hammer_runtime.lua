@@ -11,8 +11,10 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
-local ROOT_MENU_Y = 0.69
-local SUB_MENU_Y = 0.75
+local ROOT_MENU_Y = 0.62
+local SUB_MENU_Y = 0.66
+local ROOT_MENU_WIDTH = 420
+local SUB_MENU_WIDTH = 500
 
 local rootMenuElement = nil
 local subMenuElement = nil
@@ -381,14 +383,14 @@ local function openOverRepairMenu(repairToolItem)
                 else
                     showMessage("That item could not be over-repaired.")
                 end
-            end, 620))
+            end, SUB_MENU_WIDTH))
         end
     end
 
     table.insert(optionLayouts, createButton("Back", function()
         closeSubMenu()
-    end, 620))
-    table.insert(contentLayouts, createOptionsFrame(optionLayouts, 620))
+    end, SUB_MENU_WIDTH))
+    table.insert(contentLayouts, createOptionsFrame(optionLayouts, SUB_MENU_WIDTH))
 
     subMenuElement = ui.create({
         layer = "Modal",
@@ -436,7 +438,7 @@ local function openRepairExtensionMenu()
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textNormal,
             props = {
-                text = "Perk actions",
+                text = "Perk actions and custom submenus.",
                 textAlignH = ui.ALIGNMENT.Center,
             },
         },
@@ -445,22 +447,22 @@ local function openRepairExtensionMenu()
     local optionLayouts = {
         createButton("Over Repair", function()
             openOverRepairMenu(repairToolItem)
-        end, 540),
+        end, ROOT_MENU_WIDTH),
     }
 
     if isPerkOwnedAndEnabled("armorer_temper_study") then
         table.insert(optionLayouts, createButton("Temper Study (coming soon)", function()
             showMessage("Temper Study action is not implemented yet.")
-        end, 540))
+        end, ROOT_MENU_WIDTH))
     end
 
     if isPerkOwnedAndEnabled("armorer_field_mender") then
         table.insert(optionLayouts, createButton("Field Mender (coming soon)", function()
             showMessage("Field Mender action is not implemented yet.")
-        end, 540))
+        end, ROOT_MENU_WIDTH))
     end
 
-    table.insert(contentLayouts, createOptionsFrame(optionLayouts, 540))
+    table.insert(contentLayouts, createOptionsFrame(optionLayouts, ROOT_MENU_WIDTH))
 
     rootMenuElement = ui.create({
         layer = "Modal",

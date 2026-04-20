@@ -11,8 +11,11 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
-local BASE_ROOT_MENU_Y = 0.64
-local SUB_MENU_Y_OFFSET = 0.05
+local BASE_ROOT_MENU_Y = 0.62
+local HEIGHT_ADJUST_FACTOR = 0.22
+local ROOT_MENU_MIN_Y = 0.61
+local ROOT_MENU_MAX_Y = 0.73
+local SUB_MENU_Y_OFFSET = 0.045
 local REFERENCE_SCREEN_HEIGHT = 1440
 local ROOT_MENU_MIN_WIDTH = 300
 local ROOT_MENU_MAX_WIDTH = 360
@@ -39,7 +42,11 @@ local function getLayoutMetrics()
     local screenHeight = type(screenSize) == "table" and tonumber(screenSize.y) or REFERENCE_SCREEN_HEIGHT
 
     local heightOffsetScale = (REFERENCE_SCREEN_HEIGHT - screenHeight) / REFERENCE_SCREEN_HEIGHT
-    local rootMenuY = clamp(BASE_ROOT_MENU_Y + (heightOffsetScale * 0.08), 0.60, 0.72)
+    local rootMenuY = clamp(
+        BASE_ROOT_MENU_Y + (heightOffsetScale * HEIGHT_ADJUST_FACTOR),
+        ROOT_MENU_MIN_Y,
+        ROOT_MENU_MAX_Y
+    )
     local subMenuY = clamp(rootMenuY + SUB_MENU_Y_OFFSET, rootMenuY + 0.03, 0.78)
 
     local rootMenuWidth = math.floor(clamp(screenWidth * ROOT_MENU_WIDTH_FACTOR, ROOT_MENU_MIN_WIDTH, ROOT_MENU_MAX_WIDTH))

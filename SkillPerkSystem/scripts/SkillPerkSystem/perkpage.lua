@@ -1037,14 +1037,25 @@ end
 
 local function wrapTextLines(text, maxChars)
     local lines = {}
+    local safeMaxChars = math.max(1, math.floor(tonumber(maxChars) or 1))
+
+    local function flushWord(word)
+        local remaining = tostring(word or "")
+        while #remaining > safeMaxChars do
+            table.insert(lines, remaining:sub(1, safeMaxChars - 1) .. "-")
+            remaining = remaining:sub(safeMaxChars)
+        end
+        return remaining
+    end
 
     for paragraph in tostring(text or ""):gmatch("[^\n]+") do
         local line = ""
         for word in paragraph:gmatch("%S+") do
-            local candidate = (line == "") and word or (line .. " " .. word)
-            if #candidate > maxChars and line ~= "" then
+            local normalizedWord = flushWord(word)
+            local candidate = (line == "") and normalizedWord or (line .. " " .. normalizedWord)
+            if #candidate > safeMaxChars and line ~= "" then
                 table.insert(lines, line)
-                line = word
+                line = normalizedWord
             else
                 line = candidate
             end
@@ -1090,10 +1101,18 @@ local function buildMultilineTextRows(lines, rowWidth, rowHeight, maxVisibleRows
 end
 
 local function estimateWrapMaxChars(usableTextWidth, minChars)
-    local safeMinChars = math.max(20, tonumber(minChars) or 20)
+    local safeMinChars = math.max(4, tonumber(minChars) or 4)
     local usablePixelWidth = math.max(1, px(tonumber(usableTextWidth) or 0))
-    local estimatedChars = math.floor((usablePixelWidth + px(6)) / math.max(1, px(6)))
+    local approxCharWidth = math.max(1, px(tonumber(settings.PERK_UI_WRAP_AVG_CHAR_WIDTH) or 8))
+    local wrapWidthSafety = clamp(tonumber(settings.PERK_UI_WRAP_WIDTH_SAFETY) or 0.9, 0.6, 1.0)
+    local safeWrapWidth = math.max(1, math.floor(usablePixelWidth * wrapWidthSafety))
+    local estimatedChars = math.floor((safeWrapWidth + math.floor(approxCharWidth * 0.5)) / approxCharWidth)
     return math.max(safeMinChars, estimatedChars)
+end
+
+local function truncateToPixelWidth(text, pixelWidth, minChars)
+    local maxChars = estimateWrapMaxChars(pixelWidth, minChars or 8)
+    return truncateLabel(text, maxChars)
 end
 
 local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth, showFullPerkDetails)
@@ -1118,7 +1137,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     local compactControlHeight = math.max(px(24), requirementRowHeight)
     local rightBoxGap = requirementRowGap
     local descriptionTextWidth = contentWidth - (requirementInset * 4)
-    local descriptionWrapMaxChars = estimateWrapMaxChars(descriptionTextWidth, 20)
+    local descriptionWrapMaxChars = estimateWrapMaxChars(descriptionTextWidth, 8)
     local descriptionLineHeight = math.max(px(16), math.floor(contentHeight * 0.032))
 
     local title = selectedPerkID or skillName or "Perk Details"
@@ -1144,6 +1163,9 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
     elseif selectedPerk ~= nil then
         descriptionText = string.format("Perk ID: %s\nTab: %s", tostring(selectedPerkID), tostring(selectedPerk.tab))
     end
+
+    local displayedTitle = truncateToPixelWidth(title, titleWidth - px(10), 10)
+    local displayedSkillName = truncateToPixelWidth(skillName, titleWidth - px(10), 10)
 
     if not showFullPerkDetails then
         local compactDescriptionHeight = math.max(px(150), math.floor(contentHeight * 0.36))
@@ -1186,7 +1208,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                     type = ui.TYPE.Text,
                                     template = interfaces.MWUI.templates.textHeader,
                                     props = {
-                                        text = skillName,
+                                        text = displayedSkillName,
                                         autoSize = false,
                                         size = v2(titleWidth, topRowHeight),
                                         textAlignH = ui.ALIGNMENT.Center,
@@ -1343,7 +1365,11 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             type = ui.TYPE.Text,
                             template = interfaces.MWUI.templates.textNormal,
                             props = {
-                                text = req.label,
+                                text = truncateToPixelWidth(req.label, leftColumnWidth - (requirementInset * 4), 12),
+                                autoSize = false,
+                                size = v2(leftColumnWidth - (requirementInset * 4), requirementRowHeight),
+                                textAlignH = ui.ALIGNMENT.Start,
+                                textAlignV = ui.ALIGNMENT.Center,
                             },
                         },
                         {
@@ -1522,7 +1548,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             type = ui.TYPE.Text,
                             template = interfaces.MWUI.templates.textHeader,
                             props = {
-                                text = title,
+                                text = displayedTitle,
                                 autoSize = false,
                                 size = v2(titleWidth, topRowHeight),
                                 textAlignH = ui.ALIGNMENT.Center,

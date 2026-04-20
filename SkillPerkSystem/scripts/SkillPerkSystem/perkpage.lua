@@ -1037,14 +1037,25 @@ end
 
 local function wrapTextLines(text, maxChars)
     local lines = {}
+    local safeMaxChars = math.max(1, math.floor(tonumber(maxChars) or 1))
+
+    local function flushWord(word)
+        local remaining = tostring(word or "")
+        while #remaining > safeMaxChars do
+            table.insert(lines, remaining:sub(1, safeMaxChars - 1) .. "-")
+            remaining = remaining:sub(safeMaxChars)
+        end
+        return remaining
+    end
 
     for paragraph in tostring(text or ""):gmatch("[^\n]+") do
         local line = ""
         for word in paragraph:gmatch("%S+") do
-            local candidate = (line == "") and word or (line .. " " .. word)
-            if #candidate > maxChars and line ~= "" then
+            local normalizedWord = flushWord(word)
+            local candidate = (line == "") and normalizedWord or (line .. " " .. normalizedWord)
+            if #candidate > safeMaxChars and line ~= "" then
                 table.insert(lines, line)
-                line = word
+                line = normalizedWord
             else
                 line = candidate
             end
@@ -1096,6 +1107,11 @@ local function estimateWrapMaxChars(usableTextWidth, minChars)
     return math.max(safeMinChars, estimatedChars)
 end
 
+local function truncateToPixelWidth(text, pixelWidth, minChars)
+    local maxChars = estimateWrapMaxChars(pixelWidth, minChars or 8)
+    return truncateLabel(text, maxChars)
+end
+
 local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName, skillDescription, rightPaneWidth, showFullPerkDetails)
     local contentWidth = math.max(220, rightPaneWidth - 14)
     local titleWidth = math.min(contentWidth, px(252))
@@ -1145,6 +1161,9 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
         descriptionText = string.format("Perk ID: %s\nTab: %s", tostring(selectedPerkID), tostring(selectedPerk.tab))
     end
 
+    local displayedTitle = truncateToPixelWidth(title, titleWidth - px(10), 10)
+    local displayedSkillName = truncateToPixelWidth(skillName, titleWidth - px(10), 10)
+
     if not showFullPerkDetails then
         local compactDescriptionHeight = math.max(px(150), math.floor(contentHeight * 0.36))
         local compactDescriptionLines = wrapTextLines(skillDescription, descriptionWrapMaxChars)
@@ -1186,7 +1205,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                                     type = ui.TYPE.Text,
                                     template = interfaces.MWUI.templates.textHeader,
                                     props = {
-                                        text = skillName,
+                                        text = displayedSkillName,
                                         autoSize = false,
                                         size = v2(titleWidth, topRowHeight),
                                         textAlignH = ui.ALIGNMENT.Center,
@@ -1343,7 +1362,11 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             type = ui.TYPE.Text,
                             template = interfaces.MWUI.templates.textNormal,
                             props = {
-                                text = req.label,
+                                text = truncateToPixelWidth(req.label, leftColumnWidth - (requirementInset * 4), 12),
+                                autoSize = false,
+                                size = v2(leftColumnWidth - (requirementInset * 4), requirementRowHeight),
+                                textAlignH = ui.ALIGNMENT.Start,
+                                textAlignV = ui.ALIGNMENT.Center,
                             },
                         },
                         {
@@ -1522,7 +1545,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                             type = ui.TYPE.Text,
                             template = interfaces.MWUI.templates.textHeader,
                             props = {
-                                text = title,
+                                text = displayedTitle,
                                 autoSize = false,
                                 size = v2(titleWidth, topRowHeight),
                                 textAlignH = ui.ALIGNMENT.Center,

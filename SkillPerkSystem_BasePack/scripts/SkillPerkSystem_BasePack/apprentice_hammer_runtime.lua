@@ -11,10 +11,58 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
+local BASE_ROOT_MENU_Y = 0.70
+local REFERENCE_VERTICAL_HEIGHT = 1080
+local HEIGHT_ADJUST_FACTOR = 0.16
+local ROOT_MENU_MIN_Y = 0.64
+local ROOT_MENU_MAX_Y = 0.80
+local SUB_MENU_Y_OFFSET = 0.045
+local REFERENCE_SCREEN_HEIGHT = 1440
+local ROOT_MENU_MIN_WIDTH = 260
+local ROOT_MENU_MAX_WIDTH = 330
+local ROOT_MENU_WIDTH_FACTOR = 0.16
+local SUB_MENU_EXTRA_WIDTH = 60
 
 local rootMenuElement = nil
 local subMenuElement = nil
 local customMenuOpen = false
+
+local function clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
+    if value > maxValue then
+        return maxValue
+    end
+    return value
+end
+
+local function getLayoutMetrics()
+    local screenSize = ui.screenSize()
+    local screenWidth = type(screenSize) == "table" and tonumber(screenSize.x) or 1920
+    local screenHeight = type(screenSize) == "table" and tonumber(screenSize.y) or REFERENCE_SCREEN_HEIGHT
+    if screenHeight == nil or screenHeight <= 0 then
+        screenHeight = REFERENCE_VERTICAL_HEIGHT
+    end
+
+    local heightOffsetScale = (REFERENCE_VERTICAL_HEIGHT / screenHeight) - 1
+    local rootMenuY = clamp(
+        BASE_ROOT_MENU_Y + (heightOffsetScale * HEIGHT_ADJUST_FACTOR),
+        ROOT_MENU_MIN_Y,
+        ROOT_MENU_MAX_Y
+    )
+    local subMenuY = clamp(rootMenuY + SUB_MENU_Y_OFFSET, rootMenuY + 0.03, 0.78)
+
+    local rootMenuWidth = math.floor(clamp(screenWidth * ROOT_MENU_WIDTH_FACTOR, ROOT_MENU_MIN_WIDTH, ROOT_MENU_MAX_WIDTH))
+    local subMenuWidth = rootMenuWidth + SUB_MENU_EXTRA_WIDTH
+
+    return {
+        rootMenuY = rootMenuY,
+        subMenuY = subMenuY,
+        rootMenuWidth = rootMenuWidth,
+        subMenuWidth = subMenuWidth,
+    }
+end
 
 local function logDebug(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -295,9 +343,39 @@ local function createButton(label, onSelect, width)
     return buttonLayout
 end
 
+local function createOptionsFrame(options, width)
+    local framedOptions = {}
+    for _, option in ipairs(options) do
+        table.insert(framedOptions, option)
+    end
+
+    return {
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    arrange = ui.ALIGNMENT.Center,
+                    padding = util.vector2(6, 6),
+                    externalPadding = util.vector2(2, 2),
+                    size = util.vector2(width or 540, -1),
+                },
+                content = ui.content(framedOptions),
+            },
+        }),
+    }
+end
+
 local function openOverRepairMenu(repairToolItem)
     logDebug("openOverRepairMenu")
     closeSubMenu()
+    local layoutMetrics = getLayoutMetrics()
 
     local candidates = collectOverrepairCandidates()
     local contentLayouts = {
@@ -319,8 +397,10 @@ local function openOverRepairMenu(repairToolItem)
         },
     }
 
+    local optionLayouts = {}
+
     if #candidates == 0 then
-        table.insert(contentLayouts, {
+        table.insert(optionLayouts, {
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textNormal,
             props = {
@@ -331,7 +411,7 @@ local function openOverRepairMenu(repairToolItem)
     else
         for _, entry in ipairs(candidates) do
             local label = string.format("%s (%d/%d)", entry.name, entry.currentCondition, entry.maxCondition)
-            table.insert(contentLayouts, createButton(label, function()
+            table.insert(optionLayouts, createButton(label, function()
                 closeAllMenus()
                 if repairToolItem == nil then
                     showMessage("No repair tool found.")
@@ -348,13 +428,14 @@ local function openOverRepairMenu(repairToolItem)
                 else
                     showMessage("That item could not be over-repaired.")
                 end
-            end, 620))
+            end, layoutMetrics.subMenuWidth))
         end
     end
 
-    table.insert(contentLayouts, createButton("Back", function()
+    table.insert(optionLayouts, createButton("Back", function()
         closeSubMenu()
-    end, 620))
+    end, layoutMetrics.subMenuWidth))
+    table.insert(contentLayouts, createOptionsFrame(optionLayouts, layoutMetrics.subMenuWidth))
 
     subMenuElement = ui.create({
         layer = "Modal",
@@ -363,7 +444,7 @@ local function openOverRepairMenu(repairToolItem)
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             anchor = util.vector2(0.5, 0),
-            relativePosition = util.vector2(0.5, 0.86),
+            relativePosition = util.vector2(0.5, layoutMetrics.subMenuY),
             autoSize = true,
         },
         content = ui.content({
@@ -388,6 +469,7 @@ local function openRepairExtensionMenu()
     customMenuOpen = true
 
     local repairToolItem = getActiveRepairTool()
+    local layoutMetrics = getLayoutMetrics()
 
     local contentLayouts = {
         {
@@ -402,30 +484,31 @@ local function openRepairExtensionMenu()
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textNormal,
             props = {
-                text = "Choose a perk action below. The base repair menu remains open above.",
+                text = "Perk actions",
                 textAlignH = ui.ALIGNMENT.Center,
             },
         },
+    }
+
+    local optionLayouts = {
         createButton("Over Repair", function()
             openOverRepairMenu(repairToolItem)
-        end, 540),
+        end, layoutMetrics.rootMenuWidth),
     }
 
     if isPerkOwnedAndEnabled("armorer_temper_study") then
-        table.insert(contentLayouts, createButton("Temper Study (coming soon)", function()
+        table.insert(optionLayouts, createButton("Temper Study (coming soon)", function()
             showMessage("Temper Study action is not implemented yet.")
-        end, 540))
+        end, layoutMetrics.rootMenuWidth))
     end
 
     if isPerkOwnedAndEnabled("armorer_field_mender") then
-        table.insert(contentLayouts, createButton("Field Mender (coming soon)", function()
+        table.insert(optionLayouts, createButton("Field Mender (coming soon)", function()
             showMessage("Field Mender action is not implemented yet.")
-        end, 540))
+        end, layoutMetrics.rootMenuWidth))
     end
 
-    table.insert(contentLayouts, createButton("Close Extension", function()
-        closeAllMenus()
-    end, 540))
+    table.insert(contentLayouts, createOptionsFrame(optionLayouts, layoutMetrics.rootMenuWidth))
 
     rootMenuElement = ui.create({
         layer = "Modal",
@@ -434,7 +517,7 @@ local function openRepairExtensionMenu()
         template = interfaces.MWUI.templates.boxTransparentThick,
         props = {
             anchor = util.vector2(0.5, 0),
-            relativePosition = util.vector2(0.5, 0.78),
+            relativePosition = util.vector2(0.5, layoutMetrics.rootMenuY),
             autoSize = true,
         },
         content = ui.content({

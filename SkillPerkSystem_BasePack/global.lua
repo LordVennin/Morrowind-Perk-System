@@ -159,8 +159,13 @@ local function applyApprenticeHammerOverrepair(data)
         return
     end
 
+    local remainingToolCondition = repairToolCondition - usesCost
     local okWrite, err = pcall(function()
-        repairToolData.condition = repairToolCondition - usesCost
+        if remainingToolCondition <= 0 then
+            repairTool:remove()
+        else
+            repairToolData.condition = remainingToolCondition
+        end
         targetData.condition = targetCondition
     end)
     if not okWrite then
@@ -169,13 +174,14 @@ local function applyApprenticeHammerOverrepair(data)
         return
     end
 
-    apprenticeHammerLog("overrepair success recordId=" .. tostring(recordId) .. " target=" .. tostring(targetCondition) .. " toolUses=" .. tostring(repairToolCondition - usesCost))
+    apprenticeHammerLog("overrepair success recordId=" .. tostring(recordId) .. " target=" .. tostring(targetCondition) .. " toolUses=" .. tostring(math.max(remainingToolCondition, 0)) .. " toolRemoved=" .. tostring(remainingToolCondition <= 0))
     sendOverrepairResult(player, {
         success = true,
         recordId = recordId,
         name = targetName,
         targetCondition = targetCondition,
-        repairToolCondition = repairToolCondition - usesCost,
+        repairToolCondition = math.max(remainingToolCondition, 0),
+        repairToolRemoved = remainingToolCondition <= 0,
     })
 end
 

@@ -1,0 +1,19 @@
+# This file should be loaded AFTER SkillPerkSystem.omwscripts.
+GLOBAL:scripts/SkillPerkSystem_BasePack/global.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/steady_hands_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/tumbler_sense_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/quick_pick_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/treasure_sense_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/lucky_find_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/lucky_find_player_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/unseen_hand_global_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/unseen_hand_runtime.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/block_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/block_reactive_global.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/block_reactive_local.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/block_bulwark_global.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/block_aegis_rite_global.lua
+CUSTOM:scripts/SkillPerkSystem_BasePack/aegis_rite_target.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/apprentice_hammer_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/apprentice_hammer_capture_global.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/register.lua

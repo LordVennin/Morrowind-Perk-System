@@ -99,9 +99,12 @@ local function sequenceToArray(seq)
     return out
 end
 
+local function getActorObject()
+    return pself.object or pself
+end
+
 local function getPlayerInventory()
-    local actorObject = pself.object or pself
-    local okInv, inventory = pcall(types.Actor.inventory, actorObject)
+    local okInv, inventory = pcall(types.Actor.inventory, getActorObject())
     if not okInv or inventory == nil then
         logDebug("types.Actor.inventory failed")
         return nil
@@ -200,6 +203,102 @@ local function getAllInventoryItemsOfType(typeObject)
     return fallback
 end
 
+local function isRepairableEquipmentItem(item)
+    return item ~= nil and (types.Weapon.objectIsInstance(item) or types.Armor.objectIsInstance(item))
+end
+
+local function addUniqueItem(out, seen, item)
+    if item == nil or seen[item] then
+        return false
+    end
+    seen[item] = true
+    out[#out + 1] = item
+    return true
+end
+
+local function getEquippedRepairableEquipmentItems(seen)
+    local out = {}
+    local weaponCount = 0
+    local armorCount = 0
+
+    if type(types.Actor.getEquipment) ~= "function" then
+        return out, weaponCount, armorCount
+    end
+
+    for _, slot in pairs(types.Actor.EQUIPMENT_SLOT or {}) do
+        local okItem, item = pcall(types.Actor.getEquipment, getActorObject(), slot)
+        if okItem and item ~= nil then
+            local isWeapon = types.Weapon.objectIsInstance(item)
+            local isArmor = types.Armor.objectIsInstance(item)
+            if isWeapon or isArmor then
+                if isWeapon then weaponCount = weaponCount + 1 end
+                if isArmor then armorCount = armorCount + 1 end
+                addUniqueItem(out, seen, item)
+            end
+        end
+    end
+
+    return out, weaponCount, armorCount
+end
+
+local function getRepairableEquipmentItems()
+    local out = {}
+    local seen = {}
+    local weaponItems = getAllInventoryItemsOfType(types.Weapon)
+    local armorItems = getAllInventoryItemsOfType(types.Armor)
+
+    logDebug("inventory typed weapons=" .. tostring(#weaponItems))
+    for _, item in ipairs(weaponItems) do
+        addUniqueItem(out, seen, item)
+    end
+
+    logDebug("inventory typed armor=" .. tostring(#armorItems))
+    for _, item in ipairs(armorItems) do
+        addUniqueItem(out, seen, item)
+    end
+
+    local equippedItems, equippedWeapons, equippedArmor = getEquippedRepairableEquipmentItems(seen)
+    logDebug("equipment weapons=" .. tostring(equippedWeapons) .. " armor=" .. tostring(equippedArmor) .. " uniqueAdded=" .. tostring(#equippedItems))
+    for _, item in ipairs(equippedItems) do
+        out[#out + 1] = item
+    end
+
+    return out, #weaponItems, #armorItems, equippedWeapons, equippedArmor
+end
+
+local function isAtNormalMaxCondition(currentCondition, maxCondition)
+    if type(currentCondition) ~= "number" or type(maxCondition) ~= "number" then
+        return false
+    end
+
+    local currentRounded = math.floor(currentCondition + 0.5)
+    local maxRounded = math.floor(maxCondition + 0.5)
+    return currentRounded == maxRounded
+end
+
+local function getOverrepairEligibility(item)
+    if not isRepairableEquipmentItem(item) then
+        return false, "not_weapon_or_armor"
+    end
+
+    local currentCondition, itemData = getItemCondition(item)
+    local maxCondition = getMaxCondition(item)
+    if type(maxCondition) ~= "number" or maxCondition <= 0 then
+        return false, "missing_max_condition", currentCondition, maxCondition, itemData
+    end
+    if type(currentCondition) ~= "number" then
+        return false, "missing_current_condition", currentCondition, maxCondition, itemData
+    end
+    if not isAtNormalMaxCondition(currentCondition, maxCondition) then
+        if currentCondition > maxCondition then
+            return false, "already_overrepaired", currentCondition, maxCondition, itemData
+        end
+        return false, "not_at_normal_max", currentCondition, maxCondition, itemData
+    end
+
+    return true, "eligible", currentCondition, maxCondition, itemData
+end
+
 local function findRepairToolByRecordId(recordId)
     if type(recordId) ~= "string" or recordId == "" then
         return nil
@@ -242,7 +341,7 @@ local function getActiveRepairTool()
 
     if type(types.Actor.getEquipment) == "function" then
         for _, slot in pairs(types.Actor.EQUIPMENT_SLOT or {}) do
-            local okItem, item = pcall(types.Actor.getEquipment, pself, slot)
+            local okItem, item = pcall(types.Actor.getEquipment, getActorObject(), slot)
             if okItem and item ~= nil and types.Repair.objectIsInstance(item) then
                 return item
             end
@@ -343,21 +442,9 @@ local function collectOverrepairCandidates()
         if okResolved then
             logDebug("inventory resolved=" .. tostring(resolved))
         end
-        local okAll, allItems = pcall(function() return inventory:getAll() end)
-        if okAll and allItems ~= nil then
-            logDebug("inventory total items=" .. tostring(#sequenceToArray(allItems)))
-        end
-        local okWeapons, weapons = pcall(function() return inventory:getAll(types.Weapon) end)
-        if okWeapons and weapons ~= nil then
-            logDebug("inventory weapons direct=" .. tostring(#sequenceToArray(weapons)))
-        end
-        local okArmor, armor = pcall(function() return inventory:getAll(types.Armor) end)
-        if okArmor and armor ~= nil then
-            logDebug("inventory armor direct=" .. tostring(#sequenceToArray(armor)))
-        end
     end
 
-    local allItems = getAllInventoryItems()
+    local allItems = getRepairableEquipmentItems()
     local weaponSeen = 0
     local armorSeen = 0
 
@@ -365,22 +452,27 @@ local function collectOverrepairCandidates()
         local isWeapon = item ~= nil and types.Weapon.objectIsInstance(item)
         local isArmor = item ~= nil and types.Armor.objectIsInstance(item)
 
-        if isWeapon or isArmor then
-            local currentCondition = getItemCondition(item)
-            local maxCondition = getMaxCondition(item)
+        if isWeapon then weaponSeen = weaponSeen + 1 end
+        if isArmor then armorSeen = armorSeen + 1 end
 
-            if isWeapon then weaponSeen = weaponSeen + 1 end
-            if isArmor then armorSeen = armorSeen + 1 end
-
-            if type(currentCondition) == "number" and type(maxCondition) == "number" and currentCondition == maxCondition then
-                out[#out + 1] = {
-                    item = item,
-                    recordId = item.recordId,
-                    name = getDisplayName(item),
-                    currentCondition = currentCondition,
-                    maxCondition = maxCondition,
-                }
-            end
+        local eligible, reason, currentCondition, maxCondition, itemData = getOverrepairEligibility(item)
+        if eligible then
+            out[#out + 1] = {
+                item = item,
+                recordId = item.recordId,
+                name = getDisplayName(item),
+                currentCondition = currentCondition,
+                maxCondition = maxCondition,
+            }
+        else
+            logDebug(string.format(
+                "overrepair reject id=%s current=%s max=%s itemData=%s reason=%s",
+                tostring(item and item.recordId),
+                tostring(currentCondition),
+                tostring(maxCondition),
+                tostring(itemData ~= nil),
+                tostring(reason)
+            ))
         end
     end
 
@@ -397,7 +489,7 @@ local function applyOverrepairToItem(item, multiplier)
 
     local maxCondition = getMaxCondition(item)
     if type(maxCondition) ~= "number" or maxCondition <= 0 then return false end
-    if currentCondition < maxCondition then return false end
+    if not isAtNormalMaxCondition(currentCondition, maxCondition) then return false end
     if itemData == nil then return false end
 
     local targetCondition = math.floor(maxCondition * multiplier + 0.5)
@@ -412,11 +504,10 @@ local function findEligibleItemByRecordId(recordId)
         return nil
     end
 
-    for _, item in ipairs(getAllInventoryItems()) do
-        if item ~= nil and item.recordId == recordId and (types.Weapon.objectIsInstance(item) or types.Armor.objectIsInstance(item)) then
-            local currentCondition = getItemCondition(item)
-            local maxCondition = getMaxCondition(item)
-            if type(currentCondition) == "number" and type(maxCondition) == "number" and currentCondition == maxCondition then
+    for _, item in ipairs(getRepairableEquipmentItems()) do
+        if item ~= nil and item.recordId == recordId then
+            local eligible = getOverrepairEligibility(item)
+            if eligible then
                 return item
             end
         end
@@ -450,7 +541,12 @@ local function openOverRepairMenu(repairToolItem)
         })
     else
         for _, entry in ipairs(candidates) do
-            local label = string.format("%s (%d/%d)", entry.name, entry.currentCondition, entry.maxCondition)
+            local label = string.format(
+                "%s (%d/%d)",
+                entry.name,
+                math.floor(entry.currentCondition + 0.5),
+                math.floor(entry.maxCondition + 0.5)
+            )
             table.insert(contentLayouts, createButton(label, function()
                 closeAllMenus()
                 local currentRepairTool = getActiveRepairTool()
@@ -460,7 +556,13 @@ local function openOverRepairMenu(repairToolItem)
                     return
                 end
 
-                local targetItem = findEligibleItemByRecordId(entry.recordId) or entry.item
+                local targetItem = nil
+                local entryItemEligible = getOverrepairEligibility(entry.item)
+                if entryItemEligible then
+                    targetItem = entry.item
+                else
+                    targetItem = findEligibleItemByRecordId(entry.recordId)
+                end
                 if targetItem == nil then
                     logDebug("overrepair failed: target item missing for " .. tostring(entry.recordId))
                     showMessage("That item is no longer eligible.")

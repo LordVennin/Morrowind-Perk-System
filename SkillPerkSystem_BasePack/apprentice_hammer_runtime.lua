@@ -12,6 +12,8 @@ local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
+local OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
+local OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
 
 local rootMenuElement = nil
 local subMenuElement = nil
@@ -393,13 +395,9 @@ local function getActiveRepairTool()
     return nil
 end
 
-local function consumeRepairToolUses(item, usesToConsume)
+local function hasRepairToolUses(item, usesRequired)
     local currentCondition, itemData = getItemCondition(item)
-    if type(currentCondition) ~= "number" or currentCondition < usesToConsume or itemData == nil then
-        return false
-    end
-    itemData.condition = currentCondition - usesToConsume
-    return true
+    return type(currentCondition) == "number" and currentCondition >= usesRequired and itemData ~= nil
 end
 
 local function setInterfaceMode()
@@ -526,20 +524,18 @@ local function collectOverrepairCandidates()
     return out
 end
 
-local function applyOverrepairToItem(item, multiplier)
-    local currentCondition, itemData = getItemCondition(item)
-    if type(currentCondition) ~= "number" then return false end
+local function computeOverrepairTargetCondition(item, multiplier)
+    local currentCondition = getItemCondition(item)
+    if type(currentCondition) ~= "number" then return nil end
 
     local maxCondition = getMaxCondition(item)
-    if type(maxCondition) ~= "number" or maxCondition <= 0 then return false end
-    if not isAtNormalMaxCondition(currentCondition, maxCondition) then return false end
-    if itemData == nil then return false end
+    if type(maxCondition) ~= "number" or maxCondition <= 0 then return nil end
+    if not isAtNormalMaxCondition(currentCondition, maxCondition) then return nil end
 
     local targetCondition = math.floor(maxCondition * multiplier + 0.5)
-    if targetCondition <= currentCondition then return false end
+    if targetCondition <= currentCondition then return nil end
 
-    itemData.condition = targetCondition
-    return true, targetCondition
+    return targetCondition
 end
 
 local function findEligibleItemByRecordId(recordId)
@@ -612,20 +608,28 @@ local function openOverRepairMenu(repairToolItem)
                     return
                 end
 
-                if not consumeRepairToolUses(currentRepairTool, OVERREPAIR_USES_COST) then
+                if not hasRepairToolUses(currentRepairTool, OVERREPAIR_USES_COST) then
                     logDebug("overrepair failed: not enough tool uses")
                     showMessage("Not enough hammer uses remaining (need 5).")
                     return
                 end
 
-                local changed, targetCondition = applyOverrepairToItem(targetItem, DEFAULT_MULTIPLIER)
-                if changed then
-                    logDebug("overrepair success for " .. tostring(entry.recordId) .. " -> " .. tostring(targetCondition))
-                    showMessage(string.format("%s is now at %d condition.", entry.name, targetCondition or 0))
-                else
-                    logDebug("overrepair failed: applyOverrepairToItem returned false for " .. tostring(entry.recordId))
-                    showMessage("That item could not be over-repaired.")
+                local targetCondition = computeOverrepairTargetCondition(targetItem, DEFAULT_MULTIPLIER)
+                if targetCondition == nil then
+                    logDebug("overrepair failed: target no longer eligible for " .. tostring(entry.recordId))
+                    showMessage("That item is no longer eligible.")
+                    return
                 end
+
+                core.sendGlobalEvent(OVERREPAIR_REQUEST_EVENT, {
+                    player = getActorObject(),
+                    repairTool = currentRepairTool,
+                    targetItem = targetItem,
+                    targetName = entry.name,
+                    usesCost = OVERREPAIR_USES_COST,
+                    multiplier = DEFAULT_MULTIPLIER,
+                    expectedTargetCondition = targetCondition,
+                })
             end, 620))
         end
     end
@@ -733,6 +737,20 @@ local function onRecordRepairTool(data)
     logDebug("recorded repair tool " .. tostring(lastRepairToolRecordId))
 end
 
+local function onOverrepairResult(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    if data.success then
+        logDebug("overrepair success for " .. tostring(data.recordId) .. " -> " .. tostring(data.targetCondition))
+        showMessage(string.format("%s is now at %d condition.", tostring(data.name or "Item"), tonumber(data.targetCondition) or 0))
+    else
+        logDebug("overrepair failed in global handler reason=" .. tostring(data.reason) .. " recordId=" .. tostring(data.recordId))
+        showMessage(tostring(data.message or "That item could not be over-repaired."))
+    end
+end
+
 local function handleUiModeChanged(data)
     if type(data) ~= "table" then return end
 
@@ -775,6 +793,7 @@ return {
     eventHandlers = {
         UiModeChanged = handleUiModeChanged,
         SkillPerkSystem_RecordRepairTool = onRecordRepairTool,
+        [OVERREPAIR_RESULT_EVENT] = onOverrepairResult,
     },
     engineHandlers = {
         onLoad = function()

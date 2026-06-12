@@ -2,6 +2,8 @@ local steadyHandsEffect = require("scripts.SkillPerkSystem_BasePack.perks.securi
 local types = require("openmw.types")
 
 local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
+local APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
+local APPRENTICE_HAMMER_OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local TUMBLER_SENSE_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local TUMBLER_SENSE_FAILURE_SOURCE = "drain_lockpick_event"
@@ -17,6 +19,164 @@ local function classifySecurityTool(item)
         return "Probe"
     end
     return nil
+end
+
+local function apprenticeHammerLog(message)
+    print("[SkillPerkSystem_BasePack][ApprenticeHammer][Global] " .. tostring(message))
+end
+
+local function sendOverrepairResult(player, result)
+    if player ~= nil and type(player.sendEvent) == "function" then
+        player:sendEvent(APPRENTICE_HAMMER_OVERREPAIR_RESULT_EVENT, result)
+    end
+end
+
+local function safeGetRecordField(record, fieldName)
+    if record == nil then return nil end
+
+    local okField, value = pcall(function()
+        return record[fieldName]
+    end)
+    if okField then
+        return value
+    end
+    return nil
+end
+
+local function getEquipmentRecord(item)
+    if item == nil then return nil end
+
+    if types.Weapon.objectIsInstance(item) then
+        local okRecord, record = pcall(types.Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        local recordId = item.recordId
+        if type(recordId) == "string" and recordId ~= "" then
+            local okById, recordById = pcall(function()
+                return types.Weapon.records[recordId]
+            end)
+            if okById then
+                return recordById
+            end
+        end
+    elseif types.Armor.objectIsInstance(item) then
+        local okRecord, record = pcall(types.Armor.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        local recordId = item.recordId
+        if type(recordId) == "string" and recordId ~= "" then
+            local okById, recordById = pcall(function()
+                return types.Armor.records[recordId]
+            end)
+            if okById then
+                return recordById
+            end
+        end
+    end
+
+    return nil
+end
+
+local function getEquipmentMaxCondition(item)
+    local record = getEquipmentRecord(item)
+    return tonumber(safeGetRecordField(record, "health") or safeGetRecordField(record, "maxCondition"))
+end
+
+local function isAtNormalMaxCondition(currentCondition, maxCondition)
+    if type(currentCondition) ~= "number" or type(maxCondition) ~= "number" then
+        return false
+    end
+
+    local currentRounded = math.floor(currentCondition + 0.5)
+    local maxRounded = math.floor(maxCondition + 0.5)
+    return currentRounded == maxRounded
+end
+
+local function overrepairFailure(player, reason, message, recordId)
+    apprenticeHammerLog("overrepair failed reason=" .. tostring(reason) .. " recordId=" .. tostring(recordId))
+    sendOverrepairResult(player, {
+        success = false,
+        reason = reason,
+        message = message,
+        recordId = recordId,
+    })
+end
+
+local function applyApprenticeHammerOverrepair(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local player = data.player
+    local repairTool = data.repairTool
+    local targetItem = data.targetItem
+    local recordId = targetItem ~= nil and targetItem.recordId or nil
+    local targetName = data.targetName or recordId or "Item"
+    local usesCost = tonumber(data.usesCost) or 5
+    local multiplier = tonumber(data.multiplier) or 1.10
+
+    if player == nil then
+        overrepairFailure(nil, "missing_player", "That item could not be over-repaired.", recordId)
+        return
+    end
+    if repairTool == nil or not types.Repair.objectIsInstance(repairTool) then
+        overrepairFailure(player, "missing_repair_tool", "No repair tool found.", recordId)
+        return
+    end
+    if targetItem == nil or not (types.Weapon.objectIsInstance(targetItem) or types.Armor.objectIsInstance(targetItem)) then
+        overrepairFailure(player, "missing_target", "That item is no longer eligible.", recordId)
+        return
+    end
+
+    local repairToolData = types.Item.itemData(repairTool)
+    local targetData = types.Item.itemData(targetItem)
+    local repairToolCondition = repairToolData ~= nil and repairToolData.condition or nil
+    local currentCondition = targetData ~= nil and targetData.condition or nil
+    local maxCondition = getEquipmentMaxCondition(targetItem)
+
+    if type(repairToolCondition) ~= "number" or repairToolCondition < usesCost then
+        overrepairFailure(player, "not_enough_tool_uses", "Not enough hammer uses remaining (need 5).", recordId)
+        return
+    end
+    if targetData == nil or type(currentCondition) ~= "number" then
+        overrepairFailure(player, "missing_target_condition", "That item could not be over-repaired.", recordId)
+        return
+    end
+    if type(maxCondition) ~= "number" or maxCondition <= 0 then
+        overrepairFailure(player, "missing_max_condition", "That item could not be over-repaired.", recordId)
+        return
+    end
+    if not isAtNormalMaxCondition(currentCondition, maxCondition) then
+        overrepairFailure(player, "target_not_at_normal_max", "That item is no longer eligible.", recordId)
+        return
+    end
+
+    local targetCondition = math.floor(maxCondition * multiplier + 0.5)
+    if targetCondition <= currentCondition then
+        overrepairFailure(player, "target_condition_not_higher", "That item could not be over-repaired.", recordId)
+        return
+    end
+
+    local okWrite, err = pcall(function()
+        repairToolData.condition = repairToolCondition - usesCost
+        targetData.condition = targetCondition
+    end)
+    if not okWrite then
+        overrepairFailure(player, "write_failed", "That item could not be over-repaired.", recordId)
+        apprenticeHammerLog("overrepair write failed err=" .. tostring(err) .. " recordId=" .. tostring(recordId))
+        return
+    end
+
+    apprenticeHammerLog("overrepair success recordId=" .. tostring(recordId) .. " target=" .. tostring(targetCondition) .. " toolUses=" .. tostring(repairToolCondition - usesCost))
+    sendOverrepairResult(player, {
+        success = true,
+        recordId = recordId,
+        name = targetName,
+        targetCondition = targetCondition,
+        repairToolCondition = repairToolCondition - usesCost,
+    })
 end
 
 local function writeToolCondition(data)
@@ -162,6 +322,7 @@ end
 return {
     eventHandlers = {
         [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = writeToolCondition,
+        [APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT] = applyApprenticeHammerOverrepair,
         [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
     },
 }

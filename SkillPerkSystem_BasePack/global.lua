@@ -122,6 +122,22 @@ local function splitOneFromStack(item)
     return nil, false
 end
 
+local function moveIntoPlayerInventory(player, item)
+    if player == nil or item == nil then
+        return false
+    end
+
+    local okInventory, inventory = pcall(types.Actor.inventory, player)
+    if not okInventory or inventory == nil then
+        return false
+    end
+
+    local okMove = pcall(function()
+        item:moveInto(inventory)
+    end)
+    return okMove
+end
+
 local function overrepairFailure(player, reason, message, recordId)
     apprenticeHammerLog("overrepair failed reason=" .. tostring(reason) .. " recordId=" .. tostring(recordId))
     sendOverrepairResult(player, {
@@ -205,6 +221,10 @@ local function applyApprenticeHammerOverrepair(data)
         if targetData == nil then
             error("split target has no item data")
         end
+        targetData.condition = targetCondition
+        if targetStackSplit and not moveIntoPlayerInventory(player, targetToModify) then
+            error("failed to move split target back into player inventory")
+        end
 
         if remainingToolCondition <= 0 then
             repairTool:remove(1)
@@ -222,9 +242,10 @@ local function applyApprenticeHammerOverrepair(data)
                 end
             end
             writableRepairToolData.condition = remainingToolCondition
+            if repairToolStackSplit and not moveIntoPlayerInventory(player, repairToolToModify) then
+                error("failed to move split repair tool back into player inventory")
+            end
         end
-
-        targetData.condition = targetCondition
     end)
     if not okWrite then
         overrepairFailure(player, "write_failed", "That item could not be over-repaired.", recordId)

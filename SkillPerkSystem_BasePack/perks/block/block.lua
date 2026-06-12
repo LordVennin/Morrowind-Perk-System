@@ -24,7 +24,7 @@ return {
             x = -120,
             y = 0,
             title = "Aegis Rite",
-            description = "After a successful shield block, your next melee hit against that attacker within 3 seconds casts a holy sun-damage spell on them at teh cost of 5 Magicka.",
+            description = "After a successful shield block, your next melee hit against that attacker within 3 seconds casts a holy sun-damage spell on them at the cost of 5 Magicka.",
         },
         {
             id = "block_bulwark_of_light",

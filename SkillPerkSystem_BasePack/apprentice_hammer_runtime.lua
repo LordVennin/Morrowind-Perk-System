@@ -112,23 +112,57 @@ local function getPlayerInventory()
     return inventory
 end
 
-local function getMaxCondition(item)
-    if item == nil then return nil end
-    local recordId = item.recordId
-    if type(recordId) ~= "string" or recordId == "" then return nil end
+local function safeGetRecordField(record, fieldName)
+    if record == nil then return nil end
 
-    if types.Weapon.objectIsInstance(item) then
-        local record = types.Weapon.records[recordId]
-        if type(record) == "table" then
-            return tonumber(record.health or record.maxCondition)
-        end
-    elseif types.Armor.objectIsInstance(item) then
-        local record = types.Armor.records[recordId]
-        if type(record) == "table" then
-            return tonumber(record.health or record.maxCondition)
-        end
+    local okField, value = pcall(function()
+        return record[fieldName]
+    end)
+    if okField then
+        return value
     end
     return nil
+end
+
+local function getEquipmentRecord(item)
+    if item == nil then return nil end
+
+    if types.Weapon.objectIsInstance(item) then
+        local okRecord, record = pcall(types.Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        local recordId = item.recordId
+        if type(recordId) == "string" and recordId ~= "" then
+            local okById, recordById = pcall(function()
+                return types.Weapon.records[recordId]
+            end)
+            if okById then
+                return recordById
+            end
+        end
+    elseif types.Armor.objectIsInstance(item) then
+        local okRecord, record = pcall(types.Armor.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        local recordId = item.recordId
+        if type(recordId) == "string" and recordId ~= "" then
+            local okById, recordById = pcall(function()
+                return types.Armor.records[recordId]
+            end)
+            if okById then
+                return recordById
+            end
+        end
+    end
+
+    return nil
+end
+
+local function getMaxCondition(item)
+    local record = getEquipmentRecord(item)
+    return tonumber(safeGetRecordField(record, "health") or safeGetRecordField(record, "maxCondition"))
 end
 
 local function getItemCondition(item)
@@ -148,20 +182,15 @@ end
 
 local function getDisplayName(item)
     if item == nil then return "Unknown Item" end
+
+    local record = getEquipmentRecord(item)
+    local recordName = safeGetRecordField(record, "name")
+    if type(recordName) == "string" and recordName ~= "" then
+        return recordName
+    end
+
     local recordId = item.recordId
     if type(recordId) ~= "string" or recordId == "" then return "Unknown Item" end
-
-    if types.Weapon.objectIsInstance(item) then
-        local record = types.Weapon.records[recordId]
-        if type(record) == "table" and type(record.name) == "string" and record.name ~= "" then
-            return record.name
-        end
-    elseif types.Armor.objectIsInstance(item) then
-        local record = types.Armor.records[recordId]
-        if type(record) == "table" and type(record.name) == "string" and record.name ~= "" then
-            return record.name
-        end
-    end
     return recordId
 end
 
@@ -207,11 +236,25 @@ local function isRepairableEquipmentItem(item)
     return item ~= nil and (types.Weapon.objectIsInstance(item) or types.Armor.objectIsInstance(item))
 end
 
+local function getItemKey(item)
+    if item == nil then return nil end
+
+    local okId, objectId = pcall(function()
+        return item.id
+    end)
+    if okId and objectId ~= nil then
+        return objectId
+    end
+
+    return item
+end
+
 local function addUniqueItem(out, seen, item)
-    if item == nil or seen[item] then
+    local key = getItemKey(item)
+    if item == nil or key == nil or seen[key] then
         return false
     end
-    seen[item] = true
+    seen[key] = true
     out[#out + 1] = item
     return true
 end

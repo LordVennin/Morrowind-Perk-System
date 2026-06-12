@@ -10,7 +10,7 @@ return {
             x = -220,
             y = 0,
             title = "Apprentice Hammer",
-            description = "Using repair hammers and prongs lets you over-repair equipped weapons and armor to 110% condition for a short window.",
+            description = "Using repair hammers and prongs lets you over-repair full condition weapons and armor to 110% condition at the cost of 5 uses.",
         },
         {
             id = "armorer_temper_study",

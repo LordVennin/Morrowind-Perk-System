@@ -94,6 +94,34 @@ local function isAtNormalMaxCondition(currentCondition, maxCondition)
     return currentRounded == maxRounded
 end
 
+local function getObjectCount(item)
+    if item == nil then return 1 end
+
+    local okCount, count = pcall(function()
+        return item.count
+    end)
+    if okCount and type(count) == "number" and count > 0 then
+        return count
+    end
+
+    return 1
+end
+
+local function splitOneFromStack(item)
+    if getObjectCount(item) <= 1 then
+        return item, false
+    end
+
+    local okSplit, splitItem = pcall(function()
+        return item:split(1)
+    end)
+    if okSplit and splitItem ~= nil then
+        return splitItem, true
+    end
+
+    return nil, false
+end
+
 local function overrepairFailure(player, reason, message, recordId)
     apprenticeHammerLog("overrepair failed reason=" .. tostring(reason) .. " recordId=" .. tostring(recordId))
     sendOverrepairResult(player, {
@@ -131,16 +159,16 @@ local function applyApprenticeHammerOverrepair(data)
     end
 
     local repairToolData = types.Item.itemData(repairTool)
-    local targetData = types.Item.itemData(targetItem)
     local repairToolCondition = repairToolData ~= nil and repairToolData.condition or nil
-    local currentCondition = targetData ~= nil and targetData.condition or nil
+    local sourceTargetData = types.Item.itemData(targetItem)
+    local currentCondition = sourceTargetData ~= nil and sourceTargetData.condition or nil
     local maxCondition = getEquipmentMaxCondition(targetItem)
 
     if type(repairToolCondition) ~= "number" or repairToolCondition < usesCost then
         overrepairFailure(player, "not_enough_tool_uses", "Not enough hammer uses remaining (need 5).", recordId)
         return
     end
-    if targetData == nil or type(currentCondition) ~= "number" then
+    if sourceTargetData == nil or type(currentCondition) ~= "number" then
         overrepairFailure(player, "missing_target_condition", "That item could not be over-repaired.", recordId)
         return
     end
@@ -160,12 +188,42 @@ local function applyApprenticeHammerOverrepair(data)
     end
 
     local remainingToolCondition = repairToolCondition - usesCost
+    local targetStackCount = getObjectCount(targetItem)
+    local repairToolStackCount = getObjectCount(repairTool)
+    local targetStackSplit = false
+    local repairToolStackSplit = false
     local okWrite, err = pcall(function()
-        if remainingToolCondition <= 0 then
-            repairTool:remove()
-        else
-            repairToolData.condition = remainingToolCondition
+        local targetToModify = targetItem
+        if targetStackCount > 1 then
+            targetToModify, targetStackSplit = splitOneFromStack(targetItem)
+            if targetToModify == nil then
+                error("failed to split target stack")
+            end
         end
+
+        local targetData = types.Item.itemData(targetToModify)
+        if targetData == nil then
+            error("split target has no item data")
+        end
+
+        if remainingToolCondition <= 0 then
+            repairTool:remove(1)
+        else
+            local repairToolToModify = repairTool
+            local writableRepairToolData = repairToolData
+            if repairToolStackCount > 1 then
+                repairToolToModify, repairToolStackSplit = splitOneFromStack(repairTool)
+                if repairToolToModify == nil then
+                    error("failed to split repair tool stack")
+                end
+                writableRepairToolData = types.Item.itemData(repairToolToModify)
+                if writableRepairToolData == nil then
+                    error("split repair tool has no item data")
+                end
+            end
+            writableRepairToolData.condition = remainingToolCondition
+        end
+
         targetData.condition = targetCondition
     end)
     if not okWrite then
@@ -174,7 +232,7 @@ local function applyApprenticeHammerOverrepair(data)
         return
     end
 
-    apprenticeHammerLog("overrepair success recordId=" .. tostring(recordId) .. " target=" .. tostring(targetCondition) .. " toolUses=" .. tostring(math.max(remainingToolCondition, 0)) .. " toolRemoved=" .. tostring(remainingToolCondition <= 0))
+    apprenticeHammerLog("overrepair success recordId=" .. tostring(recordId) .. " target=" .. tostring(targetCondition) .. " toolUses=" .. tostring(math.max(remainingToolCondition, 0)) .. " toolRemoved=" .. tostring(remainingToolCondition <= 0) .. " targetSplit=" .. tostring(targetStackSplit) .. " repairToolSplit=" .. tostring(repairToolStackSplit))
     sendOverrepairResult(player, {
         success = true,
         recordId = recordId,
@@ -182,6 +240,8 @@ local function applyApprenticeHammerOverrepair(data)
         targetCondition = targetCondition,
         repairToolCondition = math.max(remainingToolCondition, 0),
         repairToolRemoved = remainingToolCondition <= 0,
+        targetStackSplit = targetStackSplit,
+        repairToolStackSplit = repairToolStackSplit,
     })
 end
 

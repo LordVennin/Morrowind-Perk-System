@@ -251,6 +251,19 @@ local function getItemKey(item)
     return item
 end
 
+local function getObjectCount(item)
+    if item == nil then return 1 end
+
+    local okCount, count = pcall(function()
+        return item.count
+    end)
+    if okCount and type(count) == "number" and count > 0 then
+        return count
+    end
+
+    return 1
+end
+
 local function addUniqueItem(out, seen, item)
     local key = getItemKey(item)
     if item == nil or key == nil or seen[key] then
@@ -504,6 +517,7 @@ local function collectOverrepairCandidates()
                 name = getDisplayName(item),
                 currentCondition = currentCondition,
                 maxCondition = maxCondition,
+                count = getObjectCount(item),
             }
         else
             logDebug(string.format(
@@ -580,9 +594,14 @@ local function openOverRepairMenu(repairToolItem)
         })
     else
         for _, entry in ipairs(candidates) do
+            local countLabel = ""
+            if type(entry.count) == "number" and entry.count > 1 then
+                countLabel = " x" .. tostring(entry.count)
+            end
             local label = string.format(
-                "%s (%d/%d)",
+                "%s%s (%d/%d)",
                 entry.name,
+                countLabel,
                 math.floor(entry.currentCondition + 0.5),
                 math.floor(entry.maxCondition + 0.5)
             )

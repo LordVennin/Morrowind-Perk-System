@@ -13,15 +13,15 @@ return {
             description = "Using repair hammers and prongs lets you over-repair full condition weapons and armor to 110% condition at the cost of 5 uses.",
         },
         {
-            id = "armorer_temper_study",
+            id = "armorer_careful_repairs",
             tab = "Armorer",
             effectId = "demo_noop",
             requires = { "armorer_apprentice_hammer" },
             cost = 1,
             x = -80,
             y = 120,
-            title = "Temper Study",
-            description = "UI-only placeholder perk.",
+            title = "Careful Repairs",
+            description = "Repair hammers have a 15% chance to not consume a use when repairing.",
         },
         {
             id = "armorer_field_mender",

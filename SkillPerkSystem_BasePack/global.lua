@@ -2,6 +2,8 @@ local steadyHandsEffect = require("scripts.SkillPerkSystem_BasePack.perks.securi
 local types = require("openmw.types")
 
 local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
+local MODIFY_REPAIR_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_ModifyRepairToolCondition"
+local CAREFUL_REPAIRS_REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_RefundResult"
 local APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
 local APPRENTICE_HAMMER_OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
@@ -266,6 +268,154 @@ local function applyApprenticeHammerOverrepair(data)
     })
 end
 
+
+local function sendCarefulRepairsRefundResult(player, result)
+    if player ~= nil and type(player.sendEvent) == "function" then
+        player:sendEvent(CAREFUL_REPAIRS_REFUND_RESULT_EVENT, result)
+    end
+end
+
+local function repairToolMaxCondition(item)
+    if item == nil then
+        return nil
+    end
+
+    local okRecord, record = pcall(types.Repair.record, item)
+    if okRecord and record ~= nil then
+        local okMax, maxCondition = pcall(function()
+            return record.maxCondition
+        end)
+        if okMax and type(maxCondition) == "number" then
+            return maxCondition
+        end
+    end
+
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        local okById, recordById = pcall(function()
+            return types.Repair.records[recordId]
+        end)
+        if okById and recordById ~= nil then
+            local okMax, maxCondition = pcall(function()
+                return recordById.maxCondition
+            end)
+            if okMax and type(maxCondition) == "number" then
+                return maxCondition
+            end
+        end
+    end
+
+    return nil
+end
+
+local function findRepairToolInInventory(player, recordId)
+    if player == nil or type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    local okInventory, inventory = pcall(types.Actor.inventory, player)
+    if not okInventory or inventory == nil then
+        return nil
+    end
+
+    if type(inventory.find) == "function" then
+        local okFind, found = pcall(function()
+            return inventory:find(recordId)
+        end)
+        if okFind and found ~= nil and types.Repair.objectIsInstance(found) then
+            return found
+        end
+    end
+
+    local okAll, items = pcall(function()
+        return inventory:getAll(types.Repair)
+    end)
+    if not okAll or items == nil then
+        return nil
+    end
+
+    local okPairs, found = pcall(function()
+        for _, item in pairs(items) do
+            if item ~= nil and item.recordId == recordId and types.Repair.objectIsInstance(item) then
+                return item
+            end
+        end
+        return nil
+    end)
+    if okPairs then
+        return found
+    end
+
+    return nil
+end
+
+local function modifyRepairToolCondition(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local player = data.player
+    local amount = tonumber(data.amount) or 0
+    local recordId = data.recordId
+    if player == nil or amount == 0 then
+        return
+    end
+
+    local tool = data.tool
+    if tool == nil or not types.Repair.objectIsInstance(tool) then
+        tool = findRepairToolInInventory(player, recordId)
+    end
+
+    if tool == nil or not types.Repair.objectIsInstance(tool) then
+        sendCarefulRepairsRefundResult(player, {
+            success = false,
+            reason = "missing_repair_tool",
+            amount = amount,
+            recordId = recordId,
+        })
+        return
+    end
+
+    local itemData = types.Item.itemData(tool)
+    if itemData == nil or type(itemData.condition) ~= "number" then
+        sendCarefulRepairsRefundResult(player, {
+            success = false,
+            reason = "missing_repair_tool_condition",
+            amount = amount,
+            recordId = tool.recordId or recordId,
+        })
+        return
+    end
+
+    local currentCondition = itemData.condition
+    local newCondition = currentCondition + amount
+    local maxCondition = repairToolMaxCondition(tool)
+    if type(maxCondition) == "number" and newCondition > maxCondition then
+        newCondition = maxCondition
+    end
+
+    local okWrite, err = pcall(function()
+        itemData.condition = newCondition
+    end)
+    if not okWrite then
+        sendCarefulRepairsRefundResult(player, {
+            success = false,
+            reason = "write_failed",
+            error = tostring(err),
+            amount = amount,
+            recordId = tool.recordId or recordId,
+        })
+        return
+    end
+
+    sendCarefulRepairsRefundResult(player, {
+        success = true,
+        amount = math.max(0, newCondition - currentCondition),
+        recordId = tool.recordId or recordId,
+        condition = newCondition,
+    })
+end
+
 local function writeToolCondition(data)
     if type(data) ~= "table" then
         return
@@ -409,6 +559,7 @@ end
 return {
     eventHandlers = {
         [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = writeToolCondition,
+        [MODIFY_REPAIR_TOOL_CONDITION_EVENT] = modifyRepairToolCondition,
         [APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT] = applyApprenticeHammerOverrepair,
         [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
     },

@@ -14,6 +14,7 @@ local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
 local OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
 local OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
+local CAREFUL_REPAIRS_SUPPRESS_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_SuppressRepairToolDrops"
 
 local rootMenuElement = nil
 local subMenuElement = nil
@@ -640,8 +641,15 @@ local function openOverRepairMenu(repairToolItem)
                     return
                 end
 
+                local playerObject = getActorObject()
+                if playerObject ~= nil and type(playerObject.sendEvent) == "function" then
+                    playerObject:sendEvent(CAREFUL_REPAIRS_SUPPRESS_EVENT, {
+                        amount = OVERREPAIR_USES_COST,
+                        source = "apprentice_hammer_overrepair",
+                    })
+                end
                 core.sendGlobalEvent(OVERREPAIR_REQUEST_EVENT, {
-                    player = getActorObject(),
+                    player = playerObject,
                     repairTool = currentRepairTool,
                     targetItem = targetItem,
                     targetName = entry.name,

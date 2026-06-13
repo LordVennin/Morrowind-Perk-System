@@ -1,3 +1,4 @@
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
@@ -5,6 +6,8 @@ local ui = require("openmw.ui")
 
 local NO_CONSUME_CHANCE = 0.15
 local SUPPRESS_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_SuppressRepairToolDrops"
+local MODIFY_REPAIR_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_ModifyRepairToolCondition"
+local REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_RefundResult"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CAREFUL_REPAIRS_PERK_ID = "armorer_careful_repairs"
 local MAX_CONDITION_ROLLS_PER_UPDATE = 8
@@ -176,26 +179,22 @@ local function snapshotRepairTools()
     return out
 end
 
-local function writeRefund(toolState, amount)
+local function requestRefund(toolState, amount)
     if toolState == nil or toolState.item == nil then
         return false
     end
 
-    local currentCondition, data = repairToolCondition(toolState.item)
-    if type(currentCondition) ~= "number" or data == nil then
+    if type(amount) ~= "number" or amount <= 0 then
         return false
     end
 
-    local newCondition = currentCondition + amount
-    local maxCondition = repairToolMaxCondition(toolState.item)
-    if type(maxCondition) == "number" and newCondition > maxCondition then
-        newCondition = maxCondition
-    end
-
-    local okWrite = pcall(function()
-        data.condition = newCondition
-    end)
-    return okWrite
+    core.sendGlobalEvent(MODIFY_REPAIR_TOOL_CONDITION_EVENT, {
+        player = getActorObject(),
+        tool = toolState.item,
+        recordId = toolState.recordId,
+        amount = amount,
+    })
+    return true
 end
 
 local function rollAndRefund(toolState, attempts)
@@ -216,12 +215,10 @@ local function rollAndRefund(toolState, attempts)
         return
     end
 
-    if writeRefund(toolState, refunds) then
-        local useLabel = refunds == 1 and "use" or "uses"
-        ui.showMessage(string.format("Careful Repairs preserved %d repair tool %s.", refunds, useLabel), { showInDialogue = false })
-        log(string.format("refunded uses=%d recordId=%s", refunds, tostring(toolState.recordId)))
+    if requestRefund(toolState, refunds) then
+        log(string.format("refund requested uses=%d recordId=%s", refunds, tostring(toolState.recordId)))
     else
-        log(string.format("refund failed uses=%d recordId=%s", refunds, tostring(toolState.recordId)))
+        log(string.format("refund request failed uses=%d recordId=%s", refunds, tostring(toolState.recordId)))
     end
 end
 
@@ -288,11 +285,37 @@ local function handleSuppressRepairToolDrops(data)
     log(string.format("suppressing next repair tool drops amount=%d total=%d", amount, suppressDropsRemaining))
 end
 
+local function handleRefundResult(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    if data.success ~= true then
+        log(string.format(
+            "refund failed uses=%s recordId=%s reason=%s",
+            tostring(data.amount),
+            tostring(data.recordId),
+            tostring(data.reason)
+        ))
+        return
+    end
+
+    local amount = math.floor(tonumber(data.amount) or 0)
+    if amount <= 0 then
+        return
+    end
+
+    local useLabel = amount == 1 and "use" or "uses"
+    ui.showMessage(string.format("Careful Repairs preserved %d repair tool %s.", amount, useLabel), { showInDialogue = false })
+    log(string.format("refunded uses=%d recordId=%s", amount, tostring(data.recordId)))
+end
+
 return {
     engineHandlers = {
         onUpdate = onUpdate,
     },
     eventHandlers = {
         [SUPPRESS_EVENT] = handleSuppressRepairToolDrops,
+        [REFUND_RESULT_EVENT] = handleRefundResult,
     },
 }

@@ -1753,7 +1753,6 @@ local function buildPerkPane()
 
         for _, node in ipairs(treeNodes) do
             local childPos = toCanvasPos(node)
-            local childTopY = childPos.y - math.floor(nodeHeight / 2)
             local parentIDs = {}
             for _, reqID in ipairs(node.requires or {}) do
                 table.insert(parentIDs, reqID)
@@ -1765,19 +1764,30 @@ local function buildPerkPane()
                 local parentNode = nodeByID[reqID]
                 if parentNode ~= nil then
                     local parentPos = toCanvasPos(parentNode)
-                    local parentBottomY = parentPos.y + math.floor(nodeHeight / 2)
-                    local middleY = math.floor((parentBottomY + childTopY) / 2)
+                    local halfNodeHeight = math.floor(nodeHeight / 2)
+                    local parentEdgeY
+                    local childEdgeY
 
-                    local startY = math.min(parentBottomY, middleY)
-                    local vertical1Height = math.abs(middleY - parentBottomY)
+                    if childPos.y < parentPos.y then
+                        parentEdgeY = parentPos.y - halfNodeHeight
+                        childEdgeY = childPos.y + halfNodeHeight
+                    else
+                        parentEdgeY = parentPos.y + halfNodeHeight
+                        childEdgeY = childPos.y - halfNodeHeight
+                    end
+
+                    local middleY = math.floor((parentEdgeY + childEdgeY) / 2)
+
+                    local startY = math.min(parentEdgeY, middleY)
+                    local vertical1Height = math.abs(middleY - parentEdgeY)
                     addLine(parentPos.x, startY, lineThickness, vertical1Height)
 
                     local leftX = math.min(parentPos.x, childPos.x)
                     local horizontalWidth = math.abs(childPos.x - parentPos.x)
                     addLine(leftX, middleY, horizontalWidth, lineThickness)
 
-                    local startY2 = math.min(middleY, childTopY)
-                    local vertical2Height = math.abs(childTopY - middleY)
+                    local startY2 = math.min(middleY, childEdgeY)
+                    local vertical2Height = math.abs(childEdgeY - middleY)
                     addLine(childPos.x, startY2, lineThickness, vertical2Height)
                 end
             end

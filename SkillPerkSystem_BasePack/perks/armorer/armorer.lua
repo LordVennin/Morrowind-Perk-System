@@ -42,8 +42,8 @@ return {
             cost = 1,
             x = 200,
             y = 360,
-            title = "Masterwork Rivets",
-            description = "UI-only placeholder perk.",
+            title = "Reforged Plating",
+            description = "Repair tools can refit armor in your inventory. Reinforce armor to make it heavier, tougher, and more protective, or trim it to make it lighter at the cost of armor rating and durability. Reforged armor can be restored.",
         },
         {
             id = "armorer_artisans_focus",

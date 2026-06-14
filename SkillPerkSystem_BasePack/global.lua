@@ -10,8 +10,11 @@ local APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_App
 local APPRENTICE_HAMMER_OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
 local WEAPON_TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Request"
 local WEAPON_TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
+local ARMOR_REFIT_REQUEST_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Request"
+local ARMOR_REFIT_RESULT_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Result"
 local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
 local TEMPERED_WEAPONS_KEY = "temperedWeapons"
+local REFITTED_ARMOR_KEY = "refittedArmor"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local TUMBLER_SENSE_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local TUMBLER_SENSE_FAILURE_SOURCE = "drain_lockpick_event"
@@ -296,6 +299,26 @@ local function weaponTemperFailure(player, reason, message, recordId)
     })
 end
 
+local function armorRefitLog(message)
+    print("[SkillPerkSystem_BasePack][ArmorRefit][Global] " .. tostring(message))
+end
+
+local function sendArmorRefitResult(player, result)
+    if player ~= nil and type(player.sendEvent) == "function" then
+        player:sendEvent(ARMOR_REFIT_RESULT_EVENT, result)
+    end
+end
+
+local function armorRefitFailure(player, reason, message, recordId)
+    armorRefitLog("failed reason=" .. tostring(reason) .. " recordId=" .. tostring(recordId))
+    sendArmorRefitResult(player, {
+        success = false,
+        reason = reason,
+        message = message,
+        recordId = recordId,
+    })
+end
+
 local function getTemperedWeaponRecords()
     local records = temperStorage:get(TEMPERED_WEAPONS_KEY)
     if type(records) ~= "table" then
@@ -309,6 +332,21 @@ end
 
 local function setTemperedWeaponRecords(records)
     temperStorage:set(TEMPERED_WEAPONS_KEY, records)
+end
+
+local function getRefittedArmorRecords()
+    local records = temperStorage:get(REFITTED_ARMOR_KEY)
+    if type(records) ~= "table" then
+        records = {}
+    end
+    if type(records.byGeneratedName) ~= "table" then
+        records.byGeneratedName = {}
+    end
+    return records
+end
+
+local function setRefittedArmorRecords(records)
+    temperStorage:set(REFITTED_ARMOR_KEY, records)
 end
 
 local function inferTemperModeFromName(name)
@@ -335,6 +373,30 @@ local function stripTemperPrefix(name)
     return nil
 end
 
+local function inferArmorRefitModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 11) == "Reinforced " then
+        return "reinforced"
+    elseif string.sub(name, 1, 8) == "Trimmed " then
+        return "trimmed"
+    end
+    return nil
+end
+
+local function stripArmorRefitPrefix(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 11) == "Reinforced " then
+        return string.sub(name, 12)
+    elseif string.sub(name, 1, 8) == "Trimmed " then
+        return string.sub(name, 9)
+    end
+    return nil
+end
+
 local function findWeaponRecordIdByName(name)
     if type(name) ~= "string" or name == "" then
         return nil
@@ -342,6 +404,26 @@ local function findWeaponRecordIdByName(name)
 
     local okPairs, foundId = pcall(function()
         for id, record in pairs(types.Weapon.records) do
+            if safeGetRecordField(record, "name") == name then
+                return id
+            end
+        end
+        return nil
+    end)
+
+    if okPairs and type(foundId) == "string" and foundId ~= "" then
+        return foundId
+    end
+    return nil
+end
+
+local function findArmorRecordIdByName(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    local okPairs, foundId = pcall(function()
+        for id, record in pairs(types.Armor.records) do
             if safeGetRecordField(record, "name") == name then
                 return id
             end
@@ -373,6 +455,24 @@ local function getTemperedWeaponEntry(records, recordId, recordName)
     return nil
 end
 
+local function getRefittedArmorEntry(records, recordId, recordName)
+    local entry = records[recordId]
+    if type(entry) == "table" then
+        return entry
+    end
+
+    local byName = records.byGeneratedName
+    if type(byName) == "table" and type(recordName) == "string" then
+        entry = byName[recordName]
+        if type(entry) == "table" then
+            records[recordId] = entry
+            return entry
+        end
+    end
+
+    return nil
+end
+
 local function getWeaponRecord(item)
     if item == nil then return nil end
     local okRecord, record = pcall(types.Weapon.record, item)
@@ -383,6 +483,24 @@ local function getWeaponRecord(item)
     if type(recordId) == "string" and recordId ~= "" then
         local okById, recordById = pcall(function()
             return types.Weapon.records[recordId]
+        end)
+        if okById then
+            return recordById
+        end
+    end
+    return nil
+end
+
+local function getArmorRecord(item)
+    if item == nil then return nil end
+    local okRecord, record = pcall(types.Armor.record, item)
+    if okRecord and record ~= nil then
+        return record
+    end
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        local okById, recordById = pcall(function()
+            return types.Armor.records[recordId]
         end)
         if okById then
             return recordById
@@ -430,6 +548,22 @@ local function cloneWeaponStats(record)
     }
 end
 
+local function cloneArmorStats(record)
+    return {
+        name = safeGetRecordField(record, "name"),
+        model = safeGetRecordField(record, "model"),
+        icon = safeGetRecordField(record, "icon"),
+        mwscript = safeGetRecordField(record, "mwscript"),
+        type = safeGetRecordField(record, "type"),
+        weight = recordNumber(record, "weight", 0),
+        value = recordNumber(record, "value", 0),
+        health = recordNumber(record, "health", 1),
+        baseArmor = recordNumber(record, "baseArmor", 0),
+        enchant = safeGetRecordField(record, "enchant"),
+        enchantCapacity = recordNumber(record, "enchantCapacity", 0),
+    }
+end
+
 local function applyTemperToStats(base, mode)
     local out = {}
     for key, value in pairs(base) do
@@ -468,6 +602,38 @@ local function applyTemperToStats(base, mode)
     return out
 end
 
+local function scaleArmorRating(value, multiplier)
+    local n = math.floor((tonumber(value) or 0) * multiplier + 0.5)
+    if n < 0 then n = 0 end
+    return n
+end
+
+local function applyArmorRefitToStats(base, mode)
+    local out = {}
+    for key, value in pairs(base) do
+        out[key] = value
+    end
+
+    if mode == "reinforced" then
+        out.name = "Reinforced " .. tostring(base.name or "Armor")
+        out.weight = math.max(0.01, (tonumber(base.weight) or 0) * 1.20)
+        out.health = math.max(1, math.floor((tonumber(base.health) or 1) * 1.15 + 0.5))
+        out.baseArmor = scaleArmorRating(base.baseArmor, 1.07)
+    elseif mode == "trimmed" then
+        out.name = "Trimmed " .. tostring(base.name or "Armor")
+        out.weight = math.max(0.01, (tonumber(base.weight) or 0) * 0.80)
+        out.health = math.max(1, math.floor((tonumber(base.health) or 1) * 0.80 + 0.5))
+        out.baseArmor = scaleArmorRating(base.baseArmor, 0.90)
+    end
+
+    if type(base.enchant) ~= "string" or base.enchant == "" then
+        out.enchant = nil
+        out.enchantCapacity = 0
+    end
+
+    return out
+end
+
 local function weaponDraftFromStats(template, stats)
     return types.Weapon.createRecordDraft({
         template = template,
@@ -491,6 +657,23 @@ local function weaponDraftFromStats(template, stats)
         slashMaxDamage = stats.slashMaxDamage,
         thrustMinDamage = stats.thrustMinDamage,
         thrustMaxDamage = stats.thrustMaxDamage,
+    })
+end
+
+local function armorDraftFromStats(template, stats)
+    return types.Armor.createRecordDraft({
+        template = template,
+        name = stats.name,
+        model = stats.model,
+        icon = stats.icon,
+        mwscript = stats.mwscript,
+        type = stats.type,
+        weight = stats.weight,
+        value = stats.value,
+        health = stats.health,
+        baseArmor = stats.baseArmor,
+        enchant = stats.enchant,
+        enchantCapacity = stats.enchantCapacity,
     })
 end
 
@@ -532,6 +715,18 @@ local function copyItemRuntimeData(sourceItem, targetItem, sourceMaxCondition, t
 end
 
 local function createWeaponForPlayer(player, recordId, sourceItem, sourceMaxCondition, targetMaxCondition)
+    local created = world.createObject(recordId, 1)
+    if created == nil then
+        return nil, "create_object_failed"
+    end
+    copyItemRuntimeData(sourceItem, created, sourceMaxCondition, targetMaxCondition)
+    if not moveIntoPlayerInventory(player, created) then
+        return nil, "move_failed"
+    end
+    return created, nil
+end
+
+local function createArmorForPlayer(player, recordId, sourceItem, sourceMaxCondition, targetMaxCondition)
     local created = world.createObject(recordId, 1)
     if created == nil then
         return nil, "create_object_failed"
@@ -711,6 +906,174 @@ local function applyWeaponTemper(data)
     })
 end
 
+
+local function applyArmorRefit(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local player = data.player
+    local targetItem = data.targetItem
+    local mode = data.mode
+    local recordId = targetItem ~= nil and targetItem.recordId or nil
+    local targetName = data.targetName or recordId or "Armor"
+
+    if player == nil then
+        armorRefitFailure(nil, "missing_player", "That armor could not be refitted.", recordId)
+        return
+    end
+    if targetItem == nil or not types.Armor.objectIsInstance(targetItem) then
+        armorRefitFailure(player, "missing_target", "That armor is no longer eligible.", recordId)
+        return
+    end
+    if mode ~= "reinforced" and mode ~= "trimmed" and mode ~= "restore" then
+        armorRefitFailure(player, "invalid_mode", "That armor refit option is invalid.", recordId)
+        return
+    end
+
+    local records = getRefittedArmorRecords()
+    local sourceRecord = getArmorRecord(targetItem)
+    if sourceRecord == nil then
+        armorRefitFailure(player, "missing_record", "That armor's record could not be read.", recordId)
+        return
+    end
+
+    local sourceRecordName = safeGetRecordField(sourceRecord, "name") or targetName
+    local requestGeneratedName = data.generatedName or targetName
+    local existing = getRefittedArmorEntry(records, recordId, sourceRecordName)
+    if type(existing) ~= "table" and requestGeneratedName ~= sourceRecordName then
+        existing = getRefittedArmorEntry(records, recordId, requestGeneratedName)
+    end
+    if type(existing) ~= "table" and type(data.originalRecordId) == "string" and data.originalRecordId ~= "" then
+        existing = {
+            originalRecordId = data.originalRecordId,
+            originalName = data.originalName,
+            generatedRecordId = data.generatedRecordId or recordId,
+            generatedName = requestGeneratedName,
+            mode = inferArmorRefitModeFromName(sourceRecordName) or inferArmorRefitModeFromName(requestGeneratedName) or "refitted",
+        }
+    end
+    local inferredMode = inferArmorRefitModeFromName(sourceRecordName) or inferArmorRefitModeFromName(requestGeneratedName)
+
+    local sourceMaxCondition = recordNumber(sourceRecord, "health", nil)
+    if type(sourceMaxCondition) ~= "number" or sourceMaxCondition <= 0 then
+        armorRefitFailure(player, "missing_condition", "That armor could not be refitted.", recordId)
+        return
+    end
+
+    if mode == "restore" then
+        if type(existing) ~= "table" or type(existing.originalRecordId) ~= "string" then
+            local strippedName = stripArmorRefitPrefix(sourceRecordName) or stripArmorRefitPrefix(requestGeneratedName)
+            local inferredOriginalRecordId = findArmorRecordIdByName(strippedName)
+            if type(inferredOriginalRecordId) ~= "string" then
+                armorRefitFailure(player, "not_refitted", "That armor has not been refitted or its original record could not be inferred.", recordId)
+                return
+            end
+            existing = {
+                originalRecordId = inferredOriginalRecordId,
+                originalName = strippedName,
+                generatedRecordId = recordId,
+                generatedName = sourceRecordName,
+                mode = inferredMode or "refitted",
+            }
+        end
+        local originalRecord = types.Armor.records[existing.originalRecordId]
+        if originalRecord == nil then
+            armorRefitFailure(player, "missing_original", "The original armor record could not be found.", recordId)
+            return
+        end
+        local originalMaxCondition = recordNumber(originalRecord, "health", sourceMaxCondition)
+        local okRestore, restoreErr = pcall(function()
+            local restored, err = createArmorForPlayer(player, existing.originalRecordId, targetItem, sourceMaxCondition, originalMaxCondition)
+            if restored == nil then
+                error(err or "restore_create_failed")
+            end
+            targetItem:remove(1)
+        end)
+        if not okRestore then
+            armorRefitFailure(player, "restore_failed", "That armor could not be restored.", recordId)
+            armorRefitLog("restore failed err=" .. tostring(restoreErr))
+            return
+        end
+        records[recordId] = nil
+        if type(records.byGeneratedName) == "table" and type(existing.generatedName) == "string" then
+            records.byGeneratedName[existing.generatedName] = nil
+        end
+        setRefittedArmorRecords(records)
+        sendArmorRefitResult(player, {
+            success = true,
+            recordId = existing.originalRecordId,
+            restoredRecordId = recordId,
+            mode = "restore",
+            message = tostring(existing.originalName or targetName) .. " has been restored.",
+        })
+        return
+    end
+
+    if type(existing) == "table" or inferredMode ~= nil then
+        armorRefitFailure(player, "already_refitted", "That armor is already refitted. Restore it first.", recordId)
+        return
+    end
+
+    if type(types.Armor.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+        armorRefitFailure(player, "api_unavailable", "Armor refitting is unavailable in this OpenMW version.", recordId)
+        return
+    end
+
+    local baseStats = cloneArmorStats(sourceRecord)
+    local modifiedStats = applyArmorRefitToStats(baseStats, mode)
+    local okDraft, draft = pcall(armorDraftFromStats, sourceRecord, modifiedStats)
+    if not okDraft or draft == nil then
+        armorRefitFailure(player, "draft_failed", "That armor could not be refitted.", recordId)
+        armorRefitLog("draft failed err=" .. tostring(draft))
+        return
+    end
+
+    local okCreate, createdRecord = pcall(world.createRecord, draft)
+    local generatedRecordId = okCreate and createdRecordId(createdRecord) or nil
+    if type(generatedRecordId) ~= "string" or generatedRecordId == "" then
+        armorRefitFailure(player, "record_create_failed", "That armor could not be refitted.", recordId)
+        armorRefitLog("create record failed err=" .. tostring(createdRecord))
+        return
+    end
+
+    local okReplace, replaceErr = pcall(function()
+        local created, err = createArmorForPlayer(player, generatedRecordId, targetItem, sourceMaxCondition, modifiedStats.health)
+        if created == nil then
+            error(err or "create_failed")
+        end
+        targetItem:remove(1)
+    end)
+    if not okReplace then
+        armorRefitFailure(player, "replace_failed", "That armor could not be refitted.", recordId)
+        armorRefitLog("replace failed err=" .. tostring(replaceErr))
+        return
+    end
+
+    local entry = {
+        originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedRecordId = generatedRecordId,
+        generatedName = modifiedStats.name,
+        mode = mode,
+        original = baseStats,
+        modified = modifiedStats,
+    }
+    records[generatedRecordId] = entry
+    records.byGeneratedName[modifiedStats.name] = entry
+    setRefittedArmorRecords(records)
+
+    local modeLabel = mode == "reinforced" and "reinforced" or "trimmed"
+    sendArmorRefitResult(player, {
+        success = true,
+        recordId = generatedRecordId,
+        originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedName = modifiedStats.name,
+        mode = mode,
+        message = tostring(targetName) .. " has been " .. modeLabel .. ".",
+    })
+end
 
 local function sendCarefulRepairsRefundResult(player, result)
     if player ~= nil and type(player.sendEvent) == "function" then
@@ -1005,6 +1368,7 @@ return {
         [MODIFY_REPAIR_TOOL_CONDITION_EVENT] = modifyRepairToolCondition,
         [APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT] = applyApprenticeHammerOverrepair,
         [WEAPON_TEMPER_REQUEST_EVENT] = applyWeaponTemper,
+        [ARMOR_REFIT_REQUEST_EVENT] = applyArmorRefit,
         [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
     },
 }

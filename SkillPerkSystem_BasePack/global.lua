@@ -1,14 +1,22 @@
 local steadyHandsEffect = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect")
+local storage = require("openmw.storage")
 local types = require("openmw.types")
+local world = require("openmw.world")
 
 local MODIFY_SECURITY_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_ModifySecurityToolCondition"
 local MODIFY_REPAIR_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_ModifyRepairToolCondition"
 local CAREFUL_REPAIRS_REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_RefundResult"
 local APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
 local APPRENTICE_HAMMER_OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
+local WEAPON_TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Request"
+local WEAPON_TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
+local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
+local TEMPERED_WEAPONS_KEY = "temperedWeapons"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local TUMBLER_SENSE_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local TUMBLER_SENSE_FAILURE_SOURCE = "drain_lockpick_event"
+
+local temperStorage = storage.globalSection(TEMPER_STORAGE_SECTION_ID)
 
 local function classifySecurityTool(item)
     if item == nil then
@@ -265,6 +273,428 @@ local function applyApprenticeHammerOverrepair(data)
         repairToolRemoved = remainingToolCondition <= 0,
         targetStackSplit = targetStackSplit,
         repairToolStackSplit = repairToolStackSplit,
+    })
+end
+
+local function weaponTemperLog(message)
+    print("[SkillPerkSystem_BasePack][WeaponTemper][Global] " .. tostring(message))
+end
+
+local function sendWeaponTemperResult(player, result)
+    if player ~= nil and type(player.sendEvent) == "function" then
+        player:sendEvent(WEAPON_TEMPER_RESULT_EVENT, result)
+    end
+end
+
+local function weaponTemperFailure(player, reason, message, recordId)
+    weaponTemperLog("failed reason=" .. tostring(reason) .. " recordId=" .. tostring(recordId))
+    sendWeaponTemperResult(player, {
+        success = false,
+        reason = reason,
+        message = message,
+        recordId = recordId,
+    })
+end
+
+local function getTemperedWeaponRecords()
+    local records = temperStorage:get(TEMPERED_WEAPONS_KEY)
+    if type(records) ~= "table" then
+        records = {}
+    end
+    if type(records.byGeneratedName) ~= "table" then
+        records.byGeneratedName = {}
+    end
+    return records
+end
+
+local function setTemperedWeaponRecords(records)
+    temperStorage:set(TEMPERED_WEAPONS_KEY, records)
+end
+
+local function inferTemperModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 6) == "Honed " then
+        return "honed"
+    elseif string.sub(name, 1, 9) == "Hardened " then
+        return "hardened"
+    end
+    return nil
+end
+
+local function stripTemperPrefix(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 6) == "Honed " then
+        return string.sub(name, 7)
+    elseif string.sub(name, 1, 9) == "Hardened " then
+        return string.sub(name, 10)
+    end
+    return nil
+end
+
+local function findWeaponRecordIdByName(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    local okPairs, foundId = pcall(function()
+        for id, record in pairs(types.Weapon.records) do
+            if safeGetRecordField(record, "name") == name then
+                return id
+            end
+        end
+        return nil
+    end)
+
+    if okPairs and type(foundId) == "string" and foundId ~= "" then
+        return foundId
+    end
+    return nil
+end
+
+local function getTemperedWeaponEntry(records, recordId, recordName)
+    local entry = records[recordId]
+    if type(entry) == "table" then
+        return entry
+    end
+
+    local byName = records.byGeneratedName
+    if type(byName) == "table" and type(recordName) == "string" then
+        entry = byName[recordName]
+        if type(entry) == "table" then
+            records[recordId] = entry
+            return entry
+        end
+    end
+
+    return nil
+end
+
+local function getWeaponRecord(item)
+    if item == nil then return nil end
+    local okRecord, record = pcall(types.Weapon.record, item)
+    if okRecord and record ~= nil then
+        return record
+    end
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        local okById, recordById = pcall(function()
+            return types.Weapon.records[recordId]
+        end)
+        if okById then
+            return recordById
+        end
+    end
+    return nil
+end
+
+local function recordNumber(record, fieldName, fallback)
+    local value = tonumber(safeGetRecordField(record, fieldName))
+    if type(value) == "number" then
+        return value
+    end
+    return fallback
+end
+
+local function scaleDamage(value, multiplier)
+    local n = math.floor((tonumber(value) or 0) * multiplier + 0.5)
+    if n < 0 then n = 0 end
+    return n
+end
+
+local function cloneWeaponStats(record)
+    return {
+        name = safeGetRecordField(record, "name"),
+        model = safeGetRecordField(record, "model"),
+        icon = safeGetRecordField(record, "icon"),
+        mwscript = safeGetRecordField(record, "mwscript"),
+        type = safeGetRecordField(record, "type"),
+        weight = recordNumber(record, "weight", 0),
+        value = recordNumber(record, "value", 0),
+        health = recordNumber(record, "health", 1),
+        speed = recordNumber(record, "speed", 1),
+        reach = recordNumber(record, "reach", 1),
+        enchant = safeGetRecordField(record, "enchant"),
+        enchantCapacity = recordNumber(record, "enchantCapacity", 0),
+        isMagical = safeGetRecordField(record, "isMagical") == true,
+        isSilver = safeGetRecordField(record, "isSilver") == true,
+        chopMinDamage = recordNumber(record, "chopMinDamage", 0),
+        chopMaxDamage = recordNumber(record, "chopMaxDamage", 0),
+        slashMinDamage = recordNumber(record, "slashMinDamage", 0),
+        slashMaxDamage = recordNumber(record, "slashMaxDamage", 0),
+        thrustMinDamage = recordNumber(record, "thrustMinDamage", 0),
+        thrustMaxDamage = recordNumber(record, "thrustMaxDamage", 0),
+    }
+end
+
+local function applyTemperToStats(base, mode)
+    local out = {}
+    for key, value in pairs(base) do
+        out[key] = value
+    end
+
+    if mode == "honed" then
+        out.name = "Honed " .. tostring(base.name or "Weapon")
+        out.weight = math.max(0.01, (tonumber(base.weight) or 0) * 0.90)
+        out.health = math.max(1, math.floor((tonumber(base.health) or 1) * 0.75 + 0.5))
+        out.chopMinDamage = scaleDamage(base.chopMinDamage, 1.10)
+        out.chopMaxDamage = scaleDamage(base.chopMaxDamage, 1.10)
+        out.slashMinDamage = scaleDamage(base.slashMinDamage, 1.10)
+        out.slashMaxDamage = scaleDamage(base.slashMaxDamage, 1.10)
+        out.thrustMinDamage = scaleDamage(base.thrustMinDamage, 1.10)
+        out.thrustMaxDamage = scaleDamage(base.thrustMaxDamage, 1.10)
+    elseif mode == "hardened" then
+        out.name = "Hardened " .. tostring(base.name or "Weapon")
+        out.weight = math.max(0.01, (tonumber(base.weight) or 0) * 1.15)
+        out.health = math.max(1, math.floor((tonumber(base.health) or 1) * 1.40 + 0.5))
+        out.chopMinDamage = scaleDamage(base.chopMinDamage, 0.95)
+        out.chopMaxDamage = scaleDamage(base.chopMaxDamage, 0.95)
+        out.slashMinDamage = scaleDamage(base.slashMinDamage, 0.95)
+        out.slashMaxDamage = scaleDamage(base.slashMaxDamage, 0.95)
+        out.thrustMinDamage = scaleDamage(base.thrustMinDamage, 0.95)
+        out.thrustMaxDamage = scaleDamage(base.thrustMaxDamage, 0.95)
+    end
+
+    if type(base.enchant) ~= "string" or base.enchant == "" then
+        out.enchant = nil
+        out.enchantCapacity = 0
+        out.isMagical = false
+    end
+
+    out.value = math.max(0, math.floor((tonumber(base.value) or 0) * 1.10 + 0.5))
+    return out
+end
+
+local function weaponDraftFromStats(template, stats)
+    return types.Weapon.createRecordDraft({
+        template = template,
+        name = stats.name,
+        model = stats.model,
+        icon = stats.icon,
+        mwscript = stats.mwscript,
+        type = stats.type,
+        weight = stats.weight,
+        value = stats.value,
+        health = stats.health,
+        speed = stats.speed,
+        reach = stats.reach,
+        enchant = stats.enchant,
+        enchantCapacity = stats.enchantCapacity,
+        isMagical = stats.isMagical,
+        isSilver = stats.isSilver,
+        chopMinDamage = stats.chopMinDamage,
+        chopMaxDamage = stats.chopMaxDamage,
+        slashMinDamage = stats.slashMinDamage,
+        slashMaxDamage = stats.slashMaxDamage,
+        thrustMinDamage = stats.thrustMinDamage,
+        thrustMaxDamage = stats.thrustMaxDamage,
+    })
+end
+
+local function createdRecordId(createdRecord)
+    if type(createdRecord) == "string" then
+        return createdRecord
+    end
+    if createdRecord ~= nil then
+        local okId, idValue = pcall(function()
+            return createdRecord.id
+        end)
+        if okId and type(idValue) == "string" and idValue ~= "" then
+            return idValue
+        end
+    end
+    return nil
+end
+
+local function copyItemRuntimeData(sourceItem, targetItem, sourceMaxCondition, targetMaxCondition)
+    local sourceData = types.Item.itemData(sourceItem)
+    local targetData = types.Item.itemData(targetItem)
+    if sourceData == nil or targetData == nil then
+        return
+    end
+
+    local currentCondition = sourceData.condition
+    if type(currentCondition) == "number" and type(sourceMaxCondition) == "number" and sourceMaxCondition > 0 and type(targetMaxCondition) == "number" then
+        targetData.condition = math.max(1, math.floor((currentCondition / sourceMaxCondition) * targetMaxCondition + 0.5))
+    elseif type(currentCondition) == "number" then
+        targetData.condition = currentCondition
+    end
+
+    pcall(function()
+        targetData.enchantmentCharge = sourceData.enchantmentCharge
+    end)
+    pcall(function()
+        targetData.soul = sourceData.soul
+    end)
+end
+
+local function createWeaponForPlayer(player, recordId, sourceItem, sourceMaxCondition, targetMaxCondition)
+    local created = world.createObject(recordId, 1)
+    if created == nil then
+        return nil, "create_object_failed"
+    end
+    copyItemRuntimeData(sourceItem, created, sourceMaxCondition, targetMaxCondition)
+    if not moveIntoPlayerInventory(player, created) then
+        return nil, "move_failed"
+    end
+    return created, nil
+end
+
+local function applyWeaponTemper(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local player = data.player
+    local targetItem = data.targetItem
+    local mode = data.mode
+    local recordId = targetItem ~= nil and targetItem.recordId or nil
+    local targetName = data.targetName or recordId or "Weapon"
+
+    if player == nil then
+        weaponTemperFailure(nil, "missing_player", "That weapon could not be tempered.", recordId)
+        return
+    end
+    if targetItem == nil or not types.Weapon.objectIsInstance(targetItem) then
+        weaponTemperFailure(player, "missing_target", "That weapon is no longer eligible.", recordId)
+        return
+    end
+    if mode ~= "honed" and mode ~= "hardened" and mode ~= "restore" then
+        weaponTemperFailure(player, "invalid_mode", "That tempering option is invalid.", recordId)
+        return
+    end
+
+    local records = getTemperedWeaponRecords()
+    local sourceRecord = getWeaponRecord(targetItem)
+    if sourceRecord == nil then
+        weaponTemperFailure(player, "missing_record", "That weapon's record could not be read.", recordId)
+        return
+    end
+
+    local sourceRecordName = safeGetRecordField(sourceRecord, "name") or targetName
+    local existing = getTemperedWeaponEntry(records, recordId, sourceRecordName)
+    local inferredMode = inferTemperModeFromName(sourceRecordName)
+
+    local sourceMaxCondition = recordNumber(sourceRecord, "health", nil)
+    if type(sourceMaxCondition) ~= "number" or sourceMaxCondition <= 0 then
+        weaponTemperFailure(player, "missing_condition", "That weapon could not be tempered.", recordId)
+        return
+    end
+
+    if mode == "restore" then
+        if type(existing) ~= "table" or type(existing.originalRecordId) ~= "string" then
+            local strippedName = stripTemperPrefix(sourceRecordName)
+            local inferredOriginalRecordId = findWeaponRecordIdByName(strippedName)
+            if type(inferredOriginalRecordId) ~= "string" then
+                weaponTemperFailure(player, "not_tempered", "That weapon has not been tempered or its original record could not be inferred.", recordId)
+                return
+            end
+            existing = {
+                originalRecordId = inferredOriginalRecordId,
+                originalName = strippedName,
+                generatedRecordId = recordId,
+                generatedName = sourceRecordName,
+                mode = inferredMode or "tempered",
+            }
+        end
+        local originalRecord = types.Weapon.records[existing.originalRecordId]
+        if originalRecord == nil then
+            weaponTemperFailure(player, "missing_original", "The original weapon record could not be found.", recordId)
+            return
+        end
+        local originalMaxCondition = recordNumber(originalRecord, "health", sourceMaxCondition)
+        local okRestore, restoreErr = pcall(function()
+            local restored, err = createWeaponForPlayer(player, existing.originalRecordId, targetItem, sourceMaxCondition, originalMaxCondition)
+            if restored == nil then
+                error(err or "restore_create_failed")
+            end
+            targetItem:remove(1)
+        end)
+        if not okRestore then
+            weaponTemperFailure(player, "restore_failed", "That weapon could not be restored.", recordId)
+            weaponTemperLog("restore failed err=" .. tostring(restoreErr))
+            return
+        end
+        records[recordId] = nil
+        if type(records.byGeneratedName) == "table" and type(existing.generatedName) == "string" then
+            records.byGeneratedName[existing.generatedName] = nil
+        end
+        setTemperedWeaponRecords(records)
+        sendWeaponTemperResult(player, {
+            success = true,
+            recordId = existing.originalRecordId,
+            restoredRecordId = recordId,
+            mode = "restore",
+            message = tostring(existing.originalName or targetName) .. " has been restored.",
+        })
+        return
+    end
+
+    if type(existing) == "table" or inferredMode ~= nil then
+        weaponTemperFailure(player, "already_tempered", "That weapon is already tempered. Restore it first.", recordId)
+        return
+    end
+
+    if type(types.Weapon.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+        weaponTemperFailure(player, "api_unavailable", "Weapon tempering is unavailable in this OpenMW version.", recordId)
+        return
+    end
+
+    local baseStats = cloneWeaponStats(sourceRecord)
+    local modifiedStats = applyTemperToStats(baseStats, mode)
+    local okDraft, draft = pcall(weaponDraftFromStats, sourceRecord, modifiedStats)
+    if not okDraft or draft == nil then
+        weaponTemperFailure(player, "draft_failed", "That weapon could not be tempered.", recordId)
+        weaponTemperLog("draft failed err=" .. tostring(draft))
+        return
+    end
+
+    local okCreate, createdRecord = pcall(world.createRecord, draft)
+    local generatedRecordId = okCreate and createdRecordId(createdRecord) or nil
+    if type(generatedRecordId) ~= "string" or generatedRecordId == "" then
+        weaponTemperFailure(player, "record_create_failed", "That weapon could not be tempered.", recordId)
+        weaponTemperLog("create record failed err=" .. tostring(createdRecord))
+        return
+    end
+
+    local okReplace, replaceErr = pcall(function()
+        local created, err = createWeaponForPlayer(player, generatedRecordId, targetItem, sourceMaxCondition, modifiedStats.health)
+        if created == nil then
+            error(err or "create_failed")
+        end
+        targetItem:remove(1)
+    end)
+    if not okReplace then
+        weaponTemperFailure(player, "replace_failed", "That weapon could not be tempered.", recordId)
+        weaponTemperLog("replace failed err=" .. tostring(replaceErr))
+        return
+    end
+
+    local entry = {
+        originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedRecordId = generatedRecordId,
+        generatedName = modifiedStats.name,
+        mode = mode,
+        original = baseStats,
+        modified = modifiedStats,
+    }
+    records[generatedRecordId] = entry
+    records.byGeneratedName[modifiedStats.name] = entry
+    setTemperedWeaponRecords(records)
+
+    local modeLabel = mode == "honed" and "honed" or "hardened"
+    sendWeaponTemperResult(player, {
+        success = true,
+        recordId = generatedRecordId,
+        originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedName = modifiedStats.name,
+        mode = mode,
+        message = tostring(targetName) .. " has been " .. modeLabel .. ".",
     })
 end
 
@@ -561,6 +991,7 @@ return {
         [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = writeToolCondition,
         [MODIFY_REPAIR_TOOL_CONDITION_EVENT] = modifyRepairToolCondition,
         [APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT] = applyApprenticeHammerOverrepair,
+        [WEAPON_TEMPER_REQUEST_EVENT] = applyWeaponTemper,
         [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
     },
 }

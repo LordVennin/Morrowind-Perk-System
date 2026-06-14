@@ -37,7 +37,7 @@ local pendingUseRepairFrames = 0
 local lastRepairTool = nil
 local lastRepairToolRecordId = nil
 
-local temperStorage = storage.globalSection(TEMPER_STORAGE_SECTION_ID)
+local temperStorage = storage.playerSection(TEMPER_STORAGE_SECTION_ID)
 local temperedWeaponCache = {}
 local refittedArmorCache = {}
 
@@ -353,20 +353,36 @@ local function getRepairableEquipmentItems()
     return out, #weaponItems, #armorItems, equippedWeapons, equippedArmor
 end
 
-local function getTemperedWeaponRecords()
-    local records = temperStorage:get(TEMPERED_WEAPONS_KEY)
+local function getStoredRecords(key)
+    local records = nil
+    if type(temperStorage.getCopy) == "function" then
+        records = temperStorage:getCopy(key)
+    else
+        records = temperStorage:get(key)
+    end
     if type(records) ~= "table" then
-        return {}
+        records = {}
+    end
+    if type(records.byGeneratedName) ~= "table" then
+        records.byGeneratedName = {}
     end
     return records
 end
 
+local function getTemperedWeaponRecords()
+    return getStoredRecords(TEMPERED_WEAPONS_KEY)
+end
+
+local function setTemperedWeaponRecords(records)
+    temperStorage:set(TEMPERED_WEAPONS_KEY, records)
+end
+
 local function getRefittedArmorRecords()
-    local records = temperStorage:get(REFITTED_ARMOR_KEY)
-    if type(records) ~= "table" then
-        return {}
-    end
-    return records
+    return getStoredRecords(REFITTED_ARMOR_KEY)
+end
+
+local function setRefittedArmorRecords(records)
+    temperStorage:set(REFITTED_ARMOR_KEY, records)
 end
 
 local function inferArmorRefitModeFromName(name)
@@ -1305,15 +1321,29 @@ local function onArmorRefitResult(data)
 
     if data.success then
         if data.mode == "restore" and type(data.restoredRecordId) == "string" then
+            local existing = refittedArmorCache[data.restoredRecordId] or getRefittedArmorInfo(data.restoredRecordId)
+            local records = getRefittedArmorRecords()
+            records[data.restoredRecordId] = nil
+            if type(existing) == "table" and type(existing.generatedName) == "string" then
+                records.byGeneratedName[existing.generatedName] = nil
+            end
             refittedArmorCache[data.restoredRecordId] = nil
+            setRefittedArmorRecords(records)
         elseif type(data.recordId) == "string" and data.recordId ~= "" then
-            refittedArmorCache[data.recordId] = {
+            local entry = {
                 originalRecordId = data.originalRecordId,
                 originalName = data.originalName,
                 generatedRecordId = data.recordId,
                 generatedName = data.generatedName,
                 mode = data.mode,
             }
+            local records = getRefittedArmorRecords()
+            records[data.recordId] = entry
+            if type(data.generatedName) == "string" then
+                records.byGeneratedName[data.generatedName] = entry
+            end
+            refittedArmorCache[data.recordId] = entry
+            setRefittedArmorRecords(records)
         end
         showMessage(tostring(data.message or "Armor refitting complete."))
     else
@@ -1328,15 +1358,29 @@ local function onTemperResult(data)
 
     if data.success then
         if data.mode == "restore" and type(data.restoredRecordId) == "string" then
+            local existing = temperedWeaponCache[data.restoredRecordId] or getTemperedWeaponInfo(data.restoredRecordId)
+            local records = getTemperedWeaponRecords()
+            records[data.restoredRecordId] = nil
+            if type(existing) == "table" and type(existing.generatedName) == "string" then
+                records.byGeneratedName[existing.generatedName] = nil
+            end
             temperedWeaponCache[data.restoredRecordId] = nil
+            setTemperedWeaponRecords(records)
         elseif type(data.recordId) == "string" and data.recordId ~= "" then
-            temperedWeaponCache[data.recordId] = {
+            local entry = {
                 originalRecordId = data.originalRecordId,
                 originalName = data.originalName,
                 generatedRecordId = data.recordId,
                 generatedName = data.generatedName,
                 mode = data.mode,
             }
+            local records = getTemperedWeaponRecords()
+            records[data.recordId] = entry
+            if type(data.generatedName) == "string" then
+                records.byGeneratedName[data.generatedName] = entry
+            end
+            temperedWeaponCache[data.recordId] = entry
+            setTemperedWeaponRecords(records)
         end
         showMessage(tostring(data.message or "Weapon tempering complete."))
     else

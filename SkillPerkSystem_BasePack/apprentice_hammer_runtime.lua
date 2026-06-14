@@ -10,14 +10,19 @@ local util = require("openmw.util")
 local MENU_NAME = "SkillPerkSystem_BasePack_ApprenticeHammerMenu"
 local OVERREPAIR_MENU_NAME = "SkillPerkSystem_BasePack_OverRepairMenu"
 local TEMPER_MENU_NAME = "SkillPerkSystem_BasePack_WeaponTemperMenu"
+local ARMOR_REFIT_MENU_NAME = "SkillPerkSystem_BasePack_ArmorRefitMenu"
 local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
 local TEMPERED_WEAPONS_KEY = "temperedWeapons"
+local REFITTED_ARMOR_KEY = "refittedArmor"
 local TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Request"
 local TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
+local ARMOR_REFIT_REQUEST_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Request"
+local ARMOR_REFIT_RESULT_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Result"
 local FIELD_MENDER_PERK_ID = "armorer_field_mender"
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
+local REFORGED_PLATING_PERK_ID = "armorer_masterwork_rivets"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
 local OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
 local OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
@@ -34,6 +39,7 @@ local lastRepairToolRecordId = nil
 
 local temperStorage = storage.globalSection(TEMPER_STORAGE_SECTION_ID)
 local temperedWeaponCache = {}
+local refittedArmorCache = {}
 
 local function logDebug(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -62,8 +68,12 @@ local function weaponTemperEnabled()
     return isPerkOwnedAndEnabled(FIELD_MENDER_PERK_ID)
 end
 
+local function armorRefitEnabled()
+    return isPerkOwnedAndEnabled(REFORGED_PLATING_PERK_ID)
+end
+
 local function anyRepairToolActionEnabled()
-    return apprenticeHammerEnabled() or weaponTemperEnabled()
+    return apprenticeHammerEnabled() or weaponTemperEnabled() or armorRefitEnabled()
 end
 
 local function showMessage(text)
@@ -351,6 +361,26 @@ local function getTemperedWeaponRecords()
     return records
 end
 
+local function getRefittedArmorRecords()
+    local records = temperStorage:get(REFITTED_ARMOR_KEY)
+    if type(records) ~= "table" then
+        return {}
+    end
+    return records
+end
+
+local function inferArmorRefitModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 11) == "Reinforced " then
+        return "reinforced"
+    elseif string.sub(name, 1, 8) == "Trimmed " then
+        return "trimmed"
+    end
+    return nil
+end
+
 local function inferTemperModeFromName(name)
     if type(name) ~= "string" then
         return nil
@@ -397,6 +427,40 @@ local function getTemperedWeaponInfo(recordId, displayName)
     return nil
 end
 
+local function getRefittedArmorInfo(recordId, displayName)
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    local cached = refittedArmorCache[recordId]
+    if type(cached) == "table" then
+        return cached
+    end
+
+    local records = getRefittedArmorRecords()
+    local entry = records[recordId]
+    if type(entry) == "table" then
+        refittedArmorCache[recordId] = entry
+        return entry
+    end
+
+    local byName = records.byGeneratedName
+    if type(byName) == "table" and type(displayName) == "string" then
+        entry = byName[displayName]
+        if type(entry) == "table" then
+            refittedArmorCache[recordId] = entry
+            return entry
+        end
+    end
+
+    local inferredMode = inferArmorRefitModeFromName(displayName)
+    if inferredMode ~= nil then
+        return { mode = inferredMode, inferred = true }
+    end
+
+    return nil
+end
+
 local function formatTemperMode(mode)
     if mode == "honed" then
         return "Honed"
@@ -406,10 +470,34 @@ local function formatTemperMode(mode)
     return "Tempered"
 end
 
+local function formatArmorRefitMode(mode)
+    if mode == "reinforced" then
+        return "Reinforced"
+    elseif mode == "trimmed" then
+        return "Trimmed"
+    end
+    return "Refitted"
+end
+
 local function collectWeaponTemperCandidates()
     local out = {}
     local seen = {}
     for _, item in ipairs(getAllInventoryItemsOfType(types.Weapon)) do
+        if item ~= nil and addUniqueItem(out, seen, item) then
+            -- Added by addUniqueItem.
+        end
+    end
+
+    table.sort(out, function(a, b)
+        return string.lower(getDisplayName(a)) < string.lower(getDisplayName(b))
+    end)
+    return out
+end
+
+local function collectArmorRefitCandidates()
+    local out = {}
+    local seen = {}
+    for _, item in ipairs(getAllInventoryItemsOfType(types.Armor)) do
         if item ~= nil and addUniqueItem(out, seen, item) then
             -- Added by addUniqueItem.
         end
@@ -954,6 +1042,173 @@ openTemperWeaponMenu = function()
     })
 end
 
+local function sendArmorRefitRequest(item, mode, refitInfo)
+    if item == nil or type(mode) ~= "string" then
+        showMessage("That armor is no longer eligible.")
+        return
+    end
+
+    closeAllMenus()
+    core.sendGlobalEvent(ARMOR_REFIT_REQUEST_EVENT, {
+        player = getActorObject(),
+        targetItem = item,
+        mode = mode,
+        targetName = getDisplayName(item),
+        originalRecordId = type(refitInfo) == "table" and refitInfo.originalRecordId or nil,
+        originalName = type(refitInfo) == "table" and refitInfo.originalName or nil,
+        generatedRecordId = type(refitInfo) == "table" and refitInfo.generatedRecordId or nil,
+        generatedName = type(refitInfo) == "table" and refitInfo.generatedName or nil,
+    })
+end
+
+local openArmorRefitMenu
+
+local function openArmorRefitModeMenu(entry)
+    closeSubMenu()
+
+    local recordId = entry.item ~= nil and entry.item.recordId or entry.recordId
+    local refitInfo = getRefittedArmorInfo(recordId, entry.name)
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = { text = entry.name, textAlignH = ui.ALIGNMENT.Center },
+        },
+    }
+
+    if refitInfo ~= nil then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "This armor is " .. formatArmorRefitMode(refitInfo.mode) .. ".", textAlignH = ui.ALIGNMENT.Center },
+        })
+        table.insert(contentLayouts, createButton("Restore Original", function()
+            sendArmorRefitRequest(entry.item, "restore", refitInfo)
+        end, 620))
+    else
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "Choose one refit. Value is unchanged.", textAlignH = ui.ALIGNMENT.Center },
+        })
+        table.insert(contentLayouts, createButton("Reinforce: +7% armor, +20% weight, +15% durability", function()
+            sendArmorRefitRequest(entry.item, "reinforced")
+        end, 620))
+        table.insert(contentLayouts, createButton("Trim: -20% weight, -10% armor, -20% durability", function()
+            sendArmorRefitRequest(entry.item, "trimmed")
+        end, 620))
+    end
+
+    table.insert(contentLayouts, createButton("Back", function()
+        openArmorRefitMenu()
+    end, 620))
+
+    subMenuElement = ui.create({
+        layer = "Windows",
+        name = ARMOR_REFIT_MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
+openArmorRefitMenu = function()
+    closeSubMenu()
+
+    local candidates = collectArmorRefitCandidates()
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = { text = "Reforged Plating", textAlignH = ui.ALIGNMENT.Center },
+        },
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "Select armor to reinforce, trim, or restore.", textAlignH = ui.ALIGNMENT.Center },
+        },
+    }
+
+    if #candidates == 0 then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "No armor found in your inventory.", textAlignH = ui.ALIGNMENT.Center },
+        })
+    else
+        for _, item in ipairs(candidates) do
+            local recordId = item.recordId
+            local currentCondition = getItemCondition(item)
+            local maxCondition = getMaxCondition(item)
+            local modeLabel = ""
+            local refitInfo = getRefittedArmorInfo(recordId, getDisplayName(item))
+            if refitInfo ~= nil then
+                modeLabel = " [" .. formatArmorRefitMode(refitInfo.mode) .. "]"
+            end
+            local conditionLabel = ""
+            if type(currentCondition) == "number" and type(maxCondition) == "number" then
+                conditionLabel = string.format(" (%d/%d)", math.floor(currentCondition + 0.5), math.floor(maxCondition + 0.5))
+            end
+            local count = getObjectCount(item)
+            local countLabel = count > 1 and (" x" .. tostring(count)) or ""
+            local entry = {
+                item = item,
+                recordId = recordId,
+                name = getDisplayName(item),
+            }
+            table.insert(contentLayouts, createButton(entry.name .. countLabel .. modeLabel .. conditionLabel, function()
+                openArmorRefitModeMenu(entry)
+            end, 620))
+        end
+    end
+
+    table.insert(contentLayouts, createButton("Back", function()
+        closeSubMenu()
+    end, 620))
+
+    subMenuElement = ui.create({
+        layer = "Windows",
+        name = ARMOR_REFIT_MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
 local function openRepairMenu()
     closeAllMenus()
     customMenuOpen = true
@@ -992,6 +1247,12 @@ local function openRepairMenu()
     if weaponTemperEnabled() then
         table.insert(contentLayouts, createButton("Hone / Harden", function()
             openTemperWeaponMenu()
+        end, 560))
+    end
+
+    if armorRefitEnabled() then
+        table.insert(contentLayouts, createButton("Reforged Plating", function()
+            openArmorRefitMenu()
         end, 560))
     end
 
@@ -1035,6 +1296,29 @@ local function onRecordRepairTool(data)
     lastRepairTool = data.item
     lastRepairToolRecordId = data.recordId or data.item.recordId
     logDebug("recorded repair tool " .. tostring(lastRepairToolRecordId))
+end
+
+local function onArmorRefitResult(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    if data.success then
+        if data.mode == "restore" and type(data.restoredRecordId) == "string" then
+            refittedArmorCache[data.restoredRecordId] = nil
+        elseif type(data.recordId) == "string" and data.recordId ~= "" then
+            refittedArmorCache[data.recordId] = {
+                originalRecordId = data.originalRecordId,
+                originalName = data.originalName,
+                generatedRecordId = data.recordId,
+                generatedName = data.generatedName,
+                mode = data.mode,
+            }
+        end
+        showMessage(tostring(data.message or "Armor refitting complete."))
+    else
+        showMessage(tostring(data.message or "That armor could not be refitted."))
+    end
 end
 
 local function onTemperResult(data)
@@ -1118,6 +1402,7 @@ return {
         SkillPerkSystem_RecordRepairTool = onRecordRepairTool,
         [OVERREPAIR_RESULT_EVENT] = onOverrepairResult,
         [TEMPER_RESULT_EVENT] = onTemperResult,
+        [ARMOR_REFIT_RESULT_EVENT] = onArmorRefitResult,
     },
     engineHandlers = {
         onLoad = function()

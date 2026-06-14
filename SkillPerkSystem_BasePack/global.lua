@@ -575,8 +575,21 @@ local function applyWeaponTemper(data)
     end
 
     local sourceRecordName = safeGetRecordField(sourceRecord, "name") or targetName
+    local requestGeneratedName = data.generatedName or targetName
     local existing = getTemperedWeaponEntry(records, recordId, sourceRecordName)
-    local inferredMode = inferTemperModeFromName(sourceRecordName)
+    if type(existing) ~= "table" and requestGeneratedName ~= sourceRecordName then
+        existing = getTemperedWeaponEntry(records, recordId, requestGeneratedName)
+    end
+    if type(existing) ~= "table" and type(data.originalRecordId) == "string" and data.originalRecordId ~= "" then
+        existing = {
+            originalRecordId = data.originalRecordId,
+            originalName = data.originalName,
+            generatedRecordId = data.generatedRecordId or recordId,
+            generatedName = requestGeneratedName,
+            mode = inferTemperModeFromName(sourceRecordName) or inferTemperModeFromName(requestGeneratedName) or "tempered",
+        }
+    end
+    local inferredMode = inferTemperModeFromName(sourceRecordName) or inferTemperModeFromName(requestGeneratedName)
 
     local sourceMaxCondition = recordNumber(sourceRecord, "health", nil)
     if type(sourceMaxCondition) ~= "number" or sourceMaxCondition <= 0 then
@@ -586,7 +599,7 @@ local function applyWeaponTemper(data)
 
     if mode == "restore" then
         if type(existing) ~= "table" or type(existing.originalRecordId) ~= "string" then
-            local strippedName = stripTemperPrefix(sourceRecordName)
+            local strippedName = stripTemperPrefix(sourceRecordName) or stripTemperPrefix(requestGeneratedName)
             local inferredOriginalRecordId = findWeaponRecordIdByName(strippedName)
             if type(inferredOriginalRecordId) ~= "string" then
                 weaponTemperFailure(player, "not_tempered", "That weapon has not been tempered or its original record could not be inferred.", recordId)

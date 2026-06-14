@@ -787,7 +787,7 @@ local function openOverRepairMenu(repairToolItem)
     })
 end
 
-local function sendTemperRequest(item, mode)
+local function sendTemperRequest(item, mode, temperInfo)
     if item == nil or type(mode) ~= "string" then
         showMessage("That weapon is no longer eligible.")
         return
@@ -799,6 +799,10 @@ local function sendTemperRequest(item, mode)
         targetItem = item,
         mode = mode,
         targetName = getDisplayName(item),
+        originalRecordId = type(temperInfo) == "table" and temperInfo.originalRecordId or nil,
+        originalName = type(temperInfo) == "table" and temperInfo.originalName or nil,
+        generatedRecordId = type(temperInfo) == "table" and temperInfo.generatedRecordId or nil,
+        generatedName = type(temperInfo) == "table" and temperInfo.generatedName or nil,
     })
 end
 
@@ -824,7 +828,7 @@ local function openTemperModeMenu(entry)
             props = { text = "This weapon is " .. formatTemperMode(temperInfo.mode) .. ".", textAlignH = ui.ALIGNMENT.Center },
         })
         table.insert(contentLayouts, createButton("Restore Original", function()
-            sendTemperRequest(entry.item, "restore")
+            sendTemperRequest(entry.item, "restore", temperInfo)
         end, 620))
     else
         table.insert(contentLayouts, {

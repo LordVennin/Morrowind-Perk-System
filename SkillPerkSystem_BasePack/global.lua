@@ -301,11 +301,76 @@ local function getTemperedWeaponRecords()
     if type(records) ~= "table" then
         records = {}
     end
+    if type(records.byGeneratedName) ~= "table" then
+        records.byGeneratedName = {}
+    end
     return records
 end
 
 local function setTemperedWeaponRecords(records)
     temperStorage:set(TEMPERED_WEAPONS_KEY, records)
+end
+
+local function inferTemperModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 6) == "Honed " then
+        return "honed"
+    elseif string.sub(name, 1, 9) == "Hardened " then
+        return "hardened"
+    end
+    return nil
+end
+
+local function stripTemperPrefix(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 6) == "Honed " then
+        return string.sub(name, 7)
+    elseif string.sub(name, 1, 9) == "Hardened " then
+        return string.sub(name, 10)
+    end
+    return nil
+end
+
+local function findWeaponRecordIdByName(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    local okPairs, foundId = pcall(function()
+        for id, record in pairs(types.Weapon.records) do
+            if safeGetRecordField(record, "name") == name then
+                return id
+            end
+        end
+        return nil
+    end)
+
+    if okPairs and type(foundId) == "string" and foundId ~= "" then
+        return foundId
+    end
+    return nil
+end
+
+local function getTemperedWeaponEntry(records, recordId, recordName)
+    local entry = records[recordId]
+    if type(entry) == "table" then
+        return entry
+    end
+
+    local byName = records.byGeneratedName
+    if type(byName) == "table" and type(recordName) == "string" then
+        entry = byName[recordName]
+        if type(entry) == "table" then
+            records[recordId] = entry
+            return entry
+        end
+    end
+
+    return nil
 end
 
 local function getWeaponRecord(item)
@@ -503,12 +568,15 @@ local function applyWeaponTemper(data)
     end
 
     local records = getTemperedWeaponRecords()
-    local existing = records[recordId]
     local sourceRecord = getWeaponRecord(targetItem)
     if sourceRecord == nil then
         weaponTemperFailure(player, "missing_record", "That weapon's record could not be read.", recordId)
         return
     end
+
+    local sourceRecordName = safeGetRecordField(sourceRecord, "name") or targetName
+    local existing = getTemperedWeaponEntry(records, recordId, sourceRecordName)
+    local inferredMode = inferTemperModeFromName(sourceRecordName)
 
     local sourceMaxCondition = recordNumber(sourceRecord, "health", nil)
     if type(sourceMaxCondition) ~= "number" or sourceMaxCondition <= 0 then
@@ -518,8 +586,19 @@ local function applyWeaponTemper(data)
 
     if mode == "restore" then
         if type(existing) ~= "table" or type(existing.originalRecordId) ~= "string" then
-            weaponTemperFailure(player, "not_tempered", "That weapon has not been tempered.", recordId)
-            return
+            local strippedName = stripTemperPrefix(sourceRecordName)
+            local inferredOriginalRecordId = findWeaponRecordIdByName(strippedName)
+            if type(inferredOriginalRecordId) ~= "string" then
+                weaponTemperFailure(player, "not_tempered", "That weapon has not been tempered or its original record could not be inferred.", recordId)
+                return
+            end
+            existing = {
+                originalRecordId = inferredOriginalRecordId,
+                originalName = strippedName,
+                generatedRecordId = recordId,
+                generatedName = sourceRecordName,
+                mode = inferredMode or "tempered",
+            }
         end
         local originalRecord = types.Weapon.records[existing.originalRecordId]
         if originalRecord == nil then
@@ -540,17 +619,21 @@ local function applyWeaponTemper(data)
             return
         end
         records[recordId] = nil
+        if type(records.byGeneratedName) == "table" and type(existing.generatedName) == "string" then
+            records.byGeneratedName[existing.generatedName] = nil
+        end
         setTemperedWeaponRecords(records)
         sendWeaponTemperResult(player, {
             success = true,
             recordId = existing.originalRecordId,
+            restoredRecordId = recordId,
             mode = "restore",
             message = tostring(existing.originalName or targetName) .. " has been restored.",
         })
         return
     end
 
-    if type(existing) == "table" then
+    if type(existing) == "table" or inferredMode ~= nil then
         weaponTemperFailure(player, "already_tempered", "That weapon is already tempered. Restore it first.", recordId)
         return
     end
@@ -590,7 +673,7 @@ local function applyWeaponTemper(data)
         return
     end
 
-    records[generatedRecordId] = {
+    local entry = {
         originalRecordId = recordId,
         originalName = baseStats.name,
         generatedRecordId = generatedRecordId,
@@ -599,6 +682,8 @@ local function applyWeaponTemper(data)
         original = baseStats,
         modified = modifiedStats,
     }
+    records[generatedRecordId] = entry
+    records.byGeneratedName[modifiedStats.name] = entry
     setTemperedWeaponRecords(records)
 
     local modeLabel = mode == "honed" and "honed" or "hardened"
@@ -606,6 +691,8 @@ local function applyWeaponTemper(data)
         success = true,
         recordId = generatedRecordId,
         originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedName = modifiedStats.name,
         mode = mode,
         message = tostring(targetName) .. " has been " .. modeLabel .. ".",
     })

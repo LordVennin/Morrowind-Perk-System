@@ -33,6 +33,7 @@ local lastRepairTool = nil
 local lastRepairToolRecordId = nil
 
 local temperStorage = storage.globalSection(TEMPER_STORAGE_SECTION_ID)
+local temperedWeaponCache = {}
 
 local function logDebug(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -350,15 +351,49 @@ local function getTemperedWeaponRecords()
     return records
 end
 
-local function getTemperedWeaponInfo(recordId)
+local function inferTemperModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 6) == "Honed " then
+        return "honed"
+    elseif string.sub(name, 1, 9) == "Hardened " then
+        return "hardened"
+    end
+    return nil
+end
+
+local function getTemperedWeaponInfo(recordId, displayName)
     if type(recordId) ~= "string" or recordId == "" then
         return nil
     end
+
+    local cached = temperedWeaponCache[recordId]
+    if type(cached) == "table" then
+        return cached
+    end
+
     local records = getTemperedWeaponRecords()
     local entry = records[recordId]
     if type(entry) == "table" then
+        temperedWeaponCache[recordId] = entry
         return entry
     end
+
+    local byName = records.byGeneratedName
+    if type(byName) == "table" and type(displayName) == "string" then
+        entry = byName[displayName]
+        if type(entry) == "table" then
+            temperedWeaponCache[recordId] = entry
+            return entry
+        end
+    end
+
+    local inferredMode = inferTemperModeFromName(displayName)
+    if inferredMode ~= nil then
+        return { mode = inferredMode, inferred = true }
+    end
+
     return nil
 end
 
@@ -773,7 +808,7 @@ local function openTemperModeMenu(entry)
     closeSubMenu()
 
     local recordId = entry.item ~= nil and entry.item.recordId or entry.recordId
-    local temperInfo = getTemperedWeaponInfo(recordId)
+    local temperInfo = getTemperedWeaponInfo(recordId, entry.name)
     local contentLayouts = {
         {
             type = ui.TYPE.Text,
@@ -864,7 +899,7 @@ openTemperWeaponMenu = function()
             local currentCondition = getItemCondition(item)
             local maxCondition = getMaxCondition(item)
             local modeLabel = ""
-            local temperInfo = getTemperedWeaponInfo(recordId)
+            local temperInfo = getTemperedWeaponInfo(recordId, getDisplayName(item))
             if temperInfo ~= nil then
                 modeLabel = " [" .. formatTemperMode(temperInfo.mode) .. "]"
             end
@@ -1004,6 +1039,17 @@ local function onTemperResult(data)
     end
 
     if data.success then
+        if data.mode == "restore" and type(data.restoredRecordId) == "string" then
+            temperedWeaponCache[data.restoredRecordId] = nil
+        elseif type(data.recordId) == "string" and data.recordId ~= "" then
+            temperedWeaponCache[data.recordId] = {
+                originalRecordId = data.originalRecordId,
+                originalName = data.originalName,
+                generatedRecordId = data.recordId,
+                generatedName = data.generatedName,
+                mode = data.mode,
+            }
+        end
         showMessage(tostring(data.message or "Weapon tempering complete."))
     else
         showMessage(tostring(data.message or "That weapon could not be tempered."))

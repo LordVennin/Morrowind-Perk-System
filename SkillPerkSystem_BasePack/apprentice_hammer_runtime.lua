@@ -2,14 +2,21 @@ local async = require("openmw.async")
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
+local storage = require("openmw.storage")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 
 local MENU_NAME = "SkillPerkSystem_BasePack_ApprenticeHammerMenu"
 local OVERREPAIR_MENU_NAME = "SkillPerkSystem_BasePack_OverRepairMenu"
+local TEMPER_MENU_NAME = "SkillPerkSystem_BasePack_WeaponTemperMenu"
 local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
+local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
+local TEMPERED_WEAPONS_KEY = "temperedWeapons"
+local TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Request"
+local TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
+local FIELD_MENDER_PERK_ID = "armorer_field_mender"
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
 local OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
@@ -24,6 +31,8 @@ local pendingUseRepairTool = nil
 local pendingUseRepairFrames = 0
 local lastRepairTool = nil
 local lastRepairToolRecordId = nil
+
+local temperStorage = storage.globalSection(TEMPER_STORAGE_SECTION_ID)
 
 local function logDebug(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -46,6 +55,14 @@ end
 
 local function apprenticeHammerEnabled()
     return isPerkOwnedAndEnabled(APPRENTICE_PERK_ID)
+end
+
+local function weaponTemperEnabled()
+    return isPerkOwnedAndEnabled(FIELD_MENDER_PERK_ID)
+end
+
+local function anyRepairToolActionEnabled()
+    return apprenticeHammerEnabled() or weaponTemperEnabled()
 end
 
 local function showMessage(text)
@@ -323,6 +340,50 @@ local function getRepairableEquipmentItems()
     end
 
     return out, #weaponItems, #armorItems, equippedWeapons, equippedArmor
+end
+
+local function getTemperedWeaponRecords()
+    local records = temperStorage:get(TEMPERED_WEAPONS_KEY)
+    if type(records) ~= "table" then
+        return {}
+    end
+    return records
+end
+
+local function getTemperedWeaponInfo(recordId)
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+    local records = getTemperedWeaponRecords()
+    local entry = records[recordId]
+    if type(entry) == "table" then
+        return entry
+    end
+    return nil
+end
+
+local function formatTemperMode(mode)
+    if mode == "honed" then
+        return "Honed"
+    elseif mode == "hardened" then
+        return "Hardened"
+    end
+    return "Tempered"
+end
+
+local function collectWeaponTemperCandidates()
+    local out = {}
+    local seen = {}
+    for _, item in ipairs(getAllInventoryItemsOfType(types.Weapon)) do
+        if item ~= nil and addUniqueItem(out, seen, item) then
+            -- Added by addUniqueItem.
+        end
+    end
+
+    table.sort(out, function(a, b)
+        return string.lower(getDisplayName(a)) < string.lower(getDisplayName(b))
+    end)
+    return out
 end
 
 local function isAtNormalMaxCondition(currentCondition, maxCondition)
@@ -691,6 +752,169 @@ local function openOverRepairMenu(repairToolItem)
     })
 end
 
+local function sendTemperRequest(item, mode)
+    if item == nil or type(mode) ~= "string" then
+        showMessage("That weapon is no longer eligible.")
+        return
+    end
+
+    closeAllMenus()
+    core.sendGlobalEvent(TEMPER_REQUEST_EVENT, {
+        player = getActorObject(),
+        targetItem = item,
+        mode = mode,
+        targetName = getDisplayName(item),
+    })
+end
+
+local openTemperWeaponMenu
+
+local function openTemperModeMenu(entry)
+    closeSubMenu()
+
+    local recordId = entry.item ~= nil and entry.item.recordId or entry.recordId
+    local temperInfo = getTemperedWeaponInfo(recordId)
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = { text = entry.name, textAlignH = ui.ALIGNMENT.Center },
+        },
+    }
+
+    if temperInfo ~= nil then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "This weapon is " .. formatTemperMode(temperInfo.mode) .. ".", textAlignH = ui.ALIGNMENT.Center },
+        })
+        table.insert(contentLayouts, createButton("Restore Original", function()
+            sendTemperRequest(entry.item, "restore")
+        end, 620))
+    else
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "Choose one temper. Unenchanted tempered weapons cannot be enchanted afterward.", textAlignH = ui.ALIGNMENT.Center },
+        })
+        table.insert(contentLayouts, createButton("Hone: +damage, -weight, -durability", function()
+            sendTemperRequest(entry.item, "honed")
+        end, 620))
+        table.insert(contentLayouts, createButton("Harden: +durability, +weight, -damage", function()
+            sendTemperRequest(entry.item, "hardened")
+        end, 620))
+    end
+
+    table.insert(contentLayouts, createButton("Back", function()
+        openTemperWeaponMenu()
+    end, 620))
+
+    subMenuElement = ui.create({
+        layer = "Windows",
+        name = TEMPER_MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
+openTemperWeaponMenu = function()
+    closeSubMenu()
+
+    local candidates = collectWeaponTemperCandidates()
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = { text = "Hone or Harden", textAlignH = ui.ALIGNMENT.Center },
+        },
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "Select a weapon to temper or restore.", textAlignH = ui.ALIGNMENT.Center },
+        },
+    }
+
+    if #candidates == 0 then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "No weapons found in your inventory.", textAlignH = ui.ALIGNMENT.Center },
+        })
+    else
+        for _, item in ipairs(candidates) do
+            local recordId = item.recordId
+            local currentCondition = getItemCondition(item)
+            local maxCondition = getMaxCondition(item)
+            local modeLabel = ""
+            local temperInfo = getTemperedWeaponInfo(recordId)
+            if temperInfo ~= nil then
+                modeLabel = " [" .. formatTemperMode(temperInfo.mode) .. "]"
+            end
+            local conditionLabel = ""
+            if type(currentCondition) == "number" and type(maxCondition) == "number" then
+                conditionLabel = string.format(" (%d/%d)", math.floor(currentCondition + 0.5), math.floor(maxCondition + 0.5))
+            end
+            local count = getObjectCount(item)
+            local countLabel = count > 1 and (" x" .. tostring(count)) or ""
+            local entry = {
+                item = item,
+                recordId = recordId,
+                name = getDisplayName(item),
+            }
+            table.insert(contentLayouts, createButton(entry.name .. countLabel .. modeLabel .. conditionLabel, function()
+                openTemperModeMenu(entry)
+            end, 620))
+        end
+    end
+
+    table.insert(contentLayouts, createButton("Back", function()
+        closeSubMenu()
+    end, 620))
+
+    subMenuElement = ui.create({
+        layer = "Windows",
+        name = TEMPER_MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
 local function openRepairMenu()
     closeAllMenus()
     customMenuOpen = true
@@ -718,14 +942,24 @@ local function openRepairMenu()
         createButton("Repair", function()
             requestBaseRepairUi(repairToolItem or getActiveRepairTool())
         end, 560),
-        createButton("Over Repair", function()
-            openOverRepairMenu(repairToolItem or getActiveRepairTool())
-        end, 560),
-        createButton("Close", function()
-            closeAllMenus()
-            setInterfaceMode()
-        end, 560),
     }
+
+    if apprenticeHammerEnabled() then
+        table.insert(contentLayouts, createButton("Over Repair", function()
+            openOverRepairMenu(repairToolItem or getActiveRepairTool())
+        end, 560))
+    end
+
+    if weaponTemperEnabled() then
+        table.insert(contentLayouts, createButton("Hone / Harden", function()
+            openTemperWeaponMenu()
+        end, 560))
+    end
+
+    table.insert(contentLayouts, createButton("Close", function()
+        closeAllMenus()
+        setInterfaceMode()
+    end, 560))
 
     rootMenuElement = ui.create({
         layer = "Windows",
@@ -764,6 +998,18 @@ local function onRecordRepairTool(data)
     logDebug("recorded repair tool " .. tostring(lastRepairToolRecordId))
 end
 
+local function onTemperResult(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    if data.success then
+        showMessage(tostring(data.message or "Weapon tempering complete."))
+    else
+        showMessage(tostring(data.message or "That weapon could not be tempered."))
+    end
+end
+
 local function onOverrepairResult(data)
     if type(data) ~= "table" then
         return
@@ -787,7 +1033,7 @@ local function handleUiModeChanged(data)
             return
         end
 
-        if not apprenticeHammerEnabled() then
+        if not anyRepairToolActionEnabled() then
             closeAllMenus()
             return
         end
@@ -821,6 +1067,7 @@ return {
         UiModeChanged = handleUiModeChanged,
         SkillPerkSystem_RecordRepairTool = onRecordRepairTool,
         [OVERREPAIR_RESULT_EVENT] = onOverrepairResult,
+        [TEMPER_RESULT_EVENT] = onTemperResult,
     },
     engineHandlers = {
         onLoad = function()

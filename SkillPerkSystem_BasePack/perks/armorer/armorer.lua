@@ -46,15 +46,15 @@ return {
             description = "Repair tools can refit armor in your inventory. Reinforce armor to make it heavier, tougher, and more protective, or trim it to make it lighter at the cost of armor rating and durability. Reforged armor can be restored.",
         },
         {
-            id = "armorer_artisans_focus",
+            id = "armorer_masterwork",
             tab = "Armorer",
             effectId = "demo_noop",
             requires = { "armorer_masterwork_rivets" },
             cost = 1,
             x = 340,
             y = 480,
-            title = "Artisan's Focus",
-            description = "UI-only placeholder perk.",
+            title = "Masterwork",
+            description = "Repair tools can masterwork one weapon or piece of armor in your inventory, improving damage or armor rating and durability without changing value or weight. Only one masterwork can exist at a time, and it can be restored.",
         },
     },
 }

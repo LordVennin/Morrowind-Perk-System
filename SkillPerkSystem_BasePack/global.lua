@@ -17,7 +17,6 @@ local MASTERWORK_RESULT_EVENT = "SkillPerkSystem_BasePack_Masterwork_Result"
 local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
 local TEMPERED_WEAPONS_KEY = "temperedWeapons"
 local REFITTED_ARMOR_KEY = "refittedArmor"
-local MASTERWORKED_GEAR_KEY = "masterworkedGear"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local TUMBLER_SENSE_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local TUMBLER_SENSE_FAILURE_SOURCE = "drain_lockpick_event"
@@ -370,18 +369,6 @@ end
 
 local function setRefittedArmorRecords(records)
     temperStorage:set(REFITTED_ARMOR_KEY, records)
-end
-
-local function getMasterworkedGearRecord()
-    local record = temperStorage:get(MASTERWORKED_GEAR_KEY)
-    if type(record) == "table" and type(record.generatedRecordId) == "string" then
-        return record
-    end
-    return nil
-end
-
-local function setMasterworkedGearRecord(record)
-    temperStorage:set(MASTERWORKED_GEAR_KEY, type(record) == "table" and record or {})
 end
 
 local function inferMasterworkModeFromName(name)
@@ -1192,7 +1179,7 @@ local function applyMasterwork(data)
         return
     end
 
-    local active = getMasterworkedGearRecord()
+    local active = type(data.activeMasterwork) == "table" and data.activeMasterwork or nil
     local sourceRecord = isWeapon and getWeaponRecord(targetItem) or getArmorRecord(targetItem)
     if sourceRecord == nil then
         masterworkFailure(player, "missing_record", "That item's record could not be read.", recordId)
@@ -1262,7 +1249,6 @@ local function applyMasterwork(data)
             masterworkLog("restore failed err=" .. tostring(restoreErr))
             return
         end
-        setMasterworkedGearRecord(nil)
         sendMasterworkResult(player, {
             success = true,
             recordId = existing.originalRecordId,
@@ -1335,8 +1321,6 @@ local function applyMasterwork(data)
         original = baseStats,
         modified = modifiedStats,
     }
-    setMasterworkedGearRecord(entry)
-
     sendMasterworkResult(player, {
         success = true,
         recordId = generatedRecordId,

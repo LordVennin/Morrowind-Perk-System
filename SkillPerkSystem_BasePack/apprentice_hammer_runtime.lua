@@ -17,7 +17,6 @@ local DEFAULT_MULTIPLIER = 1.10
 local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
 local TEMPERED_WEAPONS_KEY = "temperedWeapons"
 local REFITTED_ARMOR_KEY = "refittedArmor"
-local MASTERWORKED_GEAR_KEY = "masterworkedGear"
 local TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Request"
 local TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
 local ARMOR_REFIT_REQUEST_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Request"
@@ -396,23 +395,11 @@ local function setRefittedArmorRecords(records)
 end
 
 local function getMasterworkedGearRecord()
-    local record = nil
-    if type(temperStorage.getCopy) == "function" then
-        record = temperStorage:getCopy(MASTERWORKED_GEAR_KEY)
-    else
-        record = temperStorage:get(MASTERWORKED_GEAR_KEY)
-    end
-    if type(record) == "table" and type(record.generatedRecordId) == "string" then
-        masterworkedGearCache = record
-        return record
-    end
-    masterworkedGearCache = nil
-    return nil
+    return masterworkedGearCache
 end
 
 local function setMasterworkedGearRecord(record)
     masterworkedGearCache = type(record) == "table" and record or nil
-    temperStorage:set(MASTERWORKED_GEAR_KEY, masterworkedGearCache or {})
 end
 
 local function inferMasterworkModeFromName(name)
@@ -1147,12 +1134,15 @@ local function sendMasterworkRequest(item, mode, masterworkInfo)
         return
     end
 
+    local activeMasterwork = getMasterworkedGearRecord()
+
     closeAllMenus()
     core.sendGlobalEvent(MASTERWORK_REQUEST_EVENT, {
         player = getActorObject(),
         targetItem = item,
         mode = mode,
         targetName = getDisplayName(item),
+        activeMasterwork = activeMasterwork,
         originalRecordId = type(masterworkInfo) == "table" and masterworkInfo.originalRecordId or nil,
         originalName = type(masterworkInfo) == "table" and masterworkInfo.originalName or nil,
         generatedRecordId = type(masterworkInfo) == "table" and masterworkInfo.generatedRecordId or nil,
@@ -1725,8 +1715,18 @@ return {
         [MASTERWORK_RESULT_EVENT] = onMasterworkResult,
     },
     engineHandlers = {
-        onLoad = function()
+        onLoad = function(savedData)
+            if type(savedData) == "table" and type(savedData.masterworkedGear) == "table" and type(savedData.masterworkedGear.generatedRecordId) == "string" then
+                masterworkedGearCache = savedData.masterworkedGear
+            else
+                masterworkedGearCache = nil
+            end
             logDebug("onLoad")
+        end,
+        onSave = function()
+            return {
+                masterworkedGear = masterworkedGearCache,
+            }
         end,
         onFrame = function()
             tryPendingRepairUse()

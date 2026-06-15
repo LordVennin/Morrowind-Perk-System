@@ -4,6 +4,7 @@ return {
         {
             id = "armorer_careful_repairs",
             tab = "Armorer",
+            minimumSkill = 20,
             effectId = "demo_noop",
             requires = {},
             cost = 1,
@@ -15,6 +16,7 @@ return {
         {
             id = "armorer_apprentice_hammer",
             tab = "Armorer",
+            minimumSkill = 35,
             effectId = "demo_noop",
             requires = { "armorer_careful_repairs" },
             cost = 1,
@@ -26,6 +28,7 @@ return {
         {
             id = "armorer_field_mender",
             tab = "Armorer",
+            minimumSkill = 50,
             effectId = "demo_noop",
             requires = { "armorer_apprentice_hammer" },
             cost = 1,
@@ -37,6 +40,7 @@ return {
         {
             id = "armorer_masterwork_rivets",
             tab = "Armorer",
+            minimumSkill = 70,
             effectId = "demo_noop",
             requires = { "armorer_field_mender" },
             cost = 1,
@@ -48,6 +52,7 @@ return {
         {
             id = "armorer_masterwork",
             tab = "Armorer",
+            minimumSkill = 90,
             effectId = "demo_noop",
             requires = { "armorer_masterwork_rivets" },
             cost = 1,

@@ -12,9 +12,12 @@ local WEAPON_TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Reque
 local WEAPON_TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
 local ARMOR_REFIT_REQUEST_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Request"
 local ARMOR_REFIT_RESULT_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Result"
+local MASTERWORK_REQUEST_EVENT = "SkillPerkSystem_BasePack_Masterwork_Request"
+local MASTERWORK_RESULT_EVENT = "SkillPerkSystem_BasePack_Masterwork_Result"
 local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
 local TEMPERED_WEAPONS_KEY = "temperedWeapons"
 local REFITTED_ARMOR_KEY = "refittedArmor"
+local MASTERWORKED_GEAR_KEY = "masterworkedGear"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local TUMBLER_SENSE_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
 local TUMBLER_SENSE_FAILURE_SOURCE = "drain_lockpick_event"
@@ -319,6 +322,26 @@ local function armorRefitFailure(player, reason, message, recordId)
     })
 end
 
+local function masterworkLog(message)
+    print("[SkillPerkSystem_BasePack][Masterwork][Global] " .. tostring(message))
+end
+
+local function sendMasterworkResult(player, result)
+    if player ~= nil and type(player.sendEvent) == "function" then
+        player:sendEvent(MASTERWORK_RESULT_EVENT, result)
+    end
+end
+
+local function masterworkFailure(player, reason, message, recordId)
+    masterworkLog("failed reason=" .. tostring(reason) .. " recordId=" .. tostring(recordId))
+    sendMasterworkResult(player, {
+        success = false,
+        reason = reason,
+        message = message,
+        recordId = recordId,
+    })
+end
+
 local function getTemperedWeaponRecords()
     local records = temperStorage:get(TEMPERED_WEAPONS_KEY)
     if type(records) ~= "table" then
@@ -347,6 +370,38 @@ end
 
 local function setRefittedArmorRecords(records)
     temperStorage:set(REFITTED_ARMOR_KEY, records)
+end
+
+local function getMasterworkedGearRecord()
+    local record = temperStorage:get(MASTERWORKED_GEAR_KEY)
+    if type(record) == "table" and type(record.generatedRecordId) == "string" then
+        return record
+    end
+    return nil
+end
+
+local function setMasterworkedGearRecord(record)
+    temperStorage:set(MASTERWORKED_GEAR_KEY, type(record) == "table" and record or {})
+end
+
+local function inferMasterworkModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 11) == "Masterwork " then
+        return "masterwork"
+    end
+    return nil
+end
+
+local function stripMasterworkPrefix(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 11) == "Masterwork " then
+        return string.sub(name, 12)
+    end
+    return nil
 end
 
 local function inferTemperModeFromName(name)
@@ -606,6 +661,42 @@ local function scaleArmorRating(value, multiplier)
     local n = math.floor((tonumber(value) or 0) * multiplier + 0.5)
     if n < 0 then n = 0 end
     return n
+end
+
+local function applyMasterworkToWeaponStats(base)
+    local out = {}
+    for key, value in pairs(base) do
+        out[key] = value
+    end
+    out.name = "Masterwork " .. tostring(base.name or "Weapon")
+    out.health = math.max(1, math.floor((tonumber(base.health) or 1) * 1.25 + 0.5))
+    out.chopMinDamage = scaleDamage(base.chopMinDamage, 1.15)
+    out.chopMaxDamage = scaleDamage(base.chopMaxDamage, 1.15)
+    out.slashMinDamage = scaleDamage(base.slashMinDamage, 1.15)
+    out.slashMaxDamage = scaleDamage(base.slashMaxDamage, 1.15)
+    out.thrustMinDamage = scaleDamage(base.thrustMinDamage, 1.15)
+    out.thrustMaxDamage = scaleDamage(base.thrustMaxDamage, 1.15)
+    if type(base.enchant) ~= "string" or base.enchant == "" then
+        out.enchant = nil
+        out.enchantCapacity = 0
+        out.isMagical = false
+    end
+    return out
+end
+
+local function applyMasterworkToArmorStats(base)
+    local out = {}
+    for key, value in pairs(base) do
+        out[key] = value
+    end
+    out.name = "Masterwork " .. tostring(base.name or "Armor")
+    out.health = math.max(1, math.floor((tonumber(base.health) or 1) * 1.25 + 0.5))
+    out.baseArmor = scaleArmorRating(base.baseArmor, 1.15)
+    if type(base.enchant) ~= "string" or base.enchant == "" then
+        out.enchant = nil
+        out.enchantCapacity = 0
+    end
+    return out
 end
 
 local function applyArmorRefitToStats(base, mode)
@@ -1075,6 +1166,189 @@ local function applyArmorRefit(data)
     })
 end
 
+local function applyMasterwork(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local player = data.player
+    local targetItem = data.targetItem
+    local mode = data.mode
+    local recordId = targetItem ~= nil and targetItem.recordId or nil
+    local targetName = data.targetName or recordId or "Item"
+
+    if player == nil then
+        masterworkFailure(nil, "missing_player", "That item could not be masterworked.", recordId)
+        return
+    end
+    local isWeapon = targetItem ~= nil and types.Weapon.objectIsInstance(targetItem)
+    local isArmor = targetItem ~= nil and types.Armor.objectIsInstance(targetItem)
+    if targetItem == nil or (not isWeapon and not isArmor) then
+        masterworkFailure(player, "missing_target", "That item is no longer eligible.", recordId)
+        return
+    end
+    if mode ~= "masterwork" and mode ~= "restore" then
+        masterworkFailure(player, "invalid_mode", "That masterwork option is invalid.", recordId)
+        return
+    end
+
+    local active = getMasterworkedGearRecord()
+    local sourceRecord = isWeapon and getWeaponRecord(targetItem) or getArmorRecord(targetItem)
+    if sourceRecord == nil then
+        masterworkFailure(player, "missing_record", "That item's record could not be read.", recordId)
+        return
+    end
+
+    local sourceRecordName = safeGetRecordField(sourceRecord, "name") or targetName
+    local requestGeneratedName = data.generatedName or targetName
+    local sourceMaxCondition = recordNumber(sourceRecord, "health", nil)
+    if type(sourceMaxCondition) ~= "number" or sourceMaxCondition <= 0 then
+        masterworkFailure(player, "missing_condition", "That item could not be masterworked.", recordId)
+        return
+    end
+
+    if mode == "restore" then
+        local existing = active
+        if type(existing) ~= "table" and type(data.originalRecordId) == "string" and data.originalRecordId ~= "" then
+            existing = {
+                originalRecordId = data.originalRecordId,
+                originalName = data.originalName,
+                generatedRecordId = data.generatedRecordId or recordId,
+                generatedName = requestGeneratedName,
+                itemType = data.itemType or (isWeapon and "weapon" or "armor"),
+                mode = "masterwork",
+            }
+        end
+        if type(existing) ~= "table" or type(existing.originalRecordId) ~= "string" then
+            local strippedName = stripMasterworkPrefix(sourceRecordName) or stripMasterworkPrefix(requestGeneratedName)
+            local inferredOriginalRecordId = isWeapon and findWeaponRecordIdByName(strippedName) or findArmorRecordIdByName(strippedName)
+            if type(inferredOriginalRecordId) ~= "string" then
+                masterworkFailure(player, "not_masterworked", "That item has not been masterworked or its original record could not be inferred.", recordId)
+                return
+            end
+            existing = {
+                originalRecordId = inferredOriginalRecordId,
+                originalName = strippedName,
+                generatedRecordId = recordId,
+                generatedName = sourceRecordName,
+                itemType = isWeapon and "weapon" or "armor",
+                mode = "masterwork",
+            }
+        end
+        if existing.generatedRecordId ~= recordId and existing.generatedName ~= sourceRecordName then
+            masterworkFailure(player, "wrong_masterwork", "Restore your active masterwork item first.", recordId)
+            return
+        end
+        local originalRecord = existing.itemType == "armor" and types.Armor.records[existing.originalRecordId] or types.Weapon.records[existing.originalRecordId]
+        if originalRecord == nil then
+            masterworkFailure(player, "missing_original", "The original item record could not be found.", recordId)
+            return
+        end
+        local originalMaxCondition = recordNumber(originalRecord, "health", sourceMaxCondition)
+        local okRestore, restoreErr = pcall(function()
+            local restored, err
+            if existing.itemType == "armor" then
+                restored, err = createArmorForPlayer(player, existing.originalRecordId, targetItem, sourceMaxCondition, originalMaxCondition)
+            else
+                restored, err = createWeaponForPlayer(player, existing.originalRecordId, targetItem, sourceMaxCondition, originalMaxCondition)
+            end
+            if restored == nil then
+                error(err or "restore_create_failed")
+            end
+            targetItem:remove(1)
+        end)
+        if not okRestore then
+            masterworkFailure(player, "restore_failed", "That item could not be restored.", recordId)
+            masterworkLog("restore failed err=" .. tostring(restoreErr))
+            return
+        end
+        setMasterworkedGearRecord(nil)
+        sendMasterworkResult(player, {
+            success = true,
+            recordId = existing.originalRecordId,
+            restoredRecordId = recordId,
+            mode = "restore",
+            message = tostring(existing.originalName or targetName) .. " has been restored.",
+        })
+        return
+    end
+
+    if type(active) == "table" then
+        masterworkFailure(player, "already_masterworked", "Restore your current masterwork before choosing another item.", recordId)
+        return
+    end
+    if inferMasterworkModeFromName(sourceRecordName) ~= nil or inferTemperModeFromName(sourceRecordName) ~= nil or inferArmorRefitModeFromName(sourceRecordName) ~= nil then
+        masterworkFailure(player, "already_modified", "Restore that item before masterworking it.", recordId)
+        return
+    end
+
+    if isWeapon and (type(types.Weapon.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function") then
+        masterworkFailure(player, "api_unavailable", "Masterworking is unavailable in this OpenMW version.", recordId)
+        return
+    elseif isArmor and (type(types.Armor.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function") then
+        masterworkFailure(player, "api_unavailable", "Masterworking is unavailable in this OpenMW version.", recordId)
+        return
+    end
+
+    local baseStats = isWeapon and cloneWeaponStats(sourceRecord) or cloneArmorStats(sourceRecord)
+    local modifiedStats = isWeapon and applyMasterworkToWeaponStats(baseStats) or applyMasterworkToArmorStats(baseStats)
+    local okDraft, draft = pcall(isWeapon and weaponDraftFromStats or armorDraftFromStats, sourceRecord, modifiedStats)
+    if not okDraft or draft == nil then
+        masterworkFailure(player, "draft_failed", "That item could not be masterworked.", recordId)
+        masterworkLog("draft failed err=" .. tostring(draft))
+        return
+    end
+
+    local okCreate, createdRecord = pcall(world.createRecord, draft)
+    local generatedRecordId = okCreate and createdRecordId(createdRecord) or nil
+    if type(generatedRecordId) ~= "string" or generatedRecordId == "" then
+        masterworkFailure(player, "record_create_failed", "That item could not be masterworked.", recordId)
+        masterworkLog("create record failed err=" .. tostring(createdRecord))
+        return
+    end
+
+    local okReplace, replaceErr = pcall(function()
+        local created, err
+        if isWeapon then
+            created, err = createWeaponForPlayer(player, generatedRecordId, targetItem, sourceMaxCondition, modifiedStats.health)
+        else
+            created, err = createArmorForPlayer(player, generatedRecordId, targetItem, sourceMaxCondition, modifiedStats.health)
+        end
+        if created == nil then
+            error(err or "create_failed")
+        end
+        targetItem:remove(1)
+    end)
+    if not okReplace then
+        masterworkFailure(player, "replace_failed", "That item could not be masterworked.", recordId)
+        masterworkLog("replace failed err=" .. tostring(replaceErr))
+        return
+    end
+
+    local entry = {
+        originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedRecordId = generatedRecordId,
+        generatedName = modifiedStats.name,
+        itemType = isWeapon and "weapon" or "armor",
+        mode = "masterwork",
+        original = baseStats,
+        modified = modifiedStats,
+    }
+    setMasterworkedGearRecord(entry)
+
+    sendMasterworkResult(player, {
+        success = true,
+        recordId = generatedRecordId,
+        originalRecordId = recordId,
+        originalName = baseStats.name,
+        generatedName = modifiedStats.name,
+        itemType = entry.itemType,
+        mode = "masterwork",
+        message = tostring(targetName) .. " has been masterworked.",
+    })
+end
+
 local function sendCarefulRepairsRefundResult(player, result)
     if player ~= nil and type(player.sendEvent) == "function" then
         player:sendEvent(CAREFUL_REPAIRS_REFUND_RESULT_EVENT, result)
@@ -1369,6 +1643,7 @@ return {
         [APPRENTICE_HAMMER_OVERREPAIR_REQUEST_EVENT] = applyApprenticeHammerOverrepair,
         [WEAPON_TEMPER_REQUEST_EVENT] = applyWeaponTemper,
         [ARMOR_REFIT_REQUEST_EVENT] = applyArmorRefit,
+        [MASTERWORK_REQUEST_EVENT] = applyMasterwork,
         [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
     },
 }

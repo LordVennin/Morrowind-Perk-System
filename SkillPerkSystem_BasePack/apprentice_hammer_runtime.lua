@@ -11,18 +11,23 @@ local MENU_NAME = "SkillPerkSystem_BasePack_ApprenticeHammerMenu"
 local OVERREPAIR_MENU_NAME = "SkillPerkSystem_BasePack_OverRepairMenu"
 local TEMPER_MENU_NAME = "SkillPerkSystem_BasePack_WeaponTemperMenu"
 local ARMOR_REFIT_MENU_NAME = "SkillPerkSystem_BasePack_ArmorRefitMenu"
+local MASTERWORK_MENU_NAME = "SkillPerkSystem_BasePack_MasterworkMenu"
 local OVERREPAIR_USES_COST = 5
 local DEFAULT_MULTIPLIER = 1.10
 local TEMPER_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_WeaponTemper"
 local TEMPERED_WEAPONS_KEY = "temperedWeapons"
 local REFITTED_ARMOR_KEY = "refittedArmor"
+local MASTERWORKED_GEAR_KEY = "masterworkedGear"
 local TEMPER_REQUEST_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Request"
 local TEMPER_RESULT_EVENT = "SkillPerkSystem_BasePack_WeaponTemper_Result"
 local ARMOR_REFIT_REQUEST_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Request"
 local ARMOR_REFIT_RESULT_EVENT = "SkillPerkSystem_BasePack_ArmorRefit_Result"
+local MASTERWORK_REQUEST_EVENT = "SkillPerkSystem_BasePack_Masterwork_Request"
+local MASTERWORK_RESULT_EVENT = "SkillPerkSystem_BasePack_Masterwork_Result"
 local FIELD_MENDER_PERK_ID = "armorer_field_mender"
 local APPRENTICE_PERK_ID = "armorer_apprentice_hammer"
 local REFORGED_PLATING_PERK_ID = "armorer_masterwork_rivets"
+local MASTERWORK_PERK_ID = "armorer_masterwork"
 local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][RepairMode]"
 local OVERREPAIR_REQUEST_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest"
 local OVERREPAIR_RESULT_EVENT = "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairResult"
@@ -40,6 +45,7 @@ local lastRepairToolRecordId = nil
 local temperStorage = storage.playerSection(TEMPER_STORAGE_SECTION_ID)
 local temperedWeaponCache = {}
 local refittedArmorCache = {}
+local masterworkedGearCache = nil
 
 local function logDebug(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -72,8 +78,12 @@ local function armorRefitEnabled()
     return isPerkOwnedAndEnabled(REFORGED_PLATING_PERK_ID)
 end
 
+local function masterworkEnabled()
+    return isPerkOwnedAndEnabled(MASTERWORK_PERK_ID)
+end
+
 local function anyRepairToolActionEnabled()
-    return apprenticeHammerEnabled() or weaponTemperEnabled() or armorRefitEnabled()
+    return apprenticeHammerEnabled() or weaponTemperEnabled() or armorRefitEnabled() or masterworkEnabled()
 end
 
 local function showMessage(text)
@@ -385,6 +395,40 @@ local function setRefittedArmorRecords(records)
     temperStorage:set(REFITTED_ARMOR_KEY, records)
 end
 
+local function getMasterworkedGearRecord()
+    local record = nil
+    if type(temperStorage.getCopy) == "function" then
+        record = temperStorage:getCopy(MASTERWORKED_GEAR_KEY)
+    else
+        record = temperStorage:get(MASTERWORKED_GEAR_KEY)
+    end
+    if type(record) == "table" and type(record.generatedRecordId) == "string" then
+        masterworkedGearCache = record
+        return record
+    end
+    masterworkedGearCache = nil
+    return nil
+end
+
+local function setMasterworkedGearRecord(record)
+    masterworkedGearCache = type(record) == "table" and record or nil
+    temperStorage:set(MASTERWORKED_GEAR_KEY, masterworkedGearCache or {})
+end
+
+local function inferMasterworkModeFromName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    if string.sub(name, 1, 11) == "Masterwork " then
+        return "masterwork"
+    end
+    return nil
+end
+
+local function formatMasterworkMode()
+    return "Masterwork"
+end
+
 local function inferArmorRefitModeFromName(name)
     if type(name) ~= "string" then
         return nil
@@ -508,6 +552,45 @@ local function collectWeaponTemperCandidates()
         return string.lower(getDisplayName(a)) < string.lower(getDisplayName(b))
     end)
     return out
+end
+
+local function getMasterworkedGearInfo(recordId, displayName)
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+    local record = masterworkedGearCache or getMasterworkedGearRecord()
+    if type(record) == "table" then
+        if record.generatedRecordId == recordId or record.originalRecordId == recordId then
+            return record
+        end
+        if type(displayName) == "string" and (record.generatedName == displayName or record.originalName == displayName) then
+            return record
+        end
+    end
+    if inferMasterworkModeFromName(displayName) ~= nil then
+        return { mode = "masterwork", inferred = true, generatedRecordId = recordId, generatedName = displayName }
+    end
+    return nil
+end
+
+local function collectMasterworkCandidates()
+    local active = getMasterworkedGearRecord()
+    local out = {}
+    local seen = {}
+    for _, item in ipairs(getAllInventoryItemsOfType(types.Weapon)) do
+        if item ~= nil and (active == nil or item.recordId == active.generatedRecordId) then
+            addUniqueItem(out, seen, item)
+        end
+    end
+    for _, item in ipairs(getAllInventoryItemsOfType(types.Armor)) do
+        if item ~= nil and (active == nil or item.recordId == active.generatedRecordId) then
+            addUniqueItem(out, seen, item)
+        end
+    end
+    table.sort(out, function(a, b)
+        return string.lower(getDisplayName(a)) < string.lower(getDisplayName(b))
+    end)
+    return out, active
 end
 
 local function collectArmorRefitCandidates()
@@ -1058,6 +1141,168 @@ openTemperWeaponMenu = function()
     })
 end
 
+local function sendMasterworkRequest(item, mode, masterworkInfo)
+    if item == nil or type(mode) ~= "string" then
+        showMessage("That item is no longer eligible.")
+        return
+    end
+
+    closeAllMenus()
+    core.sendGlobalEvent(MASTERWORK_REQUEST_EVENT, {
+        player = getActorObject(),
+        targetItem = item,
+        mode = mode,
+        targetName = getDisplayName(item),
+        originalRecordId = type(masterworkInfo) == "table" and masterworkInfo.originalRecordId or nil,
+        originalName = type(masterworkInfo) == "table" and masterworkInfo.originalName or nil,
+        generatedRecordId = type(masterworkInfo) == "table" and masterworkInfo.generatedRecordId or nil,
+        generatedName = type(masterworkInfo) == "table" and masterworkInfo.generatedName or nil,
+        itemType = type(masterworkInfo) == "table" and masterworkInfo.itemType or nil,
+    })
+end
+
+local openMasterworkMenu
+
+local function openMasterworkModeMenu(entry)
+    closeSubMenu()
+
+    local recordId = entry.item ~= nil and entry.item.recordId or entry.recordId
+    local masterworkInfo = getMasterworkedGearInfo(recordId, entry.name)
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = { text = entry.name, textAlignH = ui.ALIGNMENT.Center },
+        },
+    }
+
+    if masterworkInfo ~= nil then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "This is your active masterwork.", textAlignH = ui.ALIGNMENT.Center },
+        })
+        table.insert(contentLayouts, createButton("Restore Original", function()
+            sendMasterworkRequest(entry.item, "restore", masterworkInfo)
+        end, 620))
+    else
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = "Masterwork this item: +15% damage or armor and +25% durability. Value and weight are unchanged.", textAlignH = ui.ALIGNMENT.Center },
+        })
+        table.insert(contentLayouts, createButton("Masterwork", function()
+            sendMasterworkRequest(entry.item, "masterwork")
+        end, 620))
+    end
+
+    table.insert(contentLayouts, createButton("Back", function()
+        openMasterworkMenu()
+    end, 620))
+
+    subMenuElement = ui.create({
+        layer = "Windows",
+        name = MASTERWORK_MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
+openMasterworkMenu = function()
+    closeSubMenu()
+
+    local candidates, active = collectMasterworkCandidates()
+    local contentLayouts = {
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textHeader,
+            props = { text = "Masterwork", textAlignH = ui.ALIGNMENT.Center },
+        },
+        {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = active == nil and "Select one weapon or armor piece to masterwork." or "Restore your current masterwork before choosing another item.", textAlignH = ui.ALIGNMENT.Center },
+        },
+    }
+
+    if #candidates == 0 then
+        table.insert(contentLayouts, {
+            type = ui.TYPE.Text,
+            template = interfaces.MWUI.templates.textNormal,
+            props = { text = active == nil and "No weapons or armor found in your inventory." or "Your masterworked item is not in your inventory.", textAlignH = ui.ALIGNMENT.Center },
+        })
+    else
+        for _, item in ipairs(candidates) do
+            local recordId = item.recordId
+            local currentCondition = getItemCondition(item)
+            local maxCondition = getMaxCondition(item)
+            local masterworkInfo = getMasterworkedGearInfo(recordId, getDisplayName(item))
+            local modeLabel = masterworkInfo ~= nil and " [" .. formatMasterworkMode() .. "]" or ""
+            local conditionLabel = ""
+            if type(currentCondition) == "number" and type(maxCondition) == "number" then
+                conditionLabel = string.format(" (%d/%d)", math.floor(currentCondition + 0.5), math.floor(maxCondition + 0.5))
+            end
+            local count = getObjectCount(item)
+            local countLabel = count > 1 and (" x" .. tostring(count)) or ""
+            local entry = {
+                item = item,
+                recordId = recordId,
+                name = getDisplayName(item),
+            }
+            table.insert(contentLayouts, createButton(entry.name .. countLabel .. modeLabel .. conditionLabel, function()
+                openMasterworkModeMenu(entry)
+            end, 620))
+        end
+    end
+
+    table.insert(contentLayouts, createButton("Back", function()
+        closeSubMenu()
+    end, 620))
+
+    subMenuElement = ui.create({
+        layer = "Windows",
+        name = MASTERWORK_MENU_NAME,
+        type = ui.TYPE.Container,
+        template = interfaces.MWUI.templates.boxTransparentThick,
+        props = {
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+            autoSize = true,
+        },
+        content = ui.content({
+            {
+                type = ui.TYPE.Flex,
+                template = interfaces.MWUI.templates.background,
+                props = {
+                    horizontal = false,
+                    autoSize = true,
+                    padding = util.vector2(12, 12),
+                    arrange = ui.ALIGNMENT.Center,
+                },
+                content = ui.content(contentLayouts),
+            },
+        }),
+    })
+end
+
 local function sendArmorRefitRequest(item, mode, refitInfo)
     if item == nil or type(mode) ~= "string" then
         showMessage("That armor is no longer eligible.")
@@ -1272,6 +1517,12 @@ local function openRepairMenu()
         end, 560))
     end
 
+    if masterworkEnabled() then
+        table.insert(contentLayouts, createButton("Masterwork", function()
+            openMasterworkMenu()
+        end, 560))
+    end
+
     table.insert(contentLayouts, createButton("Close", function()
         closeAllMenus()
         setInterfaceMode()
@@ -1388,6 +1639,30 @@ local function onTemperResult(data)
     end
 end
 
+local function onMasterworkResult(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    if data.success then
+        if data.mode == "restore" then
+            setMasterworkedGearRecord(nil)
+        elseif type(data.recordId) == "string" and data.recordId ~= "" then
+            setMasterworkedGearRecord({
+                originalRecordId = data.originalRecordId,
+                originalName = data.originalName,
+                generatedRecordId = data.recordId,
+                generatedName = data.generatedName,
+                itemType = data.itemType,
+                mode = data.mode,
+            })
+        end
+        showMessage(tostring(data.message or "Masterwork complete."))
+    else
+        showMessage(tostring(data.message or "That item could not be masterworked."))
+    end
+end
+
 local function onOverrepairResult(data)
     if type(data) ~= "table" then
         return
@@ -1447,6 +1722,7 @@ return {
         [OVERREPAIR_RESULT_EVENT] = onOverrepairResult,
         [TEMPER_RESULT_EVENT] = onTemperResult,
         [ARMOR_REFIT_RESULT_EVENT] = onArmorRefitResult,
+        [MASTERWORK_RESULT_EVENT] = onMasterworkResult,
     },
     engineHandlers = {
         onLoad = function()

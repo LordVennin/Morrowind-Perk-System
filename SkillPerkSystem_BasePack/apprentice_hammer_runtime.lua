@@ -1147,12 +1147,15 @@ local function sendMasterworkRequest(item, mode, masterworkInfo)
         return
     end
 
+    local activeMasterwork = getMasterworkedGearRecord()
+
     closeAllMenus()
     core.sendGlobalEvent(MASTERWORK_REQUEST_EVENT, {
         player = getActorObject(),
         targetItem = item,
         mode = mode,
         targetName = getDisplayName(item),
+        activeMasterwork = activeMasterwork,
         originalRecordId = type(masterworkInfo) == "table" and masterworkInfo.originalRecordId or nil,
         originalName = type(masterworkInfo) == "table" and masterworkInfo.originalName or nil,
         generatedRecordId = type(masterworkInfo) == "table" and masterworkInfo.generatedRecordId or nil,

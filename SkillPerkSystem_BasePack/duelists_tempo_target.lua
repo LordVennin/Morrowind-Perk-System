@@ -54,6 +54,41 @@ local function setState(data)
     applyPenalty(stacks * agilityPerStack)
 end
 
+
+local function applyHealthDamage(amount)
+    local healthAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.health
+    if type(healthAccessor) ~= "function" then
+        return false
+    end
+
+    local health = healthAccessor(selfObj)
+    if health == nil or type(health.current) ~= "number" then
+        return false
+    end
+
+    health.current = math.max(0, health.current - math.max(0, tonumber(amount) or 0))
+    return true
+end
+
+local function onApplyLongBladeCriticalDamage(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local damage = math.max(0, tonumber(data.damage) or 0)
+    if damage <= 0 then
+        return
+    end
+    if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+        return
+    end
+
+    applyHealthDamage(damage)
+end
+
 local function isSuccessfulPlayerMeleeHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
@@ -96,6 +131,7 @@ end
 return {
     eventHandlers = {
         SkillPerkSystem_DuelistsTempoRefresh = setState,
+        SkillPerkSystem_ApplyLongBladeCriticalDamage = onApplyLongBladeCriticalDamage,
     },
     engineHandlers = {
         onInit = function(initData)

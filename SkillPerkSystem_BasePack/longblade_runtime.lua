@@ -314,6 +314,15 @@ local function onLoad()
     lastDuelistTempoTarget = nil
     lastDuelistTempoApplyTime = -1
     refreshLongBladeFundamentals()
+
+    if duelistTempoRemaining > 0 then
+        duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))
+        if duelistTempoRemaining <= 0 or not duelistsTempoEnabled() or getEquippedOneHandedLongBlade() == nil then
+            clearDuelistTempoBonus()
+        end
+    elseif appliedDuelistTempoAgilityBonus ~= 0 then
+        clearDuelistTempoBonus()
+    end
 end
 
 local function onUpdate(dt)

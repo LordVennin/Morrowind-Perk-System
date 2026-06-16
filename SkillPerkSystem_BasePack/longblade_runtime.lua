@@ -15,6 +15,7 @@ local DUELISTS_TEMPO_PERK_ID = "longblade_demo_precision"
 local GREATBLADE_FORM_PERK_ID = "longblade_greatblade_form"
 local DUELISTS_FORM_PERK_ID = "longblade_demo_duelist"
 local GREATBLADE_CRITICALS_PERK_ID = "longblade_demo_whirlwind"
+local KEEN_EDGE_PERK_ID = "longblade_keen_edge"
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
 local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_LongBlade"
@@ -30,6 +31,9 @@ local DUELISTS_TEMPO_AGILITY_PER_STACK = 3
 local GREATBLADE_CRITICAL_CHANCE = 0.25
 local GREATBLADE_CRITICAL_DAMAGE = 20
 local GREATBLADE_CRITICAL_MESSAGE = "Critical hit!"
+local KEEN_EDGE_CRITICAL_CHANCE = 0.05
+local KEEN_EDGE_CRITICAL_DAMAGE = 20
+local KEEN_EDGE_CRITICAL_MESSAGE = "Keen Edge critical hit!"
 
 local storageSection = storage.playerSection(STORAGE_SECTION_ID)
 local appliedLongBladeBonus = tonumber(storageSection:get(APPLIED_BONUS_KEY)) or 0
@@ -39,6 +43,10 @@ local appliedDuelistTempoAgilityBonus = tonumber(storageSection:get(DUELISTS_TEM
 local runtimeTime = 0
 local lastDuelistTempoTarget = nil
 local lastDuelistTempoApplyTime = -1
+local lastGreatbladeCriticalTarget = nil
+local lastGreatbladeCriticalApplyTime = -1
+local lastKeenEdgeCriticalTarget = nil
+local lastKeenEdgeCriticalApplyTime = -1
 local duelistsFormAbilityApplied = false
 local greatbladeFormAbilityApplied = false
 local spellAbilityFailureStates = {}
@@ -83,6 +91,10 @@ end
 
 local function greatbladeCriticalsEnabled()
     return hasEnabledPerk(GREATBLADE_CRITICALS_PERK_ID)
+end
+
+local function keenEdgeEnabled()
+    return hasEnabledPerk(KEEN_EDGE_PERK_ID)
 end
 
 local function getFatiguePercent()
@@ -309,6 +321,14 @@ local function getEquippedTwoHandedLongBlade()
     return getEquippedLongBladeWeapon(isLongBladeTwoHandRecord)
 end
 
+local function isLongBladeRecord(record)
+    return isLongBladeOneHandRecord(record) or isLongBladeTwoHandRecord(record)
+end
+
+local function getEquippedLongBlade()
+    return getEquippedLongBladeWeapon(isLongBladeRecord)
+end
+
 local function hasEquippedOffHandShield()
     if Actor == nil or Armor == nil or Actor.EQUIPMENT_SLOT == nil then
         return false
@@ -533,14 +553,28 @@ local function rememberDuelistTempoApplication(target)
     lastDuelistTempoApplyTime = runtimeTime
 end
 
+local function recentlyAppliedCritical(target, lastTarget, lastApplyTime)
+    return target ~= nil and target == lastTarget and (runtimeTime - lastApplyTime) < 0.05
+end
+
+local function rememberGreatbladeCriticalApplication(target)
+    lastGreatbladeCriticalTarget = target
+    lastGreatbladeCriticalApplyTime = runtimeTime
+end
+
+local function rememberKeenEdgeCriticalApplication(target)
+    lastKeenEdgeCriticalTarget = target
+    lastKeenEdgeCriticalApplyTime = runtimeTime
+end
+
 local function showMessage(text)
     ui.showMessage(text, { showInDialogue = false })
 end
 
-local function applyGreatbladeCriticalDamage(target)
-    target:sendEvent("ModifyStat", {
-        stat = "health",
-        amount = -GREATBLADE_CRITICAL_DAMAGE,
+local function applyLongBladeCriticalDamage(target, damage)
+    core.sendGlobalEvent("SkillPerkSystem_ApplyGreatbladeCritical", {
+        target = target,
+        damage = damage,
     })
 end
 
@@ -580,12 +614,40 @@ local function tryApplyGreatbladeCritical(data)
     if not greatbladeCriticalsEnabled() or getEquippedTwoHandedLongBlade() == nil then
         return
     end
+    if recentlyAppliedCritical(target, lastGreatbladeCriticalTarget, lastGreatbladeCriticalApplyTime) then
+        return
+    end
     if math.random() >= GREATBLADE_CRITICAL_CHANCE then
         return
     end
 
+    rememberGreatbladeCriticalApplication(target)
     showMessage(GREATBLADE_CRITICAL_MESSAGE)
-    applyGreatbladeCriticalDamage(target)
+    applyLongBladeCriticalDamage(target, GREATBLADE_CRITICAL_DAMAGE)
+end
+
+local function tryApplyKeenEdgeCritical(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local target = data.target
+    if not isValidDuelistTempoTarget(target) then
+        return
+    end
+    if not keenEdgeEnabled() or getEquippedLongBlade() == nil then
+        return
+    end
+    if recentlyAppliedCritical(target, lastKeenEdgeCriticalTarget, lastKeenEdgeCriticalApplyTime) then
+        return
+    end
+    if math.random() >= KEEN_EDGE_CRITICAL_CHANCE then
+        return
+    end
+
+    rememberKeenEdgeCriticalApplication(target)
+    showMessage(KEEN_EDGE_CRITICAL_MESSAGE)
+    applyLongBladeCriticalDamage(target, KEEN_EDGE_CRITICAL_DAMAGE)
 end
 
 local function getAttackTarget(attack)
@@ -623,6 +685,12 @@ local function onHit(attack)
     tryApplyDuelistTempo({
         target = target,
     })
+    tryApplyKeenEdgeCritical({
+        target = target,
+    })
+    tryApplyGreatbladeCritical({
+        target = target,
+    })
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -637,6 +705,10 @@ local function onLoad()
     runtimeTime = 0
     lastDuelistTempoTarget = nil
     lastDuelistTempoApplyTime = -1
+    lastGreatbladeCriticalTarget = nil
+    lastGreatbladeCriticalApplyTime = -1
+    lastKeenEdgeCriticalTarget = nil
+    lastKeenEdgeCriticalApplyTime = -1
     refreshLongBladeFundamentals()
     updateLongBladeAbilities()
 
@@ -669,6 +741,7 @@ return {
     eventHandlers = {
         SkillPerkSystem_TryDuelistsTempo = tryApplyDuelistTempo,
         SkillPerkSystem_TryGreatbladeCritical = tryApplyGreatbladeCritical,
+        SkillPerkSystem_TryKeenEdgeCritical = tryApplyKeenEdgeCritical,
     },
     engineHandlers = {
         onUpdate = onUpdate,

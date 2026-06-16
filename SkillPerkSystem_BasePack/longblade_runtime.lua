@@ -1,4 +1,3 @@
-local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local ui = require("openmw.ui")
 local pself = require("openmw.self")
@@ -572,8 +571,11 @@ local function showMessage(text)
 end
 
 local function applyLongBladeCriticalDamage(target, damage)
-    core.sendGlobalEvent("SkillPerkSystem_ApplyGreatbladeCritical", {
-        target = target,
+    if target == nil or type(target.sendEvent) ~= "function" then
+        return
+    end
+
+    target:sendEvent("SkillPerkSystem_ApplyLongBladeCriticalDamage", {
         damage = damage,
     })
 end

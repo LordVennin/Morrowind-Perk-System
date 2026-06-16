@@ -78,7 +78,7 @@ return {
             x = 0,
             y = 420,
             title = "Grandmaster Form",
-            description = "Final chain node requiring both finishers and pressure control.",
+            description = "Long blade hits gain a separate fatigue-based heavy crit chance, scaling from 10% at full Fatigue to 0% at 5% or lower Fatigue. Heavy crits deal 25 extra damage and roll separately from other critical hit perks.",
         },
     },
 }

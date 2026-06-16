@@ -538,17 +538,9 @@ local function showMessage(text)
 end
 
 local function applyGreatbladeCriticalDamage(target)
-    target:sendEvent("Hit", {
-        sourceType = interfaces.Combat ~= nil
-            and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
-            and interfaces.Combat.ATTACK_SOURCE_TYPES.Unspecified
-            or nil,
-        strength = 1,
-        attacker = pself,
-        damage = {
-            health = GREATBLADE_CRITICAL_DAMAGE,
-        },
-        successful = true,
+    target:sendEvent("ModifyStat", {
+        stat = "health",
+        amount = -GREATBLADE_CRITICAL_DAMAGE,
     })
 end
 

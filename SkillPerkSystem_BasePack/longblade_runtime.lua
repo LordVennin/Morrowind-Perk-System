@@ -11,6 +11,7 @@ local Weapon = types.Weapon
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local LONG_BLADE_FUNDAMENTALS_PERK_ID = "longblade_fundamentals"
 local DUELISTS_TEMPO_PERK_ID = "longblade_demo_precision"
+local GREATBLADE_FORM_PERK_ID = "longblade_greatblade_form"
 local DUELISTS_FORM_PERK_ID = "longblade_demo_duelist"
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
@@ -18,6 +19,7 @@ local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_LongBlade"
 local APPLIED_BONUS_KEY = "fundamentals.applied_bonus"
 local DUELISTS_TEMPO_APPLIED_KEY = "duelists_tempo.applied_agility_bonus"
 local DUELISTS_FORM_ABILITY_ID = "sps_duelistbuff"
+local GREATBLADE_FORM_ABILITY_ID = "sps_greatbladeform"
 local LOG_TAG = "[SkillPerkSystem_BasePack][LongBlade]"
 
 local DUELISTS_TEMPO_MAX_STACKS = 5
@@ -33,9 +35,9 @@ local runtimeTime = 0
 local lastDuelistTempoTarget = nil
 local lastDuelistTempoApplyTime = -1
 local duelistsFormAbilityApplied = false
-local duelistsFormAbilityAddFailureLogged = false
-local duelistsFormAbilityRemoveFailureLogged = false
-local duelistsFormSpellBookFailureState = nil
+local greatbladeFormAbilityApplied = false
+local spellAbilityFailureStates = {}
+local playerSpellBookFailureState = nil
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
@@ -64,6 +66,10 @@ end
 
 local function duelistsTempoEnabled()
     return hasEnabledPerk(DUELISTS_TEMPO_PERK_ID)
+end
+
+local function greatbladeFormEnabled()
+    return hasEnabledPerk(GREATBLADE_FORM_PERK_ID)
 end
 
 local function duelistsFormEnabled()
@@ -236,6 +242,16 @@ local function isLongBladeOneHandRecord(record)
     return weaponType ~= nil and oneHandLongBladeType ~= nil and weaponType == oneHandLongBladeType
 end
 
+local function isLongBladeTwoHandRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local weaponType = tonumber(record.type)
+    local twoHandLongBladeType = tonumber(Weapon.TYPE.LongBladeTwoHand)
+    return weaponType ~= nil and twoHandLongBladeType ~= nil and weaponType == twoHandLongBladeType
+end
+
 local function getEquippedItem(slot)
     if Actor == nil or type(Actor.getEquipment) ~= "function" or slot == nil then
         return nil
@@ -249,8 +265,8 @@ local function getEquippedItem(slot)
     return item
 end
 
-local function getEquippedOneHandedLongBlade()
-    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+local function getEquippedLongBladeWeapon(matcher)
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil or type(matcher) ~= "function" then
         return nil
     end
 
@@ -269,11 +285,19 @@ local function getEquippedOneHandedLongBlade()
     end
 
     local record = getWeaponRecord(weapon)
-    if not isLongBladeOneHandRecord(record) then
+    if not matcher(record) then
         return nil
     end
 
     return weapon
+end
+
+local function getEquippedOneHandedLongBlade()
+    return getEquippedLongBladeWeapon(isLongBladeOneHandRecord)
+end
+
+local function getEquippedTwoHandedLongBlade()
+    return getEquippedLongBladeWeapon(isLongBladeTwoHandRecord)
 end
 
 local function hasEquippedOffHandShield()
@@ -301,27 +325,27 @@ end
 
 local function getPlayerSpells()
     if Actor == nil or type(Actor.spells) ~= "function" then
-        if duelistsFormSpellBookFailureState ~= "unavailable" then
-            duelistsFormSpellBookFailureState = "unavailable"
-            logDebug("Actor.spells(pself) unavailable; cannot adjust duelist's form state")
+        if playerSpellBookFailureState ~= "unavailable" then
+            playerSpellBookFailureState = "unavailable"
+            logDebug("Actor.spells(pself) unavailable; cannot adjust long blade ability state")
         end
         return nil
     end
 
     local okSpells, spells = pcall(Actor.spells, pself)
     if not okSpells then
-        if duelistsFormSpellBookFailureState ~= "error" then
-            duelistsFormSpellBookFailureState = "error"
-            logDebug("Actor.spells(pself) errored; cannot adjust duelist's form state")
+        if playerSpellBookFailureState ~= "error" then
+            playerSpellBookFailureState = "error"
+            logDebug("Actor.spells(pself) errored; cannot adjust long blade ability state")
         end
         return nil
     end
 
-    duelistsFormSpellBookFailureState = nil
+    playerSpellBookFailureState = nil
     return spells
 end
 
-local function resolveDuelistsFormAbilityRecord()
+local function resolveAbilityRecord(abilityId)
     local okRecords, records = pcall(function()
         return core.magic.spells.records
     end)
@@ -329,23 +353,23 @@ local function resolveDuelistsFormAbilityRecord()
         return nil
     end
 
-    return records[DUELISTS_FORM_ABILITY_ID]
+    return records[abilityId]
 end
 
-local function spellBookHasDuelistsFormAbility(spells)
+local function spellBookHasAbility(spells, abilityId)
     if spells == nil then
         return false
     end
 
     if type(spells.has) == "function" then
         local okHasById, valueById = pcall(function()
-            return spells:has(DUELISTS_FORM_ABILITY_ID)
+            return spells:has(abilityId)
         end)
         if okHasById and valueById == true then
             return true
         end
 
-        local spellRecord = resolveDuelistsFormAbilityRecord()
+        local spellRecord = resolveAbilityRecord(abilityId)
         if spellRecord ~= nil then
             local okHasByRecord, valueByRecord = pcall(function()
                 return spells:has(spellRecord)
@@ -357,7 +381,7 @@ local function spellBookHasDuelistsFormAbility(spells)
     end
 
     for _, spell in pairs(spells) do
-        if type(spell) == "table" and spell.id == DUELISTS_FORM_ABILITY_ID then
+        if type(spell) == "table" and spell.id == abilityId then
             return true
         end
     end
@@ -365,19 +389,19 @@ local function spellBookHasDuelistsFormAbility(spells)
     return false
 end
 
-local function addDuelistsFormAbility(spells)
+local function addAbility(spells, abilityId)
     if type(spells.add) ~= "function" then
         return false, "spells.add unavailable"
     end
 
     local okAddById, errById = pcall(function()
-        spells:add(DUELISTS_FORM_ABILITY_ID)
+        spells:add(abilityId)
     end)
     if okAddById then
         return true, nil
     end
 
-    local spellRecord = resolveDuelistsFormAbilityRecord()
+    local spellRecord = resolveAbilityRecord(abilityId)
     if spellRecord == nil then
         return false, errById
     end
@@ -392,19 +416,19 @@ local function addDuelistsFormAbility(spells)
     return false, tostring(errById) .. " | " .. tostring(errByRecord)
 end
 
-local function removeDuelistsFormAbility(spells)
+local function removeAbility(spells, abilityId)
     if type(spells.remove) ~= "function" then
         return false, "spells.remove unavailable"
     end
 
     local okRemoveById, errById = pcall(function()
-        spells:remove(DUELISTS_FORM_ABILITY_ID)
+        spells:remove(abilityId)
     end)
     if okRemoveById then
         return true, nil
     end
 
-    local spellRecord = resolveDuelistsFormAbilityRecord()
+    local spellRecord = resolveAbilityRecord(abilityId)
     if spellRecord == nil then
         return false, errById
     end
@@ -419,40 +443,60 @@ local function removeDuelistsFormAbility(spells)
     return false, tostring(errById) .. " | " .. tostring(errByRecord)
 end
 
-local function updateDuelistsFormAbility()
+local function updateConditionalAbility(spells, abilityId, shouldHaveAbility, applied)
+    local hasAbility = spellBookHasAbility(spells, abilityId)
+    local failureState = spellAbilityFailureStates[abilityId] or {}
+
+    if shouldHaveAbility and not hasAbility then
+        local okAdd, addError = addAbility(spells, abilityId)
+        if not okAdd then
+            if not failureState.add then
+                failureState.add = true
+                logDebug(string.format("failed to add %s: %s", abilityId, tostring(addError)))
+            end
+            spellAbilityFailureStates[abilityId] = failureState
+            return applied
+        end
+        failureState.add = false
+        spellAbilityFailureStates[abilityId] = failureState
+        return true
+    elseif (not shouldHaveAbility) and (hasAbility or applied) then
+        local okRemove, removeError = removeAbility(spells, abilityId)
+        if not okRemove then
+            if not failureState.remove then
+                failureState.remove = true
+                logDebug(string.format("failed to remove %s: %s", abilityId, tostring(removeError)))
+            end
+            spellAbilityFailureStates[abilityId] = failureState
+            return applied
+        end
+        failureState.remove = false
+        spellAbilityFailureStates[abilityId] = failureState
+        return false
+    end
+
+    return applied
+end
+
+local function updateLongBladeAbilities()
     local spells = getPlayerSpells()
     if spells == nil then
         return
     end
 
-    local shouldHaveAbility = duelistsFormEnabled()
-        and getEquippedOneHandedLongBlade() ~= nil
-        and not hasEquippedOffHandShield()
-    local hasAbility = spellBookHasDuelistsFormAbility(spells)
+    greatbladeFormAbilityApplied = updateConditionalAbility(
+        spells,
+        GREATBLADE_FORM_ABILITY_ID,
+        greatbladeFormEnabled() and getEquippedTwoHandedLongBlade() ~= nil,
+        greatbladeFormAbilityApplied
+    )
 
-    if shouldHaveAbility and not hasAbility then
-        local okAdd, addError = addDuelistsFormAbility(spells)
-        if not okAdd then
-            if not duelistsFormAbilityAddFailureLogged then
-                duelistsFormAbilityAddFailureLogged = true
-                logDebug(string.format("failed to add %s: %s", DUELISTS_FORM_ABILITY_ID, tostring(addError)))
-            end
-            return
-        end
-        duelistsFormAbilityAddFailureLogged = false
-        duelistsFormAbilityApplied = true
-    elseif (not shouldHaveAbility) and (hasAbility or duelistsFormAbilityApplied) then
-        local okRemove, removeError = removeDuelistsFormAbility(spells)
-        if not okRemove then
-            if not duelistsFormAbilityRemoveFailureLogged then
-                duelistsFormAbilityRemoveFailureLogged = true
-                logDebug(string.format("failed to remove %s: %s", DUELISTS_FORM_ABILITY_ID, tostring(removeError)))
-            end
-            return
-        end
-        duelistsFormAbilityRemoveFailureLogged = false
-        duelistsFormAbilityApplied = false
-    end
+    duelistsFormAbilityApplied = updateConditionalAbility(
+        spells,
+        DUELISTS_FORM_ABILITY_ID,
+        duelistsFormEnabled() and getEquippedOneHandedLongBlade() ~= nil and not hasEquippedOffHandShield(),
+        duelistsFormAbilityApplied
+    )
 end
 
 local function isValidDuelistTempoTarget(target)
@@ -552,7 +596,7 @@ local function onLoad()
     lastDuelistTempoTarget = nil
     lastDuelistTempoApplyTime = -1
     refreshLongBladeFundamentals()
-    updateDuelistsFormAbility()
+    updateLongBladeAbilities()
 
     if duelistTempoRemaining > 0 then
         duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))
@@ -567,7 +611,7 @@ end
 local function onUpdate(dt)
     runtimeTime = runtimeTime + (tonumber(dt) or 0)
     refreshLongBladeFundamentals()
-    updateDuelistsFormAbility()
+    updateLongBladeAbilities()
 
     if duelistTempoRemaining > 0 then
         duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))

@@ -15,6 +15,7 @@ local GREATBLADE_FORM_PERK_ID = "longblade_greatblade_form"
 local DUELISTS_FORM_PERK_ID = "longblade_demo_duelist"
 local GREATBLADE_CRITICALS_PERK_ID = "longblade_demo_whirlwind"
 local KEEN_EDGE_PERK_ID = "longblade_keen_edge"
+local GRANDMASTER_FORM_PERK_ID = "longblade_demo_mastery"
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
 local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_LongBlade"
@@ -33,6 +34,10 @@ local GREATBLADE_CRITICAL_MESSAGE = "Critical hit!"
 local KEEN_EDGE_CRITICAL_CHANCE = 0.05
 local KEEN_EDGE_CRITICAL_DAMAGE = 20
 local KEEN_EDGE_CRITICAL_MESSAGE = "Keen Edge critical hit!"
+local GRANDMASTER_HEAVY_CRITICAL_MAX_CHANCE = 0.10
+local GRANDMASTER_HEAVY_CRITICAL_MIN_FATIGUE = 0.05
+local GRANDMASTER_HEAVY_CRITICAL_DAMAGE = 25
+local GRANDMASTER_HEAVY_CRITICAL_MESSAGE = "Heavy crit!"
 
 local storageSection = storage.playerSection(STORAGE_SECTION_ID)
 local appliedLongBladeBonus = tonumber(storageSection:get(APPLIED_BONUS_KEY)) or 0
@@ -46,6 +51,8 @@ local lastGreatbladeCriticalTarget = nil
 local lastGreatbladeCriticalApplyTime = -1
 local lastKeenEdgeCriticalTarget = nil
 local lastKeenEdgeCriticalApplyTime = -1
+local lastGrandmasterHeavyCriticalTarget = nil
+local lastGrandmasterHeavyCriticalApplyTime = -1
 local duelistsFormAbilityApplied = false
 local greatbladeFormAbilityApplied = false
 local spellAbilityFailureStates = {}
@@ -94,6 +101,10 @@ end
 
 local function keenEdgeEnabled()
     return hasEnabledPerk(KEEN_EDGE_PERK_ID)
+end
+
+local function grandmasterFormEnabled()
+    return hasEnabledPerk(GRANDMASTER_FORM_PERK_ID)
 end
 
 local function getFatiguePercent()
@@ -566,6 +577,11 @@ local function rememberKeenEdgeCriticalApplication(target)
     lastKeenEdgeCriticalApplyTime = runtimeTime
 end
 
+local function rememberGrandmasterHeavyCriticalApplication(target)
+    lastGrandmasterHeavyCriticalTarget = target
+    lastGrandmasterHeavyCriticalApplyTime = runtimeTime
+end
+
 local function showMessage(text)
     ui.showMessage(text, { showInDialogue = false })
 end
@@ -628,6 +644,16 @@ local function tryApplyGreatbladeCritical(data)
     applyLongBladeCriticalDamage(target, GREATBLADE_CRITICAL_DAMAGE)
 end
 
+local function getGrandmasterHeavyCriticalChance()
+    local fatiguePercent = math.max(0, math.min(1, getFatiguePercent()))
+    if fatiguePercent <= GRANDMASTER_HEAVY_CRITICAL_MIN_FATIGUE then
+        return 0
+    end
+
+    return GRANDMASTER_HEAVY_CRITICAL_MAX_CHANCE
+        * ((fatiguePercent - GRANDMASTER_HEAVY_CRITICAL_MIN_FATIGUE) / (1 - GRANDMASTER_HEAVY_CRITICAL_MIN_FATIGUE))
+end
+
 local function tryApplyKeenEdgeCritical(data)
     if type(data) ~= "table" then
         return
@@ -650,6 +676,32 @@ local function tryApplyKeenEdgeCritical(data)
     rememberKeenEdgeCriticalApplication(target)
     showMessage(KEEN_EDGE_CRITICAL_MESSAGE)
     applyLongBladeCriticalDamage(target, KEEN_EDGE_CRITICAL_DAMAGE)
+end
+
+local function tryApplyGrandmasterHeavyCritical(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local target = data.target
+    if not isValidDuelistTempoTarget(target) then
+        return
+    end
+    if not grandmasterFormEnabled() or getEquippedLongBlade() == nil then
+        return
+    end
+    if recentlyAppliedCritical(target, lastGrandmasterHeavyCriticalTarget, lastGrandmasterHeavyCriticalApplyTime) then
+        return
+    end
+
+    local chance = getGrandmasterHeavyCriticalChance()
+    if chance <= 0 or math.random() >= chance then
+        return
+    end
+
+    rememberGrandmasterHeavyCriticalApplication(target)
+    showMessage(GRANDMASTER_HEAVY_CRITICAL_MESSAGE)
+    applyLongBladeCriticalDamage(target, GRANDMASTER_HEAVY_CRITICAL_DAMAGE)
 end
 
 local function getAttackTarget(attack)
@@ -693,6 +745,9 @@ local function onHit(attack)
     tryApplyGreatbladeCritical({
         target = target,
     })
+    tryApplyGrandmasterHeavyCritical({
+        target = target,
+    })
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -711,6 +766,8 @@ local function onLoad()
     lastGreatbladeCriticalApplyTime = -1
     lastKeenEdgeCriticalTarget = nil
     lastKeenEdgeCriticalApplyTime = -1
+    lastGrandmasterHeavyCriticalTarget = nil
+    lastGrandmasterHeavyCriticalApplyTime = -1
     refreshLongBladeFundamentals()
     updateLongBladeAbilities()
 
@@ -744,6 +801,7 @@ return {
         SkillPerkSystem_TryDuelistsTempo = tryApplyDuelistTempo,
         SkillPerkSystem_TryGreatbladeCritical = tryApplyGreatbladeCritical,
         SkillPerkSystem_TryKeenEdgeCritical = tryApplyKeenEdgeCritical,
+        SkillPerkSystem_TryGrandmasterHeavyCritical = tryApplyGrandmasterHeavyCritical,
     },
     engineHandlers = {
         onUpdate = onUpdate,

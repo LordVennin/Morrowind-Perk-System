@@ -9,6 +9,7 @@ PLAYER:scripts/SkillPerkSystem_BasePack/lucky_find_player_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/unseen_hand_global_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/unseen_hand_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/block_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/longblade_critical_global.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/longblade_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/duelists_tempo_global.lua
 CUSTOM:scripts/SkillPerkSystem_BasePack/duelists_tempo_target.lua

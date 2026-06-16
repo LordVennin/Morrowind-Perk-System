@@ -24,6 +24,9 @@ local appliedLongBladeBonus = tonumber(storageSection:get(APPLIED_BONUS_KEY)) or
 local duelistTempoStacks = 0
 local duelistTempoRemaining = 0
 local appliedDuelistTempoAgilityBonus = tonumber(storageSection:get(DUELISTS_TEMPO_APPLIED_KEY)) or 0
+local runtimeTime = 0
+local lastDuelistTempoTarget = nil
+local lastDuelistTempoApplyTime = -1
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -148,6 +151,45 @@ local function refreshLongBladeFundamentals()
     applyLongBladeBonus(desiredBonus)
 end
 
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function isLongBladeOneHandRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local weaponType = tonumber(record.type)
+    local oneHandLongBladeType = tonumber(Weapon.TYPE.LongBladeOneHand)
+    return weaponType ~= nil and oneHandLongBladeType ~= nil and weaponType == oneHandLongBladeType
+end
+
 local function getEquippedOneHandedLongBlade()
     if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
         return nil
@@ -167,15 +209,8 @@ local function getEquippedOneHandedLongBlade()
         return nil
     end
 
-    local record = nil
-    if type(Weapon.record) == "function" then
-        local okRecord, value = pcall(Weapon.record, weapon)
-        if okRecord then
-            record = value
-        end
-    end
-
-    if record == nil or Weapon.TYPE == nil or record.type ~= Weapon.TYPE.LongBladeOneHand then
+    local record = getWeaponRecord(weapon)
+    if not isLongBladeOneHandRecord(record) then
         return nil
     end
 
@@ -198,6 +233,15 @@ local function applyDuelistTempoToTarget(target, stacks)
     })
 end
 
+local function recentlyAppliedDuelistTempo(target)
+    return target ~= nil and target == lastDuelistTempoTarget and (runtimeTime - lastDuelistTempoApplyTime) < 0.05
+end
+
+local function rememberDuelistTempoApplication(target)
+    lastDuelistTempoTarget = target
+    lastDuelistTempoApplyTime = runtimeTime
+end
+
 local function tryApplyDuelistTempo(data)
     if type(data) ~= "table" then
         return
@@ -210,21 +254,79 @@ local function tryApplyDuelistTempo(data)
     if not duelistsTempoEnabled() or getEquippedOneHandedLongBlade() == nil then
         return
     end
+    if recentlyAppliedDuelistTempo(target) then
+        return
+    end
 
+    rememberDuelistTempoApplication(target)
     duelistTempoStacks = math.min(DUELISTS_TEMPO_MAX_STACKS, duelistTempoStacks + 1)
     duelistTempoRemaining = DUELISTS_TEMPO_DURATION
     applyDuelistTempoAgilityBonus(duelistTempoStacks * DUELISTS_TEMPO_AGILITY_PER_STACK)
     applyDuelistTempoToTarget(target, duelistTempoStacks)
 end
 
+local function getAttackTarget(attack)
+    if type(attack) ~= "table" then
+        return nil
+    end
+
+    return attack.target or attack.victim or attack.defender or attack.hitObject or attack.object
+end
+
+local function isSuccessfulPlayerMeleeHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.attacker ~= pself then
+        return false
+    end
+
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    if meleeType ~= nil and attack.sourceType ~= meleeType then
+        return false
+    end
+
+    return true
+end
+
+local function onHit(attack)
+    if not isSuccessfulPlayerMeleeHit(attack) then
+        return
+    end
+
+    tryApplyDuelistTempo({
+        target = getAttackTarget(attack),
+    })
+end
+
+local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(addOnHitHandler) == "function" then
+    addOnHitHandler(onHit)
+end
+
 local function onLoad()
     appliedLongBladeBonus = math.max(0, math.floor(tonumber(storageSection:get(APPLIED_BONUS_KEY)) or 0))
     appliedDuelistTempoAgilityBonus = math.max(0, math.floor(tonumber(storageSection:get(DUELISTS_TEMPO_APPLIED_KEY)) or 0))
     clearDuelistTempoBonus()
+    runtimeTime = 0
+    lastDuelistTempoTarget = nil
+    lastDuelistTempoApplyTime = -1
     refreshLongBladeFundamentals()
+
+    if duelistTempoRemaining > 0 then
+        duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))
+        if duelistTempoRemaining <= 0 or not duelistsTempoEnabled() or getEquippedOneHandedLongBlade() == nil then
+            clearDuelistTempoBonus()
+        end
+    elseif appliedDuelistTempoAgilityBonus ~= 0 then
+        clearDuelistTempoBonus()
+    end
 end
 
 local function onUpdate(dt)
+    runtimeTime = runtimeTime + (tonumber(dt) or 0)
     refreshLongBladeFundamentals()
 
     if duelistTempoRemaining > 0 then

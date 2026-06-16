@@ -56,7 +56,7 @@ return {
             x = -120,
             y = 260,
             title = "Duelist's Form",
-            description = "While wielding a one-handed long blade with no shield equipped, gain Duelist's Form.",
+            description = "While wielding a one-handed long blade with no shield equipped, gain increased chance to dodge attacks and resistance to normal weapons.",
         },
         {
             id = "longblade_demo_whirlwind",

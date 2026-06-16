@@ -1,5 +1,6 @@
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
+local ui = require("openmw.ui")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -13,6 +14,7 @@ local LONG_BLADE_FUNDAMENTALS_PERK_ID = "longblade_fundamentals"
 local DUELISTS_TEMPO_PERK_ID = "longblade_demo_precision"
 local GREATBLADE_FORM_PERK_ID = "longblade_greatblade_form"
 local DUELISTS_FORM_PERK_ID = "longblade_demo_duelist"
+local GREATBLADE_CRITICALS_PERK_ID = "longblade_demo_whirlwind"
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
 local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_LongBlade"
@@ -25,6 +27,9 @@ local LOG_TAG = "[SkillPerkSystem_BasePack][LongBlade]"
 local DUELISTS_TEMPO_MAX_STACKS = 5
 local DUELISTS_TEMPO_DURATION = 4.0
 local DUELISTS_TEMPO_AGILITY_PER_STACK = 3
+local GREATBLADE_CRITICAL_CHANCE = 0.25
+local GREATBLADE_CRITICAL_DAMAGE = 20
+local GREATBLADE_CRITICAL_MESSAGE = "Critical hit!"
 
 local storageSection = storage.playerSection(STORAGE_SECTION_ID)
 local appliedLongBladeBonus = tonumber(storageSection:get(APPLIED_BONUS_KEY)) or 0
@@ -74,6 +79,10 @@ end
 
 local function duelistsFormEnabled()
     return hasEnabledPerk(DUELISTS_FORM_PERK_ID)
+end
+
+local function greatbladeCriticalsEnabled()
+    return hasEnabledPerk(GREATBLADE_CRITICALS_PERK_ID)
 end
 
 local function getFatiguePercent()
@@ -524,6 +533,17 @@ local function rememberDuelistTempoApplication(target)
     lastDuelistTempoApplyTime = runtimeTime
 end
 
+local function showMessage(text)
+    ui.showMessage(text, { showInDialogue = false })
+end
+
+local function applyGreatbladeCriticalDamage(target)
+    target:sendEvent("ModifyStat", {
+        stat = "health",
+        amount = -GREATBLADE_CRITICAL_DAMAGE,
+    })
+end
+
 local function tryApplyDuelistTempo(data)
     if type(data) ~= "table" then
         return
@@ -545,6 +565,27 @@ local function tryApplyDuelistTempo(data)
     duelistTempoRemaining = DUELISTS_TEMPO_DURATION
     applyDuelistTempoAgilityBonus(duelistTempoStacks * DUELISTS_TEMPO_AGILITY_PER_STACK)
     applyDuelistTempoToTarget(target, duelistTempoStacks)
+end
+
+
+local function tryApplyGreatbladeCritical(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local target = data.target
+    if not isValidDuelistTempoTarget(target) then
+        return
+    end
+    if not greatbladeCriticalsEnabled() or getEquippedTwoHandedLongBlade() == nil then
+        return
+    end
+    if math.random() >= GREATBLADE_CRITICAL_CHANCE then
+        return
+    end
+
+    showMessage(GREATBLADE_CRITICAL_MESSAGE)
+    applyGreatbladeCriticalDamage(target)
 end
 
 local function getAttackTarget(attack)
@@ -578,8 +619,12 @@ local function onHit(attack)
         return
     end
 
+    local target = getAttackTarget(attack)
     tryApplyDuelistTempo({
-        target = getAttackTarget(attack),
+        target = target,
+    })
+    tryApplyGreatbladeCritical({
+        target = target,
     })
 end
 

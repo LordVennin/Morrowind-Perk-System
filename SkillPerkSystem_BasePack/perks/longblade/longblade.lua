@@ -66,8 +66,8 @@ return {
             cost = 1,
             x = 120,
             y = 260,
-            title = "Whirlwind Finish",
-            description = "Momentum-based finish from cleaving line.",
+            title = "Greatblade Criticals",
+            description = "Two-handed long blade hits have a 25% chance to deal 20 extra damage as a critical hit.",
         },
         {
             id = "longblade_demo_mastery",

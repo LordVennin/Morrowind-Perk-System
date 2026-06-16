@@ -1,19 +1,24 @@
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
 
 local Actor = types.Actor
+local Armor = types.Armor
 local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local LONG_BLADE_FUNDAMENTALS_PERK_ID = "longblade_fundamentals"
 local DUELISTS_TEMPO_PERK_ID = "longblade_demo_precision"
+local DUELISTS_FORM_PERK_ID = "longblade_demo_duelist"
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
 local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_LongBlade"
 local APPLIED_BONUS_KEY = "fundamentals.applied_bonus"
 local DUELISTS_TEMPO_APPLIED_KEY = "duelists_tempo.applied_agility_bonus"
+local DUELISTS_FORM_ABILITY_ID = "sps_duelistbuff"
+local LOG_TAG = "[SkillPerkSystem_BasePack][LongBlade]"
 
 local DUELISTS_TEMPO_MAX_STACKS = 5
 local DUELISTS_TEMPO_DURATION = 4.0
@@ -27,6 +32,14 @@ local appliedDuelistTempoAgilityBonus = tonumber(storageSection:get(DUELISTS_TEM
 local runtimeTime = 0
 local lastDuelistTempoTarget = nil
 local lastDuelistTempoApplyTime = -1
+local duelistsFormAbilityApplied = false
+local duelistsFormAbilityAddFailureLogged = false
+local duelistsFormAbilityRemoveFailureLogged = false
+local duelistsFormSpellBookFailureState = nil
+
+local function logDebug(message)
+    print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
+end
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -51,6 +64,10 @@ end
 
 local function duelistsTempoEnabled()
     return hasEnabledPerk(DUELISTS_TEMPO_PERK_ID)
+end
+
+local function duelistsFormEnabled()
+    return hasEnabledPerk(DUELISTS_FORM_PERK_ID)
 end
 
 local function getFatiguePercent()
@@ -180,6 +197,35 @@ local function getWeaponRecord(item)
     return nil
 end
 
+local function getArmorRecord(item)
+    if item == nil or Armor == nil then
+        return nil
+    end
+
+    if type(Armor.record) == "function" then
+        local okRecord, record = pcall(Armor.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Armor.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Armor.records) == "table" then
+        return Armor.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
 local function isLongBladeOneHandRecord(record)
     if record == nil or Weapon == nil or Weapon.TYPE == nil then
         return false
@@ -190,18 +236,31 @@ local function isLongBladeOneHandRecord(record)
     return weaponType ~= nil and oneHandLongBladeType ~= nil and weaponType == oneHandLongBladeType
 end
 
+local function getEquippedItem(slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, pself, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
 local function getEquippedOneHandedLongBlade()
     if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
         return nil
     end
 
     local slot = Actor.EQUIPMENT_SLOT.CarriedRight
-    if slot == nil or type(Actor.getEquipment) ~= "function" then
+    if slot == nil then
         return nil
     end
 
-    local okEquipment, weapon = pcall(Actor.getEquipment, pself, slot)
-    if not okEquipment or weapon == nil then
+    local weapon = getEquippedItem(slot)
+    if weapon == nil then
         return nil
     end
 
@@ -215,6 +274,185 @@ local function getEquippedOneHandedLongBlade()
     end
 
     return weapon
+end
+
+local function hasEquippedOffHandShield()
+    if Actor == nil or Armor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    local leftSlot = Actor.EQUIPMENT_SLOT.CarriedLeft
+    if leftSlot == nil then
+        return false
+    end
+
+    local offHand = getEquippedItem(leftSlot)
+    if offHand == nil then
+        return false
+    end
+
+    if type(Armor.objectIsInstance) == "function" and not Armor.objectIsInstance(offHand) then
+        return false
+    end
+
+    local record = getArmorRecord(offHand)
+    return record ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE.Shield
+end
+
+local function getPlayerSpells()
+    if Actor == nil or type(Actor.spells) ~= "function" then
+        if duelistsFormSpellBookFailureState ~= "unavailable" then
+            duelistsFormSpellBookFailureState = "unavailable"
+            logDebug("Actor.spells(pself) unavailable; cannot adjust duelist's form state")
+        end
+        return nil
+    end
+
+    local okSpells, spells = pcall(Actor.spells, pself)
+    if not okSpells then
+        if duelistsFormSpellBookFailureState ~= "error" then
+            duelistsFormSpellBookFailureState = "error"
+            logDebug("Actor.spells(pself) errored; cannot adjust duelist's form state")
+        end
+        return nil
+    end
+
+    duelistsFormSpellBookFailureState = nil
+    return spells
+end
+
+local function resolveDuelistsFormAbilityRecord()
+    local okRecords, records = pcall(function()
+        return core.magic.spells.records
+    end)
+    if not okRecords or type(records) ~= "table" then
+        return nil
+    end
+
+    return records[DUELISTS_FORM_ABILITY_ID]
+end
+
+local function spellBookHasDuelistsFormAbility(spells)
+    if spells == nil then
+        return false
+    end
+
+    if type(spells.has) == "function" then
+        local okHasById, valueById = pcall(function()
+            return spells:has(DUELISTS_FORM_ABILITY_ID)
+        end)
+        if okHasById and valueById == true then
+            return true
+        end
+
+        local spellRecord = resolveDuelistsFormAbilityRecord()
+        if spellRecord ~= nil then
+            local okHasByRecord, valueByRecord = pcall(function()
+                return spells:has(spellRecord)
+            end)
+            if okHasByRecord and valueByRecord == true then
+                return true
+            end
+        end
+    end
+
+    for _, spell in pairs(spells) do
+        if type(spell) == "table" and spell.id == DUELISTS_FORM_ABILITY_ID then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function addDuelistsFormAbility(spells)
+    if type(spells.add) ~= "function" then
+        return false, "spells.add unavailable"
+    end
+
+    local okAddById, errById = pcall(function()
+        spells:add(DUELISTS_FORM_ABILITY_ID)
+    end)
+    if okAddById then
+        return true, nil
+    end
+
+    local spellRecord = resolveDuelistsFormAbilityRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okAddByRecord, errByRecord = pcall(function()
+        spells:add(spellRecord)
+    end)
+    if okAddByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function removeDuelistsFormAbility(spells)
+    if type(spells.remove) ~= "function" then
+        return false, "spells.remove unavailable"
+    end
+
+    local okRemoveById, errById = pcall(function()
+        spells:remove(DUELISTS_FORM_ABILITY_ID)
+    end)
+    if okRemoveById then
+        return true, nil
+    end
+
+    local spellRecord = resolveDuelistsFormAbilityRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okRemoveByRecord, errByRecord = pcall(function()
+        spells:remove(spellRecord)
+    end)
+    if okRemoveByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function updateDuelistsFormAbility()
+    local spells = getPlayerSpells()
+    if spells == nil then
+        return
+    end
+
+    local shouldHaveAbility = duelistsFormEnabled()
+        and getEquippedOneHandedLongBlade() ~= nil
+        and not hasEquippedOffHandShield()
+    local hasAbility = spellBookHasDuelistsFormAbility(spells)
+
+    if shouldHaveAbility and not hasAbility then
+        local okAdd, addError = addDuelistsFormAbility(spells)
+        if not okAdd then
+            if not duelistsFormAbilityAddFailureLogged then
+                duelistsFormAbilityAddFailureLogged = true
+                logDebug(string.format("failed to add %s: %s", DUELISTS_FORM_ABILITY_ID, tostring(addError)))
+            end
+            return
+        end
+        duelistsFormAbilityAddFailureLogged = false
+        duelistsFormAbilityApplied = true
+    elseif (not shouldHaveAbility) and (hasAbility or duelistsFormAbilityApplied) then
+        local okRemove, removeError = removeDuelistsFormAbility(spells)
+        if not okRemove then
+            if not duelistsFormAbilityRemoveFailureLogged then
+                duelistsFormAbilityRemoveFailureLogged = true
+                logDebug(string.format("failed to remove %s: %s", DUELISTS_FORM_ABILITY_ID, tostring(removeError)))
+            end
+            return
+        end
+        duelistsFormAbilityRemoveFailureLogged = false
+        duelistsFormAbilityApplied = false
+    end
 end
 
 local function isValidDuelistTempoTarget(target)
@@ -314,6 +552,7 @@ local function onLoad()
     lastDuelistTempoTarget = nil
     lastDuelistTempoApplyTime = -1
     refreshLongBladeFundamentals()
+    updateDuelistsFormAbility()
 
     if duelistTempoRemaining > 0 then
         duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))
@@ -328,6 +567,7 @@ end
 local function onUpdate(dt)
     runtimeTime = runtimeTime + (tonumber(dt) or 0)
     refreshLongBladeFundamentals()
+    updateDuelistsFormAbility()
 
     if duelistTempoRemaining > 0 then
         duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))

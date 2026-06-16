@@ -55,8 +55,8 @@ return {
             cost = 1,
             x = -120,
             y = 260,
-            title = "Duelist Finish",
-            description = "Focused finishing sequence from precision line.",
+            title = "Duelist's Form",
+            description = "While wielding a one-handed long blade with no shield equipped, gain Duelist's Form.",
         },
         {
             id = "longblade_demo_whirlwind",

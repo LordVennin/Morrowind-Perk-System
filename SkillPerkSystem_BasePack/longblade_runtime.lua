@@ -623,9 +623,6 @@ local function onHit(attack)
     tryApplyDuelistTempo({
         target = target,
     })
-    tryApplyGreatbladeCritical({
-        target = target,
-    })
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -671,6 +668,7 @@ end
 return {
     eventHandlers = {
         SkillPerkSystem_TryDuelistsTempo = tryApplyDuelistTempo,
+        SkillPerkSystem_TryGreatbladeCritical = tryApplyGreatbladeCritical,
     },
     engineHandlers = {
         onUpdate = onUpdate,

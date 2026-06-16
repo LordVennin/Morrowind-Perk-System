@@ -80,6 +80,9 @@ local function onHit(attack)
     attack.attacker:sendEvent("SkillPerkSystem_TryDuelistsTempo", {
         target = selfObj,
     })
+    attack.attacker:sendEvent("SkillPerkSystem_TryGreatbladeCritical", {
+        target = selfObj,
+    })
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler

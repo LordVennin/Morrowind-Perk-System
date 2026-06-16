@@ -29,7 +29,6 @@ local DUELISTS_TEMPO_DURATION = 4.0
 local DUELISTS_TEMPO_AGILITY_PER_STACK = 3
 local GREATBLADE_CRITICAL_CHANCE = 0.25
 local GREATBLADE_CRITICAL_DAMAGE = 20
-local GREATBLADE_CRITICAL_EVENT = "SkillPerkSystem_ApplyGreatbladeCritical"
 local GREATBLADE_CRITICAL_MESSAGE = "Critical hit!"
 
 local storageSection = storage.playerSection(STORAGE_SECTION_ID)
@@ -538,6 +537,21 @@ local function showMessage(text)
     ui.showMessage(text, { showInDialogue = false })
 end
 
+local function applyGreatbladeCriticalDamage(target)
+    target:sendEvent("Hit", {
+        sourceType = interfaces.Combat ~= nil
+            and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+            and interfaces.Combat.ATTACK_SOURCE_TYPES.Unspecified
+            or nil,
+        strength = 1,
+        attacker = pself,
+        damage = {
+            health = GREATBLADE_CRITICAL_DAMAGE,
+        },
+        successful = true,
+    })
+end
+
 local function tryApplyDuelistTempo(data)
     if type(data) ~= "table" then
         return
@@ -579,11 +593,7 @@ local function tryApplyGreatbladeCritical(data)
     end
 
     showMessage(GREATBLADE_CRITICAL_MESSAGE)
-    core.sendGlobalEvent(GREATBLADE_CRITICAL_EVENT, {
-        attacker = pself,
-        target = target,
-        damage = GREATBLADE_CRITICAL_DAMAGE,
-    })
+    applyGreatbladeCriticalDamage(target)
 end
 
 local function getAttackTarget(attack)

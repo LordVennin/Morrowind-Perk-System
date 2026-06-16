@@ -22,8 +22,8 @@ return {
             cost = 1,
             x = -180,
             y = 120,
-            title = "Precision Cuts",
-            description = "Improves spacing and tip-control for measured strikes.",
+            title = "Duelist's Tempo",
+            description = "One-handed long blade hits reduce your target's Agility by 3 and increase yours by 3 for 4 seconds. Stacks up to 5 times; applying a stack refreshes the duration.",
         },
         {
             id = "longblade_demo_pressure",

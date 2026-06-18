@@ -3,12 +3,15 @@ local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
-local KINDLING_GRIP_PERK_ID = "axe_kindling_grip"
+local EXECUTION_DAMAGE_PERK_IDS = {
+    "axe_kindling_grip",
+    "axe_crescent_hook",
+}
 local STATE_EVENT = "SkillPerkSystem_AxeKindlingGripState"
 local STATE_REFRESH_INTERVAL = 1.0
 
 local refreshTimer = STATE_REFRESH_INTERVAL
-local lastEnabled = nil
+local lastEnabledCount = nil
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -27,21 +30,28 @@ local function hasEnabledPerk(perkID)
     return true
 end
 
-local function kindlingGripEnabled()
-    return hasEnabledPerk(KINDLING_GRIP_PERK_ID)
+local function executionDamagePerkCount()
+    local count = 0
+    for _, perkID in ipairs(EXECUTION_DAMAGE_PERK_IDS) do
+        if hasEnabledPerk(perkID) then
+            count = count + 1
+        end
+    end
+    return count
 end
 
 local function publishState(force)
-    local enabled = kindlingGripEnabled()
-    if not force and enabled == lastEnabled then
+    local enabledCount = executionDamagePerkCount()
+    if not force and enabledCount == lastEnabledCount then
         return
     end
 
-    lastEnabled = enabled
+    lastEnabledCount = enabledCount
     core.sendGlobalEvent(STATE_EVENT, {
         player = pself,
         playerId = pself.id,
-        enabled = enabled,
+        enabled = enabledCount > 0,
+        damageBonusCount = enabledCount,
     })
 end
 
@@ -56,7 +66,7 @@ return {
         end,
         onLoad = function()
             refreshTimer = STATE_REFRESH_INTERVAL
-            lastEnabled = nil
+            lastEnabledCount = nil
             publishState(true)
         end,
     },

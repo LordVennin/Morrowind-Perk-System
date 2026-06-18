@@ -11,7 +11,7 @@ return {
             cost = 1,
             x = 0,
             y = 0,
-            title = "Kindling Grip",
+            title = "Headsman's Mark",
             description = "Axe hits deal 10% more damage to targets below 50% Health.",
         },
         {
@@ -35,8 +35,8 @@ return {
             cost = 1,
             x = 170,
             y = 115,
-            title = "Crescent Hook",
-            description = "Placeholder perk: the axe beard catches moonlight, shields, and whatever pride enemies leave exposed.",
+            title = "Executioner's Mercy",
+            description = "Axe hits deal an additional 10% damage to targets below 50% Health.",
         },
         {
             id = "axe_splinter_waltz",

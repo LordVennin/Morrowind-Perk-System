@@ -6,6 +6,10 @@ local AXE_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/axe_target.lua"
 local WATCHER_REFRESH_INTERVAL = 1.0
 
 local refreshTimer = 0
+local kindlingGripState = {
+    enabled = false,
+    playerId = nil,
+}
 
 local function shouldAttachWatcher(actor)
     if actor == nil or Actor == nil then
@@ -27,15 +31,40 @@ local function shouldAttachWatcher(actor)
     return not actor:hasScript(AXE_TARGET_SCRIPT)
 end
 
+local function sendState(actor)
+    if actor == nil or type(actor.sendEvent) ~= "function" then
+        return
+    end
+
+    actor:sendEvent("SkillPerkSystem_AxeKindlingGripRefresh", kindlingGripState)
+end
+
 local function refreshWatchers()
     for _, actor in ipairs(world.activeActors) do
         if shouldAttachWatcher(actor) then
-            actor:addScript(AXE_TARGET_SCRIPT, {})
+            actor:addScript(AXE_TARGET_SCRIPT, kindlingGripState)
+        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(AXE_TARGET_SCRIPT) then
+            sendState(actor)
         end
     end
 end
 
+local function onKindlingGripState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    kindlingGripState = {
+        enabled = data.enabled == true,
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+    }
+    refreshWatchers()
+end
+
 return {
+    eventHandlers = {
+        SkillPerkSystem_AxeKindlingGripState = onKindlingGripState,
+    },
     engineHandlers = {
         onUpdate = function(dt)
             refreshTimer = refreshTimer + (tonumber(dt) or 0)

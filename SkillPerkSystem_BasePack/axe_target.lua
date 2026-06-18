@@ -3,7 +3,22 @@ local selfObj = require("openmw.self")
 local types = require("openmw.types")
 
 local Actor = types.Actor
+local Weapon = types.Weapon
+
 local KINDLING_GRIP_HEALTH_THRESHOLD = 0.5
+local KINDLING_GRIP_DAMAGE_MULTIPLIER = 1.10
+
+local kindlingGripEnabled = false
+local kindlingGripPlayerId = nil
+
+local function setKindlingGripState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    kindlingGripEnabled = data.enabled == true
+    kindlingGripPlayerId = type(data.playerId) == "string" and data.playerId or nil
+end
 
 local function getHealth()
     local healthAccessor = Actor ~= nil
@@ -38,40 +53,96 @@ local function isBelowKindlingGripThreshold()
     return getHealthPercent() < KINDLING_GRIP_HEALTH_THRESHOLD
 end
 
-local function applyHealthDamage(amount)
-    local health = getHealth()
-    if health == nil or type(health.current) ~= "number" then
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function weaponTypeEquals(record, typeName)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
         return false
     end
 
-    health.current = math.max(0, health.current - math.max(0, tonumber(amount) or 0))
-    return true
+    local expected = tonumber(Weapon.TYPE[typeName])
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
 end
 
-local function onApplyKindlingGripDamage(data)
-    if type(data) ~= "table" then
-        return
-    end
-
-    local damage = math.max(0, tonumber(data.damage) or 0)
-    if damage <= 0 then
-        return
-    end
-    if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
-        return
-    end
-    if not isBelowKindlingGripThreshold() then
-        return
-    end
-
-    applyHealthDamage(damage)
+local function isAxeRecord(record)
+    return weaponTypeEquals(record, "AxeOneHand") or weaponTypeEquals(record, "AxeTwoHand")
 end
 
-local function isSuccessfulPlayerMeleeHit(attack)
+local function getEquippedItem(actor, slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function actorHasEquippedAxe(actor)
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    local weapon = getEquippedItem(actor, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return false
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return false
+    end
+
+    return isAxeRecord(getWeaponRecord(weapon))
+end
+
+local function isSuccessfulKindlingGripHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
     end
-    if attack.attacker == nil or type(attack.attacker.isValid) ~= "function" or not attack.attacker:isValid() then
+    if not kindlingGripEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= kindlingGripPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not actorHasEquippedAxe(attack.attacker) then
+        return false
+    end
+    if not isBelowKindlingGripThreshold() then
         return false
     end
 
@@ -82,18 +153,15 @@ local function isSuccessfulPlayerMeleeHit(attack)
         return false
     end
 
-    return true
+    return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
 end
 
 local function onHit(attack)
-    if not isSuccessfulPlayerMeleeHit(attack) then
+    if not isSuccessfulKindlingGripHit(attack) then
         return
     end
 
-    attack.attacker:sendEvent("SkillPerkSystem_TryAxeKindlingGrip", {
-        target = selfObj,
-        damage = attack.damage,
-    })
+    attack.damage.health = attack.damage.health * KINDLING_GRIP_DAMAGE_MULTIPLIER
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -103,6 +171,24 @@ end
 
 return {
     eventHandlers = {
-        SkillPerkSystem_ApplyAxeKindlingGripDamage = onApplyKindlingGripDamage,
+        SkillPerkSystem_AxeKindlingGripRefresh = setKindlingGripState,
+    },
+    engineHandlers = {
+        onInit = function(initData)
+            setKindlingGripState(initData)
+        end,
+        onLoad = function(savedData, initData)
+            if type(savedData) == "table" then
+                setKindlingGripState(savedData)
+            else
+                setKindlingGripState(initData)
+            end
+        end,
+        onSave = function()
+            return {
+                enabled = kindlingGripEnabled,
+                playerId = kindlingGripPlayerId,
+            }
+        end,
     },
 }

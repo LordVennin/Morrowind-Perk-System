@@ -12,7 +12,7 @@ return {
             x = 0,
             y = 0,
             title = "Kindling Grip",
-            description = "Placeholder perk: your first lesson is to hold the haft like a promise and swing like thunder is watching.",
+            description = "Axe hits deal 10% more damage to targets below 50% Health.",
         },
         {
             id = "axe_bark_splitter",

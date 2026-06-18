@@ -6,17 +6,19 @@ local Actor = types.Actor
 local Weapon = types.Weapon
 
 local KINDLING_GRIP_HEALTH_THRESHOLD = 0.5
-local KINDLING_GRIP_DAMAGE_MULTIPLIER = 1.10
+local KINDLING_GRIP_DAMAGE_BONUS = 0.10
 
 local kindlingGripEnabled = false
 local kindlingGripPlayerId = nil
+local kindlingGripDamageBonusCount = 0
 
 local function setKindlingGripState(data)
     if type(data) ~= "table" then
         return
     end
 
-    kindlingGripEnabled = data.enabled == true
+    kindlingGripDamageBonusCount = math.max(0, math.floor(tonumber(data.damageBonusCount) or 0))
+    kindlingGripEnabled = data.enabled == true and kindlingGripDamageBonusCount > 0
     kindlingGripPlayerId = type(data.playerId) == "string" and data.playerId or nil
 end
 
@@ -161,7 +163,7 @@ local function onHit(attack)
         return
     end
 
-    attack.damage.health = attack.damage.health * KINDLING_GRIP_DAMAGE_MULTIPLIER
+    attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -187,6 +189,7 @@ return {
         onSave = function()
             return {
                 enabled = kindlingGripEnabled,
+                damageBonusCount = kindlingGripDamageBonusCount,
                 playerId = kindlingGripPlayerId,
             }
         end,

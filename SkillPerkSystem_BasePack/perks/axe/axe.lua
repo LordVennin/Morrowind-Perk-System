@@ -39,7 +39,7 @@ return {
             description = "Axe hits deal an additional 10% damage to targets below 50% Health.",
         },
         {
-            id = "axe_splinter_waltz",
+            id = "axe_dragging_wound",
             tab = "Axe",
             effectId = "demo_noop",
             minimumSkill = 45,
@@ -47,8 +47,8 @@ return {
             cost = 1,
             x = -255,
             y = 245,
-            title = "Splinter Waltz",
-            description = "Placeholder perk: three steps, one chop, and a tidy shower of imaginary splinters.",
+            title = "Dragging Wound",
+            description = "Bloodletter bleeds from axe hits deal the same total damage over 10 seconds instead of 5, reducing the target's Speed by 20 while they bleed.",
         },
         {
             id = "axe_hewer_heart",
@@ -79,7 +79,7 @@ return {
             tab = "Axe",
             effectId = "demo_noop",
             minimumSkill = 65,
-            requires = { "axe_splinter_waltz", "axe_hewer_heart" },
+            requires = { "axe_dragging_wound", "axe_hewer_heart" },
             cost = 1,
             x = -85,
             y = 375,

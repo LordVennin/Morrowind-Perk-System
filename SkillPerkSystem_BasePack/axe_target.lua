@@ -7,10 +7,19 @@ local Weapon = types.Weapon
 
 local KINDLING_GRIP_HEALTH_THRESHOLD = 0.5
 local KINDLING_GRIP_DAMAGE_BONUS = 0.10
+local BLOODLETTER_DURATION = 5.0
+local BLOODLETTER_DAMAGE_INTERVAL = 1.0
+local BLOODLETTER_DAMAGE_PER_TICK = 1
+local BLOODLETTER_BLOOD_INTERVAL = 2.0
 
 local kindlingGripEnabled = false
 local kindlingGripPlayerId = nil
 local kindlingGripDamageBonusCount = 0
+local bloodletterEnabled = false
+
+local bloodletterRemainingTime = 0
+local bloodletterDamageTimer = 0
+local bloodletterBloodTimer = 0
 
 local function setKindlingGripState(data)
     if type(data) ~= "table" then
@@ -20,6 +29,7 @@ local function setKindlingGripState(data)
     kindlingGripDamageBonusCount = math.max(0, math.floor(tonumber(data.damageBonusCount) or 0))
     kindlingGripEnabled = data.enabled == true and kindlingGripDamageBonusCount > 0
     kindlingGripPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    bloodletterEnabled = data.bloodletterEnabled == true
 end
 
 local function getHealth()
@@ -158,12 +168,67 @@ local function isSuccessfulKindlingGripHit(attack)
     return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
 end
 
-local function onHit(attack)
-    if not isSuccessfulKindlingGripHit(attack) then
+local function isSuccessfulBloodletterHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not bloodletterEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= kindlingGripPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not actorHasEquippedAxe(attack.attacker) then
+        return false
+    end
+
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    if meleeType ~= nil and attack.sourceType ~= meleeType then
+        return false
+    end
+
+    return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
+end
+
+local function applyHealthDamage(amount)
+    local health = getHealth()
+    if health == nil or type(health.current) ~= "number" then
+        return false
+    end
+
+    health.current = math.max(0, health.current - math.max(0, tonumber(amount) or 0))
+    return true
+end
+
+local function spawnBloodSpray(position)
+    local spawnBloodEffect = interfaces.Combat ~= nil and interfaces.Combat.spawnBloodEffect
+    if type(spawnBloodEffect) ~= "function" then
         return
     end
 
-    attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
+    spawnBloodEffect(position or selfObj.position)
+end
+
+local function refreshBloodletterBleed(attack)
+    bloodletterRemainingTime = BLOODLETTER_DURATION
+    bloodletterDamageTimer = 0
+    bloodletterBloodTimer = 0
+    spawnBloodSpray(attack.hitPos or selfObj.position)
+end
+
+local function onHit(attack)
+    if isSuccessfulKindlingGripHit(attack) then
+        attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
+    end
+
+    if isSuccessfulBloodletterHit(attack) then
+        refreshBloodletterBleed(attack)
+    end
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -182,6 +247,9 @@ return {
         onLoad = function(savedData, initData)
             if type(savedData) == "table" then
                 setKindlingGripState(savedData)
+                bloodletterRemainingTime = math.max(0, tonumber(savedData.bloodletterRemainingTime) or 0)
+                bloodletterDamageTimer = math.max(0, tonumber(savedData.bloodletterDamageTimer) or 0)
+                bloodletterBloodTimer = math.max(0, tonumber(savedData.bloodletterBloodTimer) or 0)
             else
                 setKindlingGripState(initData)
             end
@@ -191,7 +259,39 @@ return {
                 enabled = kindlingGripEnabled,
                 damageBonusCount = kindlingGripDamageBonusCount,
                 playerId = kindlingGripPlayerId,
+                bloodletterEnabled = bloodletterEnabled,
+                bloodletterRemainingTime = bloodletterRemainingTime,
+                bloodletterDamageTimer = bloodletterDamageTimer,
+                bloodletterBloodTimer = bloodletterBloodTimer,
             }
+        end,
+        onUpdate = function(dt)
+            if bloodletterRemainingTime <= 0 then
+                return
+            end
+            if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                bloodletterRemainingTime = 0
+                return
+            end
+
+            local elapsed = math.max(0, tonumber(dt) or 0)
+            bloodletterRemainingTime = math.max(0, bloodletterRemainingTime - elapsed)
+            bloodletterDamageTimer = bloodletterDamageTimer + elapsed
+            bloodletterBloodTimer = bloodletterBloodTimer + elapsed
+
+            while bloodletterRemainingTime > 0 and bloodletterDamageTimer >= BLOODLETTER_DAMAGE_INTERVAL do
+                bloodletterDamageTimer = bloodletterDamageTimer - BLOODLETTER_DAMAGE_INTERVAL
+                applyHealthDamage(BLOODLETTER_DAMAGE_PER_TICK)
+                if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                    bloodletterRemainingTime = 0
+                    return
+                end
+            end
+
+            if bloodletterRemainingTime > 0 and bloodletterBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
+                bloodletterBloodTimer = 0
+                spawnBloodSpray(selfObj.position)
+            end
         end,
     },
 }

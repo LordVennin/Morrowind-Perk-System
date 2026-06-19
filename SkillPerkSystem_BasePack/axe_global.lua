@@ -9,6 +9,7 @@ local refreshTimer = 0
 local kindlingGripState = {
     enabled = false,
     damageBonusCount = 0,
+    bloodletterEnabled = false,
     playerId = nil,
 }
 
@@ -58,6 +59,7 @@ local function onKindlingGripState(data)
     kindlingGripState = {
         enabled = data.enabled == true,
         damageBonusCount = math.max(0, math.floor(tonumber(data.damageBonusCount) or 0)),
+        bloodletterEnabled = data.bloodletterEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

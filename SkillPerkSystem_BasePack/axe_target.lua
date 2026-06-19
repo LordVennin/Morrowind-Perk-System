@@ -10,16 +10,22 @@ local KINDLING_GRIP_DAMAGE_BONUS = 0.10
 local BLOODLETTER_DURATION = 5.0
 local BLOODLETTER_DAMAGE_INTERVAL = 1.0
 local BLOODLETTER_DAMAGE_PER_TICK = 1
+local DRAGGING_WOUND_DURATION = 10.0
+local DRAGGING_WOUND_DAMAGE_PER_TICK = BLOODLETTER_DAMAGE_PER_TICK * BLOODLETTER_DURATION / DRAGGING_WOUND_DURATION
+local DRAGGING_WOUND_SPEED_PENALTY = 20
 local BLOODLETTER_BLOOD_INTERVAL = 2.0
 
 local kindlingGripEnabled = false
 local kindlingGripPlayerId = nil
 local kindlingGripDamageBonusCount = 0
 local bloodletterEnabled = false
+local draggingWoundEnabled = false
 
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
 local bloodletterBloodTimer = 0
+local bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+local bloodletterSpeedPenaltyApplied = 0
 
 local function setKindlingGripState(data)
     if type(data) ~= "table" then
@@ -30,6 +36,43 @@ local function setKindlingGripState(data)
     kindlingGripEnabled = data.enabled == true and kindlingGripDamageBonusCount > 0
     kindlingGripPlayerId = type(data.playerId) == "string" and data.playerId or nil
     bloodletterEnabled = data.bloodletterEnabled == true
+    draggingWoundEnabled = data.draggingWoundEnabled == true
+end
+
+local function resolveSpeedStat()
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes.speed
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(selfObj)
+end
+
+local function applyBloodletterSpeedPenalty(targetPenalty)
+    local desired = math.max(0, math.floor(tonumber(targetPenalty) or 0))
+    local current = math.max(0, math.floor(tonumber(bloodletterSpeedPenaltyApplied) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveSpeedStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier + current - desired
+    bloodletterSpeedPenaltyApplied = desired
+end
+
+local function clearBloodletterBleed()
+    bloodletterRemainingTime = 0
+    bloodletterDamageTimer = 0
+    bloodletterBloodTimer = 0
+    bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+    applyBloodletterSpeedPenalty(0)
 end
 
 local function getHealth()
@@ -215,7 +258,15 @@ local function spawnBloodSpray(position)
 end
 
 local function refreshBloodletterBleed(attack)
-    bloodletterRemainingTime = BLOODLETTER_DURATION
+    if draggingWoundEnabled then
+        bloodletterRemainingTime = DRAGGING_WOUND_DURATION
+        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK
+        applyBloodletterSpeedPenalty(DRAGGING_WOUND_SPEED_PENALTY)
+    else
+        bloodletterRemainingTime = BLOODLETTER_DURATION
+        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+        applyBloodletterSpeedPenalty(0)
+    end
     bloodletterDamageTimer = 0
     bloodletterBloodTimer = 0
     spawnBloodSpray(attack.hitPos or selfObj.position)
@@ -250,6 +301,8 @@ return {
                 bloodletterRemainingTime = math.max(0, tonumber(savedData.bloodletterRemainingTime) or 0)
                 bloodletterDamageTimer = math.max(0, tonumber(savedData.bloodletterDamageTimer) or 0)
                 bloodletterBloodTimer = math.max(0, tonumber(savedData.bloodletterBloodTimer) or 0)
+                bloodletterDamagePerTick = math.max(0, tonumber(savedData.bloodletterDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
+                bloodletterSpeedPenaltyApplied = math.max(0, math.floor(tonumber(savedData.bloodletterSpeedPenaltyApplied) or 0))
             else
                 setKindlingGripState(initData)
             end
@@ -260,17 +313,21 @@ return {
                 damageBonusCount = kindlingGripDamageBonusCount,
                 playerId = kindlingGripPlayerId,
                 bloodletterEnabled = bloodletterEnabled,
+                draggingWoundEnabled = draggingWoundEnabled,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,
+                bloodletterDamagePerTick = bloodletterDamagePerTick,
+                bloodletterSpeedPenaltyApplied = bloodletterSpeedPenaltyApplied,
             }
         end,
         onUpdate = function(dt)
             if bloodletterRemainingTime <= 0 then
+                applyBloodletterSpeedPenalty(0)
                 return
             end
             if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
-                bloodletterRemainingTime = 0
+                clearBloodletterBleed()
                 return
             end
 
@@ -281,14 +338,19 @@ return {
 
             while bloodletterRemainingTime > 0 and bloodletterDamageTimer >= BLOODLETTER_DAMAGE_INTERVAL do
                 bloodletterDamageTimer = bloodletterDamageTimer - BLOODLETTER_DAMAGE_INTERVAL
-                applyHealthDamage(BLOODLETTER_DAMAGE_PER_TICK)
+                applyHealthDamage(bloodletterDamagePerTick)
                 if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
-                    bloodletterRemainingTime = 0
+                    clearBloodletterBleed()
                     return
                 end
             end
 
-            if bloodletterRemainingTime > 0 and bloodletterBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
+            if bloodletterRemainingTime <= 0 then
+                clearBloodletterBleed()
+                return
+            end
+
+            if bloodletterBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
                 bloodletterBloodTimer = 0
                 spawnBloodSpray(selfObj.position)
             end

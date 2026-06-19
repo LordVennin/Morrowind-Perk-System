@@ -4,6 +4,7 @@ local pself = require("openmw.self")
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local BLOODLETTER_PERK_ID = "axe_bloodletter"
+local DRAGGING_WOUND_PERK_ID = "axe_dragging_wound"
 local EXECUTION_DAMAGE_PERK_IDS = {
     "axe_kindling_grip",
     "axe_crescent_hook",
@@ -44,7 +45,8 @@ end
 local function publishState(force)
     local enabledCount = executionDamagePerkCount()
     local bloodletterEnabled = hasEnabledPerk(BLOODLETTER_PERK_ID)
-    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled)
+    local draggingWoundEnabled = hasEnabledPerk(DRAGGING_WOUND_PERK_ID)
+    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -56,6 +58,7 @@ local function publishState(force)
         enabled = enabledCount > 0,
         damageBonusCount = enabledCount,
         bloodletterEnabled = bloodletterEnabled,
+        draggingWoundEnabled = draggingWoundEnabled,
     })
 end
 

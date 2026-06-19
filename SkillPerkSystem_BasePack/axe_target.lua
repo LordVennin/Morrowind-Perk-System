@@ -20,7 +20,6 @@ local bloodletterEnabled = false
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
 local bloodletterBloodTimer = 0
-local bloodletterBloodPosition = nil
 
 local function setKindlingGripState(data)
     if type(data) ~= "table" then
@@ -219,8 +218,7 @@ local function refreshBloodletterBleed(attack)
     bloodletterRemainingTime = BLOODLETTER_DURATION
     bloodletterDamageTimer = 0
     bloodletterBloodTimer = 0
-    bloodletterBloodPosition = attack.hitPos or selfObj.position
-    spawnBloodSpray(bloodletterBloodPosition)
+    spawnBloodSpray(attack.hitPos or selfObj.position)
 end
 
 local function onHit(attack)
@@ -252,7 +250,6 @@ return {
                 bloodletterRemainingTime = math.max(0, tonumber(savedData.bloodletterRemainingTime) or 0)
                 bloodletterDamageTimer = math.max(0, tonumber(savedData.bloodletterDamageTimer) or 0)
                 bloodletterBloodTimer = math.max(0, tonumber(savedData.bloodletterBloodTimer) or 0)
-                bloodletterBloodPosition = nil
             else
                 setKindlingGripState(initData)
             end
@@ -293,7 +290,7 @@ return {
 
             if bloodletterRemainingTime > 0 and bloodletterBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
                 bloodletterBloodTimer = 0
-                spawnBloodSpray(bloodletterBloodPosition or selfObj.position)
+                spawnBloodSpray(selfObj.position)
             end
         end,
     },

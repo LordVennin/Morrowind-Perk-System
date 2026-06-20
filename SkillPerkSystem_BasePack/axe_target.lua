@@ -20,6 +20,7 @@ local kindlingGripPlayerId = nil
 local kindlingGripDamageBonusCount = 0
 local bloodletterEnabled = false
 local draggingWoundEnabled = false
+local crimsonCleaveEnabled = false
 
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
@@ -37,6 +38,7 @@ local function setKindlingGripState(data)
     kindlingGripPlayerId = type(data.playerId) == "string" and data.playerId or nil
     bloodletterEnabled = data.bloodletterEnabled == true
     draggingWoundEnabled = data.draggingWoundEnabled == true
+    crimsonCleaveEnabled = data.crimsonCleaveEnabled == true
 end
 
 local function resolveSpeedStat()
@@ -257,14 +259,30 @@ local function spawnBloodSpray(position)
     spawnBloodEffect(position or selfObj.position)
 end
 
+local function isSlashAttack(attack)
+    local slashType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_TYPES ~= nil
+        and interfaces.Combat.ATTACK_TYPES.Slash
+    return slashType ~= nil and type(attack) == "table" and attack.type == slashType
+end
+
+local function getBloodletterStackCount(attack)
+    if crimsonCleaveEnabled and isSlashAttack(attack) then
+        return 2
+    end
+
+    return 1
+end
+
 local function refreshBloodletterBleed(attack)
+    local stackCount = getBloodletterStackCount(attack)
     if draggingWoundEnabled then
         bloodletterRemainingTime = DRAGGING_WOUND_DURATION
-        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK
+        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * stackCount
         applyBloodletterSpeedPenalty(DRAGGING_WOUND_SPEED_PENALTY)
     else
         bloodletterRemainingTime = BLOODLETTER_DURATION
-        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * stackCount
         applyBloodletterSpeedPenalty(0)
     end
     bloodletterDamageTimer = 0
@@ -314,6 +332,7 @@ return {
                 playerId = kindlingGripPlayerId,
                 bloodletterEnabled = bloodletterEnabled,
                 draggingWoundEnabled = draggingWoundEnabled,
+                crimsonCleaveEnabled = crimsonCleaveEnabled,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,

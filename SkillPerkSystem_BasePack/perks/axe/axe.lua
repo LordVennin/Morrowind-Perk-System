@@ -86,7 +86,7 @@ return {
             x = -85,
             y = 375,
             title = "Crimson Cleave",
-            description = "Axe bleeds deal twice as much damage.",
+            description = "Axe slash attacks make bleeds deal twice as much damage.",
         },
         {
             id = "axe_fellstar_crown",

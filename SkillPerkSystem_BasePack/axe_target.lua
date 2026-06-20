@@ -284,8 +284,15 @@ local function spawnBloodSpray(position)
     spawnBloodEffect(position or selfObj.position)
 end
 
-local function getBleedDamageMultiplier()
-    if crimsonCleaveEnabled then
+local function isSlashAttack(attack)
+    local slashType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_TYPES ~= nil
+        and interfaces.Combat.ATTACK_TYPES.Slash
+    return slashType ~= nil and type(attack) == "table" and attack.type == slashType
+end
+
+local function getBleedDamageMultiplier(attack)
+    if crimsonCleaveEnabled and isSlashAttack(attack) then
         return 2
     end
 
@@ -293,7 +300,7 @@ local function getBleedDamageMultiplier()
 end
 
 local function refreshBloodletterBleed(attack)
-    local damageMultiplier = getBleedDamageMultiplier()
+    local damageMultiplier = getBleedDamageMultiplier(attack)
     if draggingWoundEnabled then
         bloodletterRemainingTime = DRAGGING_WOUND_DURATION
         bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * damageMultiplier
@@ -308,7 +315,7 @@ local function refreshBloodletterBleed(attack)
 end
 
 local function refreshHewerHeartBleed(attack)
-    local damageMultiplier = getBleedDamageMultiplier()
+    local damageMultiplier = getBleedDamageMultiplier(attack)
     if draggingWoundEnabled then
         hewerHeartRemainingTime = DRAGGING_WOUND_DURATION
         hewerHeartDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * damageMultiplier

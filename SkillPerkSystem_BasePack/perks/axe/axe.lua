@@ -86,7 +86,7 @@ return {
             x = -85,
             y = 375,
             title = "Crimson Cleave",
-            description = "Axe slash attacks carve deeper wounds, applying 2 bleed stacks instead of 1.",
+            description = "Axe bleeds deal twice as much damage.",
         },
         {
             id = "axe_fellstar_crown",

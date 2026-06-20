@@ -284,15 +284,8 @@ local function spawnBloodSpray(position)
     spawnBloodEffect(position or selfObj.position)
 end
 
-local function isSlashAttack(attack)
-    local slashType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_TYPES ~= nil
-        and interfaces.Combat.ATTACK_TYPES.Slash
-    return slashType ~= nil and type(attack) == "table" and attack.type == slashType
-end
-
-local function getBloodletterStackCount(attack)
-    if crimsonCleaveEnabled and isSlashAttack(attack) then
+local function getBleedDamageMultiplier()
+    if crimsonCleaveEnabled then
         return 2
     end
 
@@ -300,13 +293,13 @@ local function getBloodletterStackCount(attack)
 end
 
 local function refreshBloodletterBleed(attack)
-    local stackCount = getBloodletterStackCount(attack)
+    local damageMultiplier = getBleedDamageMultiplier()
     if draggingWoundEnabled then
         bloodletterRemainingTime = DRAGGING_WOUND_DURATION
-        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * stackCount
+        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * damageMultiplier
     else
         bloodletterRemainingTime = BLOODLETTER_DURATION
-        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * stackCount
+        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * damageMultiplier
     end
     bloodletterDamageTimer = 0
     bloodletterBloodTimer = 0
@@ -315,13 +308,13 @@ local function refreshBloodletterBleed(attack)
 end
 
 local function refreshHewerHeartBleed(attack)
-    local stackCount = getBloodletterStackCount(attack)
+    local damageMultiplier = getBleedDamageMultiplier()
     if draggingWoundEnabled then
         hewerHeartRemainingTime = DRAGGING_WOUND_DURATION
-        hewerHeartDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * stackCount
+        hewerHeartDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * damageMultiplier
     else
         hewerHeartRemainingTime = BLOODLETTER_DURATION
-        hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * stackCount
+        hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * damageMultiplier
     end
     hewerHeartDamageTimer = 0
     hewerHeartBloodTimer = 0

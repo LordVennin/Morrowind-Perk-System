@@ -5,6 +5,7 @@ local pself = require("openmw.self")
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local BLOODLETTER_PERK_ID = "axe_bloodletter"
 local DRAGGING_WOUND_PERK_ID = "axe_dragging_wound"
+local HEWER_HEART_PERK_ID = "axe_hewer_heart"
 local CRIMSON_CLEAVE_PERK_ID = "axe_crimson_cleave"
 local EXECUTION_DAMAGE_PERK_IDS = {
     "axe_kindling_grip",
@@ -47,8 +48,9 @@ local function publishState(force)
     local enabledCount = executionDamagePerkCount()
     local bloodletterEnabled = hasEnabledPerk(BLOODLETTER_PERK_ID)
     local draggingWoundEnabled = hasEnabledPerk(DRAGGING_WOUND_PERK_ID)
+    local hewerHeartEnabled = hasEnabledPerk(HEWER_HEART_PERK_ID)
     local crimsonCleaveEnabled = hasEnabledPerk(CRIMSON_CLEAVE_PERK_ID)
-    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(crimsonCleaveEnabled)
+    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -61,6 +63,7 @@ local function publishState(force)
         damageBonusCount = enabledCount,
         bloodletterEnabled = bloodletterEnabled,
         draggingWoundEnabled = draggingWoundEnabled,
+        hewerHeartEnabled = hewerHeartEnabled,
         crimsonCleaveEnabled = crimsonCleaveEnabled,
     })
 end

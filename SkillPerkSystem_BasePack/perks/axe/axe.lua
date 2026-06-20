@@ -75,7 +75,7 @@ return {
             description = "Placeholder perk: raise the blade high enough and even bad luck has to duck.",
         },
         {
-            id = "axe_stump_speaker",
+            id = "axe_crimson_cleave",
             tab = "Axe",
             effectId = "demo_noop",
             minimumSkill = 65,
@@ -83,8 +83,8 @@ return {
             cost = 1,
             x = -85,
             y = 375,
-            title = "Stump Speaker",
-            description = "Placeholder perk: old roots whisper where the next blow should fall.",
+            title = "Crimson Cleave",
+            description = "Axe slash attacks carve deeper wounds, applying 2 Bloodletter bleed stacks instead of 1.",
         },
         {
             id = "axe_fellstar_crown",
@@ -92,7 +92,7 @@ return {
             effectId = "demo_noop",
             minimumSkill = 90,
             requires = {},
-            requiresAny = { "axe_stump_speaker", "axe_iron_canopy" },
+            requiresAny = { "axe_crimson_cleave", "axe_iron_canopy" },
             cost = 2,
             x = 85,
             y = 505,

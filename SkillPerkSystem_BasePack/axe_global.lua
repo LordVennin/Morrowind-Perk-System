@@ -11,6 +11,7 @@ local kindlingGripState = {
     damageBonusCount = 0,
     bloodletterEnabled = false,
     draggingWoundEnabled = false,
+    hewerHeartEnabled = false,
     crimsonCleaveEnabled = false,
     playerId = nil,
 }
@@ -63,6 +64,7 @@ local function onKindlingGripState(data)
         damageBonusCount = math.max(0, math.floor(tonumber(data.damageBonusCount) or 0)),
         bloodletterEnabled = data.bloodletterEnabled == true,
         draggingWoundEnabled = data.draggingWoundEnabled == true,
+        hewerHeartEnabled = data.hewerHeartEnabled == true,
         crimsonCleaveEnabled = data.crimsonCleaveEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }

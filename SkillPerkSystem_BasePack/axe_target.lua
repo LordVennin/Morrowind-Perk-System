@@ -20,6 +20,7 @@ local kindlingGripPlayerId = nil
 local kindlingGripDamageBonusCount = 0
 local bloodletterEnabled = false
 local draggingWoundEnabled = false
+local hewerHeartEnabled = false
 local crimsonCleaveEnabled = false
 
 local bloodletterRemainingTime = 0
@@ -27,6 +28,12 @@ local bloodletterDamageTimer = 0
 local bloodletterBloodTimer = 0
 local bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
 local bloodletterSpeedPenaltyApplied = 0
+local hewerHeartRemainingTime = 0
+local hewerHeartDamageTimer = 0
+local hewerHeartBloodTimer = 0
+local hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+
+local updateBleedSpeedPenalty
 
 local function setKindlingGripState(data)
     if type(data) ~= "table" then
@@ -38,7 +45,9 @@ local function setKindlingGripState(data)
     kindlingGripPlayerId = type(data.playerId) == "string" and data.playerId or nil
     bloodletterEnabled = data.bloodletterEnabled == true
     draggingWoundEnabled = data.draggingWoundEnabled == true
+    hewerHeartEnabled = data.hewerHeartEnabled == true
     crimsonCleaveEnabled = data.crimsonCleaveEnabled == true
+    updateBleedSpeedPenalty()
 end
 
 local function resolveSpeedStat()
@@ -69,12 +78,28 @@ local function applyBloodletterSpeedPenalty(targetPenalty)
     bloodletterSpeedPenaltyApplied = desired
 end
 
+updateBleedSpeedPenalty = function()
+    if draggingWoundEnabled and (bloodletterRemainingTime > 0 or hewerHeartRemainingTime > 0) then
+        applyBloodletterSpeedPenalty(DRAGGING_WOUND_SPEED_PENALTY)
+    else
+        applyBloodletterSpeedPenalty(0)
+    end
+end
+
 local function clearBloodletterBleed()
     bloodletterRemainingTime = 0
     bloodletterDamageTimer = 0
     bloodletterBloodTimer = 0
     bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
-    applyBloodletterSpeedPenalty(0)
+    updateBleedSpeedPenalty()
+end
+
+local function clearHewerHeartBleed()
+    hewerHeartRemainingTime = 0
+    hewerHeartDamageTimer = 0
+    hewerHeartBloodTimer = 0
+    hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+    updateBleedSpeedPenalty()
 end
 
 local function getHealth()
@@ -213,11 +238,11 @@ local function isSuccessfulKindlingGripHit(attack)
     return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
 end
 
-local function isSuccessfulBloodletterHit(attack)
+local function isSuccessfulBleedHit(attack, perkEnabled)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
     end
-    if not bloodletterEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
+    if not perkEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
         return false
     end
     if attack.attacker == nil or attack.attacker.id ~= kindlingGripPlayerId then
@@ -259,15 +284,8 @@ local function spawnBloodSpray(position)
     spawnBloodEffect(position or selfObj.position)
 end
 
-local function isSlashAttack(attack)
-    local slashType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_TYPES ~= nil
-        and interfaces.Combat.ATTACK_TYPES.Slash
-    return slashType ~= nil and type(attack) == "table" and attack.type == slashType
-end
-
-local function getBloodletterStackCount(attack)
-    if crimsonCleaveEnabled and isSlashAttack(attack) then
+local function getBleedDamageMultiplier()
+    if crimsonCleaveEnabled then
         return 2
     end
 
@@ -275,18 +293,32 @@ local function getBloodletterStackCount(attack)
 end
 
 local function refreshBloodletterBleed(attack)
-    local stackCount = getBloodletterStackCount(attack)
+    local damageMultiplier = getBleedDamageMultiplier()
     if draggingWoundEnabled then
         bloodletterRemainingTime = DRAGGING_WOUND_DURATION
-        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * stackCount
-        applyBloodletterSpeedPenalty(DRAGGING_WOUND_SPEED_PENALTY)
+        bloodletterDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * damageMultiplier
     else
         bloodletterRemainingTime = BLOODLETTER_DURATION
-        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * stackCount
-        applyBloodletterSpeedPenalty(0)
+        bloodletterDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * damageMultiplier
     end
     bloodletterDamageTimer = 0
     bloodletterBloodTimer = 0
+    updateBleedSpeedPenalty()
+    spawnBloodSpray(attack.hitPos or selfObj.position)
+end
+
+local function refreshHewerHeartBleed(attack)
+    local damageMultiplier = getBleedDamageMultiplier()
+    if draggingWoundEnabled then
+        hewerHeartRemainingTime = DRAGGING_WOUND_DURATION
+        hewerHeartDamagePerTick = DRAGGING_WOUND_DAMAGE_PER_TICK * damageMultiplier
+    else
+        hewerHeartRemainingTime = BLOODLETTER_DURATION
+        hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK * damageMultiplier
+    end
+    hewerHeartDamageTimer = 0
+    hewerHeartBloodTimer = 0
+    updateBleedSpeedPenalty()
     spawnBloodSpray(attack.hitPos or selfObj.position)
 end
 
@@ -295,8 +327,12 @@ local function onHit(attack)
         attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
     end
 
-    if isSuccessfulBloodletterHit(attack) then
+    if isSuccessfulBleedHit(attack, bloodletterEnabled) then
         refreshBloodletterBleed(attack)
+    end
+
+    if isSuccessfulBleedHit(attack, hewerHeartEnabled) and isBelowKindlingGripThreshold() then
+        refreshHewerHeartBleed(attack)
     end
 end
 
@@ -321,6 +357,10 @@ return {
                 bloodletterBloodTimer = math.max(0, tonumber(savedData.bloodletterBloodTimer) or 0)
                 bloodletterDamagePerTick = math.max(0, tonumber(savedData.bloodletterDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
                 bloodletterSpeedPenaltyApplied = math.max(0, math.floor(tonumber(savedData.bloodletterSpeedPenaltyApplied) or 0))
+                hewerHeartRemainingTime = math.max(0, tonumber(savedData.hewerHeartRemainingTime) or 0)
+                hewerHeartDamageTimer = math.max(0, tonumber(savedData.hewerHeartDamageTimer) or 0)
+                hewerHeartBloodTimer = math.max(0, tonumber(savedData.hewerHeartBloodTimer) or 0)
+                hewerHeartDamagePerTick = math.max(0, tonumber(savedData.hewerHeartDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
             else
                 setKindlingGripState(initData)
             end
@@ -332,47 +372,79 @@ return {
                 playerId = kindlingGripPlayerId,
                 bloodletterEnabled = bloodletterEnabled,
                 draggingWoundEnabled = draggingWoundEnabled,
+                hewerHeartEnabled = hewerHeartEnabled,
                 crimsonCleaveEnabled = crimsonCleaveEnabled,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,
                 bloodletterDamagePerTick = bloodletterDamagePerTick,
                 bloodletterSpeedPenaltyApplied = bloodletterSpeedPenaltyApplied,
+                hewerHeartRemainingTime = hewerHeartRemainingTime,
+                hewerHeartDamageTimer = hewerHeartDamageTimer,
+                hewerHeartBloodTimer = hewerHeartBloodTimer,
+                hewerHeartDamagePerTick = hewerHeartDamagePerTick,
             }
         end,
         onUpdate = function(dt)
-            if bloodletterRemainingTime <= 0 then
-                applyBloodletterSpeedPenalty(0)
+            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 then
+                updateBleedSpeedPenalty()
                 return
             end
             if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
                 clearBloodletterBleed()
+                clearHewerHeartBleed()
                 return
             end
 
             local elapsed = math.max(0, tonumber(dt) or 0)
-            bloodletterRemainingTime = math.max(0, bloodletterRemainingTime - elapsed)
-            bloodletterDamageTimer = bloodletterDamageTimer + elapsed
-            bloodletterBloodTimer = bloodletterBloodTimer + elapsed
 
-            while bloodletterRemainingTime > 0 and bloodletterDamageTimer >= BLOODLETTER_DAMAGE_INTERVAL do
-                bloodletterDamageTimer = bloodletterDamageTimer - BLOODLETTER_DAMAGE_INTERVAL
-                applyHealthDamage(bloodletterDamagePerTick)
-                if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+            if bloodletterRemainingTime > 0 then
+                bloodletterRemainingTime = math.max(0, bloodletterRemainingTime - elapsed)
+                bloodletterDamageTimer = bloodletterDamageTimer + elapsed
+                bloodletterBloodTimer = bloodletterBloodTimer + elapsed
+
+                while bloodletterRemainingTime > 0 and bloodletterDamageTimer >= BLOODLETTER_DAMAGE_INTERVAL do
+                    bloodletterDamageTimer = bloodletterDamageTimer - BLOODLETTER_DAMAGE_INTERVAL
+                    applyHealthDamage(bloodletterDamagePerTick)
+                    if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                        clearBloodletterBleed()
+                        clearHewerHeartBleed()
+                        return
+                    end
+                end
+
+                if bloodletterRemainingTime <= 0 then
                     clearBloodletterBleed()
-                    return
+                elseif bloodletterBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
+                    bloodletterBloodTimer = 0
+                    spawnBloodSpray(selfObj.position)
                 end
             end
 
-            if bloodletterRemainingTime <= 0 then
-                clearBloodletterBleed()
-                return
+            if hewerHeartRemainingTime > 0 then
+                hewerHeartRemainingTime = math.max(0, hewerHeartRemainingTime - elapsed)
+                hewerHeartDamageTimer = hewerHeartDamageTimer + elapsed
+                hewerHeartBloodTimer = hewerHeartBloodTimer + elapsed
+
+                while hewerHeartRemainingTime > 0 and hewerHeartDamageTimer >= BLOODLETTER_DAMAGE_INTERVAL do
+                    hewerHeartDamageTimer = hewerHeartDamageTimer - BLOODLETTER_DAMAGE_INTERVAL
+                    applyHealthDamage(hewerHeartDamagePerTick)
+                    if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                        clearBloodletterBleed()
+                        clearHewerHeartBleed()
+                        return
+                    end
+                end
+
+                if hewerHeartRemainingTime <= 0 then
+                    clearHewerHeartBleed()
+                elseif hewerHeartBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
+                    hewerHeartBloodTimer = 0
+                    spawnBloodSpray(selfObj.position)
+                end
             end
 
-            if bloodletterBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
-                bloodletterBloodTimer = 0
-                spawnBloodSpray(selfObj.position)
-            end
+            updateBleedSpeedPenalty()
         end,
     },
 }

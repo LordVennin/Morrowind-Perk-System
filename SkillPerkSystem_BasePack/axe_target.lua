@@ -14,6 +14,9 @@ local DRAGGING_WOUND_DURATION = 10.0
 local DRAGGING_WOUND_DAMAGE_PER_TICK = BLOODLETTER_DAMAGE_PER_TICK * BLOODLETTER_DURATION / DRAGGING_WOUND_DURATION
 local DRAGGING_WOUND_SPEED_PENALTY = 20
 local BLOODLETTER_BLOOD_INTERVAL = 2.0
+local IRON_CANOPY_MAGICKA_DAMAGE_MIN = 5
+local IRON_CANOPY_MAGICKA_DAMAGE_MAX = 20
+local IRON_CANOPY_EMPTY_MAGICKA_DAMAGE_BONUS = 0.20
 
 local kindlingGripEnabled = false
 local kindlingGripPlayerId = nil
@@ -22,6 +25,7 @@ local bloodletterEnabled = false
 local draggingWoundEnabled = false
 local hewerHeartEnabled = false
 local crimsonCleaveEnabled = false
+local ironCanopyEnabled = false
 
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
@@ -47,6 +51,7 @@ local function setKindlingGripState(data)
     draggingWoundEnabled = data.draggingWoundEnabled == true
     hewerHeartEnabled = data.hewerHeartEnabled == true
     crimsonCleaveEnabled = data.crimsonCleaveEnabled == true
+    ironCanopyEnabled = data.ironCanopyEnabled == true
     updateBleedSpeedPenalty()
 end
 
@@ -238,7 +243,7 @@ local function isSuccessfulKindlingGripHit(attack)
     return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
 end
 
-local function isSuccessfulBleedHit(attack, perkEnabled)
+local function isSuccessfulAxeHit(attack, perkEnabled)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
     end
@@ -263,6 +268,49 @@ local function isSuccessfulBleedHit(attack, perkEnabled)
     end
 
     return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
+end
+
+local function getMagicka()
+    local magickaAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.magicka
+    if type(magickaAccessor) ~= "function" then
+        return nil
+    end
+
+    return magickaAccessor(selfObj)
+end
+
+local function getCurrentMagicka()
+    local magicka = getMagicka()
+    if magicka == nil then
+        return 0
+    end
+
+    return math.max(0, tonumber(magicka.current) or 0)
+end
+
+local function applyMagickaDamage(amount)
+    local magicka = getMagicka()
+    if magicka == nil or type(magicka.current) ~= "number" then
+        return false
+    end
+
+    magicka.current = math.max(0, magicka.current - math.max(0, tonumber(amount) or 0))
+    return true
+end
+
+local function applyIronCanopyHit(attack)
+    if not isSuccessfulAxeHit(attack, ironCanopyEnabled) then
+        return
+    end
+
+    applyMagickaDamage(math.random(IRON_CANOPY_MAGICKA_DAMAGE_MIN, IRON_CANOPY_MAGICKA_DAMAGE_MAX))
+
+    if getCurrentMagicka() <= 0 then
+        attack.damage.health = attack.damage.health * (1 + IRON_CANOPY_EMPTY_MAGICKA_DAMAGE_BONUS)
+    end
 end
 
 local function applyHealthDamage(amount)
@@ -334,11 +382,13 @@ local function onHit(attack)
         attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
     end
 
-    if isSuccessfulBleedHit(attack, bloodletterEnabled) then
+    applyIronCanopyHit(attack)
+
+    if isSuccessfulAxeHit(attack, bloodletterEnabled) then
         refreshBloodletterBleed(attack)
     end
 
-    if isSuccessfulBleedHit(attack, hewerHeartEnabled) and isBelowKindlingGripThreshold() then
+    if isSuccessfulAxeHit(attack, hewerHeartEnabled) and isBelowKindlingGripThreshold() then
         refreshHewerHeartBleed(attack)
     end
 end
@@ -381,6 +431,7 @@ return {
                 draggingWoundEnabled = draggingWoundEnabled,
                 hewerHeartEnabled = hewerHeartEnabled,
                 crimsonCleaveEnabled = crimsonCleaveEnabled,
+                ironCanopyEnabled = ironCanopyEnabled,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,

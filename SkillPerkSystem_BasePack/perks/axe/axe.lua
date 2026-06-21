@@ -99,7 +99,7 @@ return {
             x = 85,
             y = 505,
             title = "Fellstar Crown",
-            description = "Placeholder perk: the final cut is only penciled in, but it already looks dramatic.",
+            description = "Equipped axes are weightless and axe attacks are 10% faster.",
         },
     },
 }

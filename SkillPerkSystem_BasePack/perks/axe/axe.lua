@@ -72,8 +72,8 @@ return {
             cost = 1,
             x = 255,
             y = 245,
-            title = "Iron Canopy",
-            description = "Placeholder perk: raise the blade high enough and even bad luck has to duck.",
+            title = "Magebane Hew",
+            description = "Axe hits deal 5 to 20 damage to the target's Magicka. If the target has no Magicka left, your axe hits deal 20% more damage.",
         },
         {
             id = "axe_crimson_cleave",

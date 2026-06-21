@@ -13,6 +13,7 @@ local kindlingGripState = {
     draggingWoundEnabled = false,
     hewerHeartEnabled = false,
     crimsonCleaveEnabled = false,
+    ironCanopyEnabled = false,
     playerId = nil,
 }
 
@@ -66,6 +67,7 @@ local function onKindlingGripState(data)
         draggingWoundEnabled = data.draggingWoundEnabled == true,
         hewerHeartEnabled = data.hewerHeartEnabled == true,
         crimsonCleaveEnabled = data.crimsonCleaveEnabled == true,
+        ironCanopyEnabled = data.ironCanopyEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

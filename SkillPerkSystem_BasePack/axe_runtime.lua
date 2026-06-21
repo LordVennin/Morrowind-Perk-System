@@ -7,6 +7,7 @@ local BLOODLETTER_PERK_ID = "axe_bloodletter"
 local DRAGGING_WOUND_PERK_ID = "axe_dragging_wound"
 local HEWER_HEART_PERK_ID = "axe_hewer_heart"
 local CRIMSON_CLEAVE_PERK_ID = "axe_crimson_cleave"
+local IRON_CANOPY_PERK_ID = "axe_iron_canopy"
 local EXECUTION_DAMAGE_PERK_IDS = {
     "axe_kindling_grip",
     "axe_crescent_hook",
@@ -50,7 +51,8 @@ local function publishState(force)
     local draggingWoundEnabled = hasEnabledPerk(DRAGGING_WOUND_PERK_ID)
     local hewerHeartEnabled = hasEnabledPerk(HEWER_HEART_PERK_ID)
     local crimsonCleaveEnabled = hasEnabledPerk(CRIMSON_CLEAVE_PERK_ID)
-    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled)
+    local ironCanopyEnabled = hasEnabledPerk(IRON_CANOPY_PERK_ID)
+    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled) .. ":" .. tostring(ironCanopyEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -65,6 +67,7 @@ local function publishState(force)
         draggingWoundEnabled = draggingWoundEnabled,
         hewerHeartEnabled = hewerHeartEnabled,
         crimsonCleaveEnabled = crimsonCleaveEnabled,
+        ironCanopyEnabled = ironCanopyEnabled,
     })
 end
 

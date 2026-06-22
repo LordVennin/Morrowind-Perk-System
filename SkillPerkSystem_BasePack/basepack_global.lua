@@ -2308,6 +2308,7 @@ local strengthInArmsState = {
     damageBonus = 0,
     platebreakerEnabled = false,
     breathstealerEnabled = false,
+    heavyHitterEnabled = false,
     playerId = nil,
 }
 
@@ -2356,6 +2357,64 @@ local function getEquippedArmorItems(actor)
     end
 
     return armorItems
+end
+
+local function getEquippedShieldItem(actor)
+    local slots = Actor ~= nil and Actor.EQUIPMENT_SLOT or nil
+    if slots == nil or Armor == nil or Armor.TYPE == nil or type(Armor.objectIsInstance) ~= "function" then
+        return nil
+    end
+
+    local item = getEquippedItem(actor, slots.CarriedLeft)
+    if item == nil or not Armor.objectIsInstance(item) then
+        return nil
+    end
+
+    local record = nil
+    if type(Armor.record) == "function" then
+        local okRecord, value = pcall(Armor.record, item)
+        if okRecord then
+            record = value
+        end
+    end
+    if record == nil and type(item.recordId) == "string" and type(Armor.records) == "table" then
+        record = Armor.records[item.recordId]
+    end
+    if record == nil or record.type ~= Armor.TYPE.Shield then
+        return nil
+    end
+
+    local itemData = Item ~= nil and type(Item.itemData) == "function" and Item.itemData(item) or nil
+    local condition = itemData ~= nil and tonumber(itemData.condition) or nil
+    if condition == nil or condition <= 0 then
+        return nil
+    end
+
+    return { itemData = itemData, condition = condition }
+end
+
+local function applyHeavyHitterShieldDamage(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local target = data.target
+    if target == nil or (type(target.isValid) == "function" and not target:isValid()) then
+        return
+    end
+
+    local conditionDamage = tonumber(data.conditionDamage)
+    if conditionDamage == nil or conditionDamage <= 0 then
+        return
+    end
+    conditionDamage = math.floor(conditionDamage)
+
+    local shield = getEquippedShieldItem(target)
+    if shield == nil then
+        return
+    end
+
+    shield.itemData.condition = math.max(0, shield.condition - conditionDamage)
 end
 
 local function applyPlatebreakerArmorDamage(data)
@@ -2430,6 +2489,7 @@ local function onStrengthInArmsState(data)
         damageBonus = math.max(0, math.floor(tonumber(data.damageBonus) or 0)),
         platebreakerEnabled = data.platebreakerEnabled == true,
         breathstealerEnabled = data.breathstealerEnabled == true,
+        heavyHitterEnabled = data.heavyHitterEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()
@@ -2439,6 +2499,7 @@ subsystems.bluntweapon = {
     eventHandlers = {
         SkillPerkSystem_BluntWeaponStrengthInArmsState = onStrengthInArmsState,
         SkillPerkSystem_ApplyPlatebreakerArmorDamage = applyPlatebreakerArmorDamage,
+        SkillPerkSystem_ApplyHeavyHitterShieldDamage = applyHeavyHitterShieldDamage,
     },
     engineHandlers = {
         onUpdate = function(dt)
@@ -3435,6 +3496,7 @@ local eventHandlers = {
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
+    SkillPerkSystem_ApplyHeavyHitterShieldDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyHeavyHitterShieldDamage", data) end,
     SkillPerkSystem_ApplyReactiveShieldEnchant = function(data) dispatchEvent("block_reactive", "SkillPerkSystem_ApplyReactiveShieldEnchant", data) end,
     SkillPerkSystem_ApplyBulwarkOfLight = function(data) dispatchEvent("block_bulwark", "SkillPerkSystem_ApplyBulwarkOfLight", data) end,
     SkillPerkSystem_PrimeAegisRite = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_PrimeAegisRite", data) end,

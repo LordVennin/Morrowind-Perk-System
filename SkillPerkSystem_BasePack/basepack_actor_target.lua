@@ -539,8 +539,10 @@ local strengthInArmsDamageBonus = 0
 local strengthInArmsPlayerId = nil
 local platebreakerEnabled = false
 local breathstealerEnabled = false
+local heavyHitterEnabled = false
 
 local BREATHSTEALER_FATIGUE_DAMAGE = 20
+local HEAVY_HITTER_SHIELD_CONDITION_DAMAGE = 300
 
 local function setStrengthInArmsState(data)
     if type(data) ~= "table" then
@@ -552,6 +554,7 @@ local function setStrengthInArmsState(data)
     strengthInArmsPlayerId = type(data.playerId) == "string" and data.playerId or nil
     platebreakerEnabled = data.platebreakerEnabled == true
     breathstealerEnabled = data.breathstealerEnabled == true
+    heavyHitterEnabled = data.heavyHitterEnabled == true
 end
 
 local function getWeaponRecord(item)
@@ -704,6 +707,64 @@ local function requestPlatebreakerArmorDamage(attack)
     })
 end
 
+
+local function wasBlockedAttack(attack)
+    if type(attack) ~= "table" then
+        return false
+    end
+
+    local blockedFlag = attack.blocked == true or attack.isBlocked == true or attack.block == true
+    local blockedBy = string.lower(tostring(attack.blockedBy or attack.blockType or attack.defenseType or ""))
+    if blockedBy:find("parry", 1, true) ~= nil or attack.parried == true or attack.isParry == true then
+        return false
+    end
+
+    if blockedBy:find("shield", 1, true) ~= nil then
+        return true
+    end
+    if blockedFlag then
+        return true
+    end
+
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    local totalDamage = (tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)
+    return attack.successful == true and totalDamage <= 0
+end
+
+local function isHeavyHitterBlock(attack)
+    if not heavyHitterEnabled then
+        return false
+    end
+    if type(strengthInArmsPlayerId) ~= "string" or strengthInArmsPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= strengthInArmsPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not isAttackType(attack, "Chop") then
+        return false
+    end
+    if not wasBlockedAttack(attack) then
+        return false
+    end
+
+    return actorHasEquippedBluntWeapon(attack.attacker)
+end
+
+local function requestHeavyHitterShieldDamage(attack)
+    if not isHeavyHitterBlock(attack) then
+        return
+    end
+
+    core.sendGlobalEvent("SkillPerkSystem_ApplyHeavyHitterShieldDamage", {
+        target = pself,
+        conditionDamage = HEAVY_HITTER_SHIELD_CONDITION_DAMAGE,
+    })
+end
+
 local function isSuccessfulBreathstealerHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
@@ -765,6 +826,7 @@ local function onHit(attack)
     end
     requestPlatebreakerArmorDamage(attack)
     applyBreathstealerFatigueDamage(attack)
+    requestHeavyHitterShieldDamage(attack)
 end
 
 local script = {
@@ -788,6 +850,7 @@ local script = {
                 damageBonus = strengthInArmsDamageBonus,
                 platebreakerEnabled = platebreakerEnabled,
                 breathstealerEnabled = breathstealerEnabled,
+                heavyHitterEnabled = heavyHitterEnabled,
                 playerId = strengthInArmsPlayerId,
             }
         end,

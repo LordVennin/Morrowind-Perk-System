@@ -1,4 +1,6 @@
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
 local types = require("openmw.types")
 
 local Actor = types.Actor
@@ -7,15 +9,17 @@ local Weapon = types.Weapon
 local strengthInArmsEnabled = false
 local strengthInArmsDamageBonus = 0
 local strengthInArmsPlayerId = nil
+local platebreakerEnabled = false
 
 local function setStrengthInArmsState(data)
     if type(data) ~= "table" then
         return
     end
 
-    strengthInArmsEnabled = data.enabled == true and (tonumber(data.damageBonus) or 0) > 0
+    strengthInArmsEnabled = (data.strengthInArmsEnabled == true or data.enabled == true) and (tonumber(data.damageBonus) or 0) > 0
     strengthInArmsDamageBonus = math.max(0, math.floor(tonumber(data.damageBonus) or 0))
     strengthInArmsPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    platebreakerEnabled = data.platebreakerEnabled == true
 end
 
 local function getWeaponRecord(item)
@@ -93,6 +97,64 @@ local function actorHasEquippedBluntWeapon(actor)
     return isBluntWeaponRecord(getWeaponRecord(weapon))
 end
 
+
+
+local function isAttackType(attack, typeName)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    local expected = attackTypes ~= nil and tonumber(attackTypes[typeName]) or nil
+    local actual = tonumber(attack.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function isMeleeAttack(attack)
+    local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
+    local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
+    local actual = tonumber(attack.sourceType)
+    return expected == nil or actual == nil or actual == expected
+end
+
+local function calculatePlatebreakerConditionDamage(attack)
+    local strength = math.max(0, math.min(1, tonumber(attack.strength) or 1))
+    return math.max(10, math.min(25, math.floor(10 + (15 * strength) + 0.5)))
+end
+
+local function isSuccessfulPlatebreakerHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not platebreakerEnabled then
+        return false
+    end
+    if type(strengthInArmsPlayerId) ~= "string" or strengthInArmsPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= strengthInArmsPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not isAttackType(attack, "Slash") then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return actorHasEquippedBluntWeapon(attack.attacker)
+end
+
+local function requestPlatebreakerArmorDamage(attack)
+    if not isSuccessfulPlatebreakerHit(attack) then
+        return
+    end
+
+    core.sendGlobalEvent("SkillPerkSystem_ApplyPlatebreakerArmorDamage", {
+        target = pself,
+        conditionDamage = calculatePlatebreakerConditionDamage(attack),
+    })
+end
+
 local function isSuccessfulStrengthInArmsHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
@@ -120,6 +182,7 @@ local function onHit(attack)
     if isSuccessfulStrengthInArmsHit(attack) then
         attack.damage.health = (tonumber(attack.damage.health) or 0) + strengthInArmsDamageBonus
     end
+    requestPlatebreakerArmorDamage(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -146,6 +209,7 @@ return {
             return {
                 enabled = strengthInArmsEnabled,
                 damageBonus = strengthInArmsDamageBonus,
+                platebreakerEnabled = platebreakerEnabled,
                 playerId = strengthInArmsPlayerId,
             }
         end,

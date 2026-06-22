@@ -1,3 +1,4 @@
+-- Superseded by scripts/SkillPerkSystem_BasePack/basepack_player.lua; kept temporarily for save/development compatibility.
 local interfaces = require("openmw.interfaces")
 local ui = require("openmw.ui")
 local pself = require("openmw.self")

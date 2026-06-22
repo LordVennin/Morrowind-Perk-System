@@ -3918,6 +3918,7 @@ local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.8
 
 local refreshTimer = STATE_REFRESH_INTERVAL
 local lastStateKey = nil
+local lastAnimationLogKey = nil
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]

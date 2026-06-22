@@ -1,3 +1,4 @@
+-- Superseded by scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua; kept temporarily for save/development compatibility.
 local interfaces = require("openmw.interfaces")
 local selfObj = require("openmw.self")
 local types = require("openmw.types")

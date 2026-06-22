@@ -4,7 +4,7 @@ local types = require("openmw.types")
 local Actor = types.Actor
 local Armor = types.Armor
 local Item = types.Item
-local TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/bluntweapon_target.lua"
+local TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
 local WATCHER_REFRESH_INTERVAL = 1.0
 
 local refreshTimer = 0

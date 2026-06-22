@@ -2,7 +2,7 @@ local world = require("openmw.world")
 local types = require("openmw.types")
 
 local Actor = types.Actor
-local AXE_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/axe_target.lua"
+local AXE_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
 local WATCHER_REFRESH_INTERVAL = 1.0
 
 local refreshTimer = 0

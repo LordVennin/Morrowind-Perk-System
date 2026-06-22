@@ -1,6 +1,6 @@
 local core = require("openmw.core")
 
-local AEGIS_RITE_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/aegis_rite_target.lua"
+local AEGIS_RITE_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
 local AEGIS_RITE_SMITE_SPELL_ID = "sps_MeleeSmite"
 local AEGIS_RITE_HIT_VFX_MODEL = "meshes\\e\\magic_hit_dst.nif"
 local AEGIS_RITE_HIT_SOUND_FILE = "Sound\\Fx\\magic\\destH.wav"
@@ -85,7 +85,10 @@ local function onApplyAegisRiteEffect(e)
     playHitSound(target)
 
     if target:hasScript(AEGIS_RITE_TARGET_SCRIPT) then
-        target:removeScript(AEGIS_RITE_TARGET_SCRIPT)
+        target:sendEvent("SkillPerkSystem_AegisRiteRefresh", {
+            playerId = attacker.id,
+            duration = 0,
+        })
     end
 end
 
@@ -105,7 +108,9 @@ local function onRemoveAegisRiteTarget(e)
         return
     end
 
-    target:removeScript(AEGIS_RITE_TARGET_SCRIPT)
+    target:sendEvent("SkillPerkSystem_AegisRiteRefresh", {
+        duration = 0,
+    })
 end
 
 return {

@@ -2,7 +2,7 @@ local world = require("openmw.world")
 local types = require("openmw.types")
 
 local Actor = types.Actor
-local DUELISTS_TEMPO_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/duelists_tempo_target.lua"
+local DUELISTS_TEMPO_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
 local WATCHER_REFRESH_INTERVAL = 1.0
 
 local refreshTimer = 0

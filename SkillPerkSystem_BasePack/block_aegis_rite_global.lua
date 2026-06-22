@@ -1,3 +1,4 @@
+-- Superseded by scripts/SkillPerkSystem_BasePack/basepack_global.lua; kept temporarily for save/development compatibility.
 local core = require("openmw.core")
 
 local AEGIS_RITE_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"

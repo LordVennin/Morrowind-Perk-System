@@ -1,3 +1,4 @@
+-- Superseded by scripts/SkillPerkSystem_BasePack/basepack_global.lua; kept temporarily for save/development compatibility.
 local world = require("openmw.world")
 
 local PLAYER_TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle"

@@ -1,4 +1,18 @@
--- Superseded by scripts/SkillPerkSystem_BasePack/basepack_global.lua; kept temporarily for save/development compatibility.
+-- Consolidated GLOBAL runtime for SkillPerkSystem_BasePack.
+-- Supersedes the former BasePack GLOBAL scripts listed in SkillPerkSystem_BasePack.omwscripts.
+
+-- 1. shared requires/constants/helpers
+local subsystems = {}
+
+-- 2. shared event names/script path constants
+local BASEPACK_ACTOR_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
+
+-- 3. shared actor scanning/target attachment helpers
+-- Subsystems below preserve their original scanning and attachment filters while sharing the consolidated target script path above.
+
+-- 4. security global hooks
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/global.lua
 local steadyHandsEffect = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -1621,7 +1635,7 @@ if type(steadyHandsEffect) == "table" and type(steadyHandsEffect.registerRuntime
     steadyHandsEffect.registerRuntimeHooks()
 end
 
-return {
+subsystems.security_global = {
     eventHandlers = {
         [MODIFY_SECURITY_TOOL_CONDITION_EVENT] = writeToolCondition,
         [MODIFY_REPAIR_TOOL_CONDITION_EVENT] = modifyRepairToolCondition,
@@ -1630,5 +1644,1862 @@ return {
         [ARMOR_REFIT_REQUEST_EVENT] = applyArmorRefit,
         [MASTERWORK_REQUEST_EVENT] = applyMasterwork,
         [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/global.lua
+end
+
+-- 5. treasure/lucky/unseen hand global logic
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/treasure_sense_runtime.lua
+local interfaces = require("openmw.interfaces")
+local storage = require("openmw.storage")
+local types = require("openmw.types")
+local world = require("openmw.world")
+
+local ENABLED_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
+local ENABLED_KEY = "security.treasure_sense.enabled"
+local FORTUNES_HABIT_ENABLED_KEY = "security.fortunes_habit.enabled"
+local TOGGLE_EVENT = "SkillPerkSystem_BasePack_TreasureSense_Toggle"
+local FORTUNES_HABIT_TOGGLE_EVENT = "SkillPerkSystem_BasePack_FortunesHabit_Toggle"
+local GOLD_RECORD_ID = "gold_001"
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local TREASURE_SENSE_PERK_ID = "security_treasure_sense"
+
+local enabledSection = storage.globalSection(ENABLED_SECTION_ID)
+
+-- Per-save state
+local rewardedChests = {}
+
+local function perkInterfaceSaysEnabled()
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    local hasPerk = type(playerApi.hasPerk) == "function" and playerApi.hasPerk(TREASURE_SENSE_PERK_ID)
+    if not hasPerk then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(TREASURE_SENSE_PERK_ID)
+    end
+
+    return true
+end
+
+local function treasureSenseEnabled()
+    if enabledSection:get(ENABLED_KEY) == true then
+        return true
+    end
+
+    return perkInterfaceSaysEnabled()
+end
+
+local function fortunesHabitEnabled()
+    return enabledSection:get(FORTUNES_HABIT_ENABLED_KEY) == true
+end
+
+local function stringHasChest(value)
+    if type(value) ~= "string" then
+        return false
+    end
+    return string.find(string.lower(value), "chest", 1, true) ~= nil
+end
+
+local function isChestLikeContainer(container)
+    if not types.Container.objectIsInstance(container) then
+        return false
+    end
+
+    local record = types.Container.record(container)
+    if record ~= nil and stringHasChest(record.name) then
+        return true
+    end
+
+    return stringHasChest(container.recordId)
+end
+
+local function objectKey(object)
+    return tostring(object.id or object.formId or object.recordId)
+end
+
+local function resolveLuckStat(actor)
+    if actor == nil then
+        return nil
+    end
+
+    local okType, actorType = pcall(function()
+        return actor.type
+    end)
+    if not okType or actorType == nil then
+        return nil
+    end
+
+    local function tryLuckGetter(t)
+        if t == nil then
+            return nil
+        end
+
+        local okStats, stats = pcall(function()
+            return t.stats
+        end)
+        if not okStats or stats == nil then
+            return nil
+        end
+
+        local okAttrs, attrs = pcall(function()
+            return stats.attributes
+        end)
+        if not okAttrs or attrs == nil then
+            return nil
+        end
+
+        local okFn, fn = pcall(function()
+            return attrs.luck
+        end)
+        if not okFn or type(fn) ~= "function" then
+            return nil
+        end
+
+        local okStat, stat = pcall(fn, actor)
+        if not okStat then
+            return nil
+        end
+
+        return stat
+    end
+
+    local stat = tryLuckGetter(actorType)
+    if stat ~= nil then
+        return stat
+    end
+
+    local okBase, baseType = pcall(function()
+        return actorType.baseType
+    end)
+    if okBase and baseType ~= nil then
+        stat = tryLuckGetter(baseType)
+        if stat ~= nil then
+            return stat
+        end
+    end
+
+    return nil
+end
+
+local function goldFromLuck(actor)
+    local luckStat = resolveLuckStat(actor)
+    local luck = 0
+
+    local okModified, modified = pcall(function()
+        return luckStat.modified
+    end)
+
+    if okModified and type(modified) == "number" then
+        luck = math.max(0, math.floor(modified))
+    end
+
+    local luckDivisor = fortunesHabitEnabled() and 8 or 10
+    local bonus = math.floor(luck / luckDivisor)
+    local rollA = math.random(1, 20)
+    local rollB = math.random(0, bonus)
+    local amount = rollA + rollB
+    if fortunesHabitEnabled() then
+        amount = math.floor(amount * 1.10)
+    end
+
+    return math.max(1, math.floor(amount))
+end
+
+local function addGoldToContainer(container, amount)
+    if amount <= 0 then
+        return
+    end
+
+    local gold = world.createObject(GOLD_RECORD_ID, amount)
+    gold:moveInto(types.Container.inventory(container))
+end
+
+local function handleToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    enabledSection:set(ENABLED_KEY, data.enable == true)
+end
+
+local function handleFortunesHabitToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    enabledSection:set(FORTUNES_HABIT_ENABLED_KEY, data.enable == true)
+end
+
+local function onActivate(object, actor)
+    if actor == nil or actor ~= world.players[1] then
+        return
+    end
+
+    if not treasureSenseEnabled() then
+        return
+    end
+
+    if not types.Container.objectIsInstance(object) then
+        return
+    end
+
+    if not isChestLikeContainer(object) then
+        return
+    end
+
+    local key = objectKey(object)
+    if rewardedChests[key] then
+        return
+    end
+
+    local goldCount = goldFromLuck(actor)
+    addGoldToContainer(object, goldCount)
+    rewardedChests[key] = true
+end
+
+local function onSave()
+    return {
+        rewardedChests = rewardedChests,
+    }
+end
+
+local function onLoad(savedData)
+    rewardedChests = {}
+
+    if type(savedData) == "table" and type(savedData.rewardedChests) == "table" then
+        rewardedChests = savedData.rewardedChests
+    end
+end
+
+local function onNewGame()
+    rewardedChests = {}
+    enabledSection:set(FORTUNES_HABIT_ENABLED_KEY, false)
+end
+
+subsystems.treasure_sense = {
+    engineHandlers = {
+        onActivate = onActivate,
+        onSave = onSave,
+        onLoad = onLoad,
+        onNewGame = onNewGame,
+    },
+    eventHandlers = {
+        [TOGGLE_EVENT] = handleToggle,
+        [FORTUNES_HABIT_TOGGLE_EVENT] = handleFortunesHabitToggle,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/treasure_sense_runtime.lua
+end
+
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/lucky_find_runtime.lua
+local storage = require("openmw.storage")
+local types = require("openmw.types")
+local world = require("openmw.world")
+
+local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects_Global"
+local ENABLED_KEY = "security.lucky_find.enabled"
+local FORTUNES_HABIT_ENABLED_KEY = "security.fortunes_habit.enabled"
+local COIN_RECORD_ID_KEY = "security.lucky_find.coin_record_id"
+local TOGGLE_EVENT = "SkillPerkSystem_BasePack_LuckyFind_Toggle"
+local FORTUNES_HABIT_TOGGLE_EVENT = "SkillPerkSystem_BasePack_FortunesHabit_Toggle"
+local GOLD_TEMPLATE_RECORD_ID = "gold_001"
+local CONFIGURED_LUCKY_COIN_RECORD_ID = "sps_lucky_coin"
+local BASE_FIND_CHANCE = 0.015
+local FORTUNES_HABIT_FIND_CHANCE = 0.025
+
+local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
+
+local checkedContainers = {}
+local luckyCoinRecordReady = false
+local activeLuckyCoinRecordId = nil
+
+local function luckyFindEnabled()
+    return effectsSection:get(ENABLED_KEY) == true
+end
+
+local function fortunesHabitEnabled()
+    return effectsSection:get(FORTUNES_HABIT_ENABLED_KEY) == true
+end
+
+local function findChance()
+    if fortunesHabitEnabled() then
+        return FORTUNES_HABIT_FIND_CHANCE
+    end
+    return BASE_FIND_CHANCE
+end
+
+local function objectKey(object)
+    local explicitId = object.id or object.formId
+    if explicitId ~= nil then
+        return "id:" .. tostring(explicitId)
+    end
+
+    local recordId = tostring(object.recordId or "<unknown>")
+    local cellPart = "cell:<unknown>"
+    local okCell, cell = pcall(function()
+        return object.cell
+    end)
+    if okCell and cell ~= nil then
+        local name = cell.name or cell.id
+        if type(name) == "string" and name ~= "" then
+            cellPart = "cell:" .. name
+        end
+    end
+
+    local posPart = "pos:<unknown>"
+    local okPos, pos = pcall(function()
+        return object.position
+    end)
+    if okPos and pos ~= nil and type(pos.x) == "number" and type(pos.y) == "number" and type(pos.z) == "number" then
+        posPart = string.format("pos:%.3f,%.3f,%.3f", pos.x, pos.y, pos.z)
+    end
+
+    return table.concat({
+        "record:" .. recordId,
+        cellPart,
+        posPart,
+    }, "|")
+end
+
+local function ensureLuckyCoinRecord()
+    if luckyCoinRecordReady then
+        return true
+    end
+
+    if types.Miscellaneous == nil then
+        return false
+    end
+
+    local okRecords, records = pcall(function()
+        return types.Miscellaneous.records
+    end)
+    if not okRecords or records == nil then
+        return false
+    end
+
+    if type(activeLuckyCoinRecordId) == "string" and activeLuckyCoinRecordId ~= "" and records[activeLuckyCoinRecordId] ~= nil then
+        luckyCoinRecordReady = true
+        return true
+    end
+
+    local configuredRecord = records[CONFIGURED_LUCKY_COIN_RECORD_ID]
+    if configuredRecord ~= nil then
+        activeLuckyCoinRecordId = CONFIGURED_LUCKY_COIN_RECORD_ID
+        effectsSection:set(COIN_RECORD_ID_KEY, activeLuckyCoinRecordId)
+        luckyCoinRecordReady = true
+        return true
+    end
+
+    local savedRecordId = effectsSection:get(COIN_RECORD_ID_KEY)
+    if type(savedRecordId) == "string" and savedRecordId ~= "" and records[savedRecordId] ~= nil then
+        activeLuckyCoinRecordId = savedRecordId
+        luckyCoinRecordReady = true
+        return true
+    end
+
+    if type(types.Miscellaneous.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+        return false
+    end
+
+    local template = records[GOLD_TEMPLATE_RECORD_ID]
+    if template == nil then
+        return false
+    end
+
+    local okDraft, recordDraft = pcall(types.Miscellaneous.createRecordDraft, {
+        template = template,
+        name = "Lucky Coin",
+        weight = 0.01,
+    })
+    if not okDraft or recordDraft == nil then
+        return false
+    end
+
+    local okCreate, createdRecord = pcall(world.createRecord, recordDraft)
+    local createdId = nil
+    if type(createdRecord) == "string" then
+        createdId = createdRecord
+    elseif createdRecord ~= nil then
+        local okId, idValue = pcall(function()
+            return createdRecord.id
+        end)
+        if okId and type(idValue) == "string" and idValue ~= "" then
+            createdId = idValue
+        end
+    end
+
+    if not okCreate or type(createdId) ~= "string" or createdId == "" then
+        return false
+    end
+
+    activeLuckyCoinRecordId = createdId
+    effectsSection:set(COIN_RECORD_ID_KEY, activeLuckyCoinRecordId)
+    luckyCoinRecordReady = true
+    return true
+end
+
+local function addLuckyCoinsToContainer(container, amount)
+    if amount <= 0 then
+        return false
+    end
+
+    local recordId = activeLuckyCoinRecordId
+    if type(recordId) ~= "string" or recordId == "" then
+        return false
+    end
+
+    local ok, coin = pcall(world.createObject, recordId, amount)
+    if not ok or coin == nil then
+        return false
+    end
+
+    coin:moveInto(types.Container.inventory(container))
+    return true
+end
+
+local function handleToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    effectsSection:set(ENABLED_KEY, data.enable == true)
+end
+
+local function onActivate(object, actor)
+    if actor == nil or actor ~= world.players[1] then
+        return
+    end
+
+    if not luckyFindEnabled() then
+        return
+    end
+
+    if not types.Container.objectIsInstance(object) then
+        return
+    end
+
+    local key = objectKey(object)
+    if checkedContainers[key] then
+        return
+    end
+
+    local foundCoin = math.random() <= findChance()
+    if foundCoin and not ensureLuckyCoinRecord() then
+        return
+    end
+
+    checkedContainers[key] = true
+
+    if foundCoin then
+        addLuckyCoinsToContainer(object, 1)
+    end
+end
+
+local function onSave()
+    return {
+        checkedContainers = checkedContainers,
+    }
+end
+
+local function onLoad(savedData)
+    checkedContainers = {}
+    luckyCoinRecordReady = false
+    activeLuckyCoinRecordId = nil
+    effectsSection:set(ENABLED_KEY, false)
+    effectsSection:set(FORTUNES_HABIT_ENABLED_KEY, false)
+
+    if type(savedData) == "table" and type(savedData.checkedContainers) == "table" then
+        checkedContainers = savedData.checkedContainers
+    end
+end
+
+local function onNewGame()
+    checkedContainers = {}
+    luckyCoinRecordReady = false
+    activeLuckyCoinRecordId = nil
+    effectsSection:set(ENABLED_KEY, false)
+    effectsSection:set(FORTUNES_HABIT_ENABLED_KEY, false)
+    effectsSection:set(COIN_RECORD_ID_KEY, nil)
+end
+
+local function handleFortunesHabitToggle(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    effectsSection:set(FORTUNES_HABIT_ENABLED_KEY, data.enable == true)
+end
+
+subsystems.lucky_find = {
+    engineHandlers = {
+        onActivate = onActivate,
+        onSave = onSave,
+        onLoad = onLoad,
+        onNewGame = onNewGame,
+    },
+    eventHandlers = {
+        [TOGGLE_EVENT] = handleToggle,
+        [FORTUNES_HABIT_TOGGLE_EVENT] = handleFortunesHabitToggle,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/lucky_find_runtime.lua
+end
+
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/unseen_hand_global_runtime.lua
+local world = require("openmw.world")
+
+local PLAYER_TOGGLE_EVENT = "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle"
+
+local function forwardToPlayer(data)
+    local player = world.players[1]
+    if player == nil or type(player.sendEvent) ~= "function" then
+        return
+    end
+
+    player:sendEvent(PLAYER_TOGGLE_EVENT, data)
+end
+
+subsystems.unseen_hand = {
+    eventHandlers = {
+        [PLAYER_TOGGLE_EVENT] = function(data)
+            if type(data) ~= "table" then
+                return
+            end
+
+            forwardToPlayer({
+                enable = data.enable == true,
+            })
+        end,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/unseen_hand_global_runtime.lua
+end
+
+-- 6. axe global state handling
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
+local world = require("openmw.world")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local AXE_TARGET_SCRIPT = BASEPACK_ACTOR_TARGET_SCRIPT
+local WATCHER_REFRESH_INTERVAL = 1.0
+
+local refreshTimer = 0
+local kindlingGripState = {
+    enabled = false,
+    damageBonusCount = 0,
+    bloodletterEnabled = false,
+    draggingWoundEnabled = false,
+    hewerHeartEnabled = false,
+    crimsonCleaveEnabled = false,
+    ironCanopyEnabled = false,
+    playerId = nil,
+}
+
+local function shouldAttachWatcher(actor)
+    if actor == nil or Actor == nil then
+        return false
+    end
+    if type(actor.isValid) == "function" and not actor:isValid() then
+        return false
+    end
+    if type(Actor.isDead) == "function" and Actor.isDead(actor) then
+        return false
+    end
+    if world.players ~= nil and actor == world.players[1] then
+        return false
+    end
+    if type(actor.hasScript) ~= "function" or type(actor.addScript) ~= "function" then
+        return false
+    end
+
+    return not actor:hasScript(AXE_TARGET_SCRIPT)
+end
+
+local function sendState(actor)
+    if actor == nil or type(actor.sendEvent) ~= "function" then
+        return
+    end
+
+    actor:sendEvent("SkillPerkSystem_AxeKindlingGripRefresh", kindlingGripState)
+end
+
+local function refreshWatchers()
+    for _, actor in ipairs(world.activeActors) do
+        if shouldAttachWatcher(actor) then
+            actor:addScript(AXE_TARGET_SCRIPT, kindlingGripState)
+        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(AXE_TARGET_SCRIPT) then
+            sendState(actor)
+        end
+    end
+end
+
+local function onKindlingGripState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    kindlingGripState = {
+        enabled = data.enabled == true,
+        damageBonusCount = math.max(0, math.floor(tonumber(data.damageBonusCount) or 0)),
+        bloodletterEnabled = data.bloodletterEnabled == true,
+        draggingWoundEnabled = data.draggingWoundEnabled == true,
+        hewerHeartEnabled = data.hewerHeartEnabled == true,
+        crimsonCleaveEnabled = data.crimsonCleaveEnabled == true,
+        ironCanopyEnabled = data.ironCanopyEnabled == true,
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+    }
+    refreshWatchers()
+end
+
+subsystems.axe = {
+    eventHandlers = {
+        SkillPerkSystem_AxeKindlingGripState = onKindlingGripState,
+    },
+    engineHandlers = {
+        onUpdate = function(dt)
+            refreshTimer = refreshTimer + (tonumber(dt) or 0)
+            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
+                refreshTimer = 0
+                refreshWatchers()
+            end
+        end,
+        onLoad = function()
+            refreshTimer = WATCHER_REFRESH_INTERVAL
+            refreshWatchers()
+        end,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/axe_global.lua
+end
+
+-- 7. blunt weapon global state handling
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/bluntweapon_global.lua
+local world = require("openmw.world")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Armor = types.Armor
+local Item = types.Item
+local TARGET_SCRIPT = BASEPACK_ACTOR_TARGET_SCRIPT
+local WATCHER_REFRESH_INTERVAL = 1.0
+
+local refreshTimer = 0
+local strengthInArmsState = {
+    strengthInArmsEnabled = false,
+    enabled = false,
+    damageBonus = 0,
+    platebreakerEnabled = false,
+    breathstealerEnabled = false,
+    playerId = nil,
+}
+
+
+local ARMOR_EQUIPMENT_SLOTS = {
+    "Cuirass",
+    "Greaves",
+    "Helmet",
+    "LeftGauntlet",
+    "RightGauntlet",
+    "LeftPauldron",
+    "RightPauldron",
+    "Boots",
+    "CarriedLeft",
+}
+
+local function getEquippedItem(actor, slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getEquippedArmorItems(actor)
+    local slots = Actor ~= nil and Actor.EQUIPMENT_SLOT or nil
+    if slots == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" then
+        return {}
+    end
+
+    local armorItems = {}
+    for _, slotName in ipairs(ARMOR_EQUIPMENT_SLOTS) do
+        local item = getEquippedItem(actor, slots[slotName])
+        if item ~= nil and Armor.objectIsInstance(item) then
+            local itemData = Item ~= nil and type(Item.itemData) == "function" and Item.itemData(item) or nil
+            local condition = itemData ~= nil and tonumber(itemData.condition) or nil
+            if condition ~= nil and condition > 0 then
+                table.insert(armorItems, { itemData = itemData, condition = condition })
+            end
+        end
+    end
+
+    return armorItems
+end
+
+local function applyPlatebreakerArmorDamage(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    local target = data.target
+    if target == nil or (type(target.isValid) == "function" and not target:isValid()) then
+        return
+    end
+
+    local conditionDamage = tonumber(data.conditionDamage)
+    if conditionDamage == nil or conditionDamage <= 0 then
+        return
+    end
+    conditionDamage = math.max(10, math.min(25, math.floor(conditionDamage)))
+
+    local armorItems = getEquippedArmorItems(target)
+    if #armorItems == 0 then
+        return
+    end
+
+    local armor = armorItems[math.random(1, #armorItems)]
+    armor.itemData.condition = math.max(0, armor.condition - conditionDamage)
+end
+
+local function shouldAttachWatcher(actor)
+    if actor == nil or Actor == nil then
+        return false
+    end
+    if type(actor.isValid) == "function" and not actor:isValid() then
+        return false
+    end
+    if type(Actor.isDead) == "function" and Actor.isDead(actor) then
+        return false
+    end
+    if world.players ~= nil and actor == world.players[1] then
+        return false
+    end
+    if type(actor.hasScript) ~= "function" or type(actor.addScript) ~= "function" then
+        return false
+    end
+
+    return not actor:hasScript(TARGET_SCRIPT)
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BluntWeaponStrengthInArmsRefresh", strengthInArmsState)
+    end
+end
+
+local function refreshWatchers()
+    for _, actor in ipairs(world.activeActors) do
+        if shouldAttachWatcher(actor) then
+            actor:addScript(TARGET_SCRIPT, strengthInArmsState)
+        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(TARGET_SCRIPT) then
+            sendState(actor)
+        end
+    end
+end
+
+local function onStrengthInArmsState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    strengthInArmsState = {
+        strengthInArmsEnabled = data.strengthInArmsEnabled == true or data.enabled == true,
+        enabled = data.strengthInArmsEnabled == true or data.enabled == true,
+        damageBonus = math.max(0, math.floor(tonumber(data.damageBonus) or 0)),
+        platebreakerEnabled = data.platebreakerEnabled == true,
+        breathstealerEnabled = data.breathstealerEnabled == true,
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+    }
+    refreshWatchers()
+end
+
+subsystems.bluntweapon = {
+    eventHandlers = {
+        SkillPerkSystem_BluntWeaponStrengthInArmsState = onStrengthInArmsState,
+        SkillPerkSystem_ApplyPlatebreakerArmorDamage = applyPlatebreakerArmorDamage,
+    },
+    engineHandlers = {
+        onUpdate = function(dt)
+            refreshTimer = refreshTimer + (tonumber(dt) or 0)
+            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
+                refreshTimer = 0
+                refreshWatchers()
+            end
+        end,
+        onLoad = function()
+            refreshTimer = WATCHER_REFRESH_INTERVAL
+            refreshWatchers()
+        end,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/bluntweapon_global.lua
+end
+
+-- 8. duelist tempo global state handling
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/duelists_tempo_global.lua
+local world = require("openmw.world")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local DUELISTS_TEMPO_TARGET_SCRIPT = BASEPACK_ACTOR_TARGET_SCRIPT
+local WATCHER_REFRESH_INTERVAL = 1.0
+
+local refreshTimer = 0
+
+local function shouldAttachWatcher(actor)
+    if actor == nil or Actor == nil then
+        return false
+    end
+    if type(actor.isValid) == "function" and not actor:isValid() then
+        return false
+    end
+    if type(Actor.isDead) == "function" and Actor.isDead(actor) then
+        return false
+    end
+    if world.players ~= nil and actor == world.players[1] then
+        return false
+    end
+    if type(actor.hasScript) ~= "function" or type(actor.addScript) ~= "function" then
+        return false
+    end
+
+    return not actor:hasScript(DUELISTS_TEMPO_TARGET_SCRIPT)
+end
+
+local function refreshWatchers()
+    for _, actor in ipairs(world.activeActors) do
+        if shouldAttachWatcher(actor) then
+            actor:addScript(DUELISTS_TEMPO_TARGET_SCRIPT, {})
+        end
+    end
+end
+
+subsystems.duelists_tempo = {
+    engineHandlers = {
+        onUpdate = function(dt)
+            refreshTimer = refreshTimer + (tonumber(dt) or 0)
+            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
+                refreshTimer = 0
+                refreshWatchers()
+            end
+        end,
+        onLoad = function()
+            refreshTimer = WATCHER_REFRESH_INTERVAL
+            refreshWatchers()
+        end,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/duelists_tempo_global.lua
+end
+
+-- 9. block reactive global logic
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/block_reactive_global.lua
+local core = require("openmw.core")
+local types = require("openmw.types")
+
+local Item = types.Item
+local Actor = types.Actor
+
+local REACTIVE_DEFAULT_VFX_MODEL = "meshes\\e\\magic_hit_myst.nif"
+local REACTIVE_DEFAULT_SOUND_FILE = "Sound\\Fx\\magic\\mystH.wav"
+
+local PRESENTATION_BY_EFFECT_ID = {
+    -- Destruction / elemental damage
+    firedamage = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    frostdamage = {
+        vfx = "meshes\\e\\magic_hit_frost.nif",
+        sound = "Sound\\Fx\\magic\\frstH.wav",
+    },
+    shockdamage = {
+        vfx = "meshes\\e\\magic_hit_s.nif",
+        sound = "Sound\\Fx\\magic\\shokH.wav",
+    },
+
+    -- Destruction / generic hostile damage-drain effects
+    damagehealth = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damagefatigue = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damagemagicka = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damageattribute = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    damageskill = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainhealth = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainfatigue = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainmagicka = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainattribute = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    drainskill = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessfire = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessfrost = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessshock = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessmagicka = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknesscommondisease = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknessblightdisease = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknesscorprusdisease = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    weaknesspoison = {
+        vfx = "meshes\\e\\magic_hit_dst.nif",
+        sound = "Sound\\Fx\\magic\\destH.wav",
+    },
+    poison = {
+        vfx = "meshes\\e\\magic_hit_poison.nif",
+        sound = "Sound\\Fx\\magic\\poisH.wav",
+    },
+
+    -- Mysticism
+    absorbhealth = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbfatigue = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbmagicka = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbattribute = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    absorbskill = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    telekinesis = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    detectkey = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    detectanimal = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    detectenchantment = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    mark = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    recall = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    dispel = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+    soultrap = {
+        vfx = "meshes\\e\\magic_hit_myst.nif",
+        sound = "Sound\\Fx\\magic\\mystH.wav",
+    },
+
+    -- Restoration / beneficial effects
+    restorehealth = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    restorefatigue = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    restoremagicka = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyhealth = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyfatigue = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifymagicka = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyattribute = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fortifyskill = {
+        vfx = "meshes\\e\\magic_hit_rest.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+
+    -- Illusion
+    sanctuary = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    chameleon = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    invisibility = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    blind = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    light = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    nighteye = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    calmcreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    calmanimal = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    calmhumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    frenzycreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    frenzyhumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    demoralizecreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    demoralizehumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    rallycreature = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+    rallyhumanoid = {
+        vfx = "meshes\\e\\magic_hit_ill.nif",
+        sound = "Sound\\Fx\\magic\\illuH.wav",
+    },
+
+    -- Alteration-ish fallback
+    shield = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    fireresist = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    frostresist = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    shockresist = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    resistmagicka = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    waterbreathing = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    waterwalking = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    levitate = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    slowfall = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    jump = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    open = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+    lock = {
+        vfx = "meshes\\e\\magic_hit_purple.nif",
+        sound = "Sound\\Fx\\magic\\restH.wav",
+    },
+}
+
+local function normalizeEffectId(effectId)
+    if type(effectId) ~= "string" then
+        return nil
+    end
+    return string.lower(effectId)
+end
+
+local function getEffectId(effect)
+    if effect == nil then
+        return nil
+    end
+
+    local ok, value = pcall(function()
+        return effect.id or (effect.effect and effect.effect.id) or effect.effect
+    end)
+    if ok then
+        return normalizeEffectId(value)
+    end
+    return nil
+end
+
+local function resolveRange(effect)
+    if effect == nil then
+        return nil
+    end
+
+    local okRaw, rawRange = pcall(function()
+        return effect.range or effect.castType
+    end)
+    if not okRaw then
+        return nil
+    end
+
+    if type(rawRange) == "string" then
+        local normalized = string.lower(rawRange)
+        if normalized == "self" or normalized == "touch" or normalized == "target" then
+            return normalized
+        end
+    end
+
+    local rangeType = core.magic and (core.magic.RANGE or core.magic.RANGE_TYPE) or nil
+    if rangeType ~= nil then
+        if rawRange == rangeType.Self then return "self" end
+        if rawRange == rangeType.Touch then return "touch" end
+        if rawRange == rangeType.Target then return "target" end
+    end
+
+    return nil
+end
+
+local function getEnchantmentRecord(enchantmentId)
+    local records = core.magic and core.magic.enchantments and core.magic.enchantments.records or nil
+    if records == nil then
+        return nil
+    end
+
+    local direct = records[enchantmentId]
+    if direct ~= nil then
+        return direct
+    end
+
+    local lowerId = type(enchantmentId) == "string" and string.lower(enchantmentId) or enchantmentId
+    local lowered = records[lowerId]
+    if lowered ~= nil then
+        return lowered
+    end
+
+    for _, rec in pairs(records) do
+        if rec ~= nil then
+            local recId = rec.id
+            if recId == enchantmentId then
+                return rec
+            end
+            if type(recId) == "string" and type(enchantmentId) == "string" and string.lower(recId) == string.lower(enchantmentId) then
+                return rec
+            end
+        end
+    end
+
+    return nil
+end
+
+local function splitEffectIndexes(enchantment)
+    local selfIndexes = {}
+    local attackerIndexes = {}
+    local effects = enchantment and enchantment.effects or nil
+
+    if effects == nil then
+        return selfIndexes, attackerIndexes
+    end
+
+    for index, effect in ipairs(effects) do
+        local range = resolveRange(effect)
+        local zeroIndex = index - 1
+
+        if range == "self" then
+            table.insert(selfIndexes, zeroIndex)
+        elseif range == "touch" or range == "target" then
+            table.insert(attackerIndexes, zeroIndex)
+        end
+    end
+
+    return selfIndexes, attackerIndexes
+end
+
+local function getPresentationForEnchantment(enchantment)
+    local effects = enchantment and enchantment.effects or nil
+    if effects ~= nil then
+        for _, effect in ipairs(effects) do
+            local effectId = getEffectId(effect)
+            if effectId ~= nil then
+                local mapped = PRESENTATION_BY_EFFECT_ID[effectId]
+                if mapped ~= nil then
+                    return mapped
+                end
+            end
+        end
+    end
+
+    return {
+        vfx = REACTIVE_DEFAULT_VFX_MODEL,
+        sound = REACTIVE_DEFAULT_SOUND_FILE,
+    }
+end
+
+local function addVfx(target, model, vfxId)
+    if target == nil or type(model) ~= "string" or model == "" then
+        return
+    end
+
+    target:sendEvent("AddVfx", {
+        model = model,
+        options = {
+            vfxId = vfxId,
+            loop = false,
+        }
+    })
+end
+
+local function playSound(target, soundFile)
+    if target == nil or type(soundFile) ~= "string" or soundFile == "" then
+        return
+    end
+
+    core.sound.playSoundFile3d(soundFile, target, {
+        volume = 1.0,
+        pitch = 1.0,
+        loop = false,
+    })
+end
+
+local function addEffectsToTarget(target, sourceItemId, effectIndexes, caster, item)
+    if target == nil then
+        return false
+    end
+    if type(sourceItemId) ~= "string" or sourceItemId == "" then
+        return false
+    end
+    if type(effectIndexes) ~= "table" or #effectIndexes == 0 then
+        return true
+    end
+
+    local ok, result = pcall(function()
+        Actor.activeSpells(target):add({
+            id = sourceItemId,
+            effects = effectIndexes,
+            caster = caster,
+            item = item,
+            stackable = true,
+        })
+        return true
+    end)
+
+    if not ok then
+        return false
+    end
+
+    return result == true
+end
+
+local function applyPresentation(target, presentation, label)
+    if target == nil or presentation == nil then
+        return
+    end
+
+    addVfx(target, presentation.vfx, "sps_reactive_" .. tostring(label))
+    playSound(target, presentation.sound)
+end
+
+local function onApplyReactiveShieldEnchant(e)
+    if type(e) ~= "table" then
+        return
+    end
+
+    local blocker = e.blocker
+    local attacker = e.attacker
+    local shield = e.shield
+    local enchantmentId = e.enchantmentId
+
+    if blocker == nil or shield == nil or type(enchantmentId) ~= "string" or enchantmentId == "" then
+        return
+    end
+
+    local sourceItemId = shield.recordId
+    if type(sourceItemId) ~= "string" or sourceItemId == "" then
+        return
+    end
+
+    local enchantment = getEnchantmentRecord(enchantmentId)
+    if enchantment == nil then
+        return
+    end
+
+    local constantEffectType = core.magic and core.magic.ENCHANTMENT_TYPE and core.magic.ENCHANTMENT_TYPE.ConstantEffect or nil
+    if constantEffectType ~= nil and enchantment.type == constantEffectType then
+        return
+    end
+
+    local itemData = Item and type(Item.itemData) == "function" and Item.itemData(shield) or nil
+    if itemData == nil then
+        return
+    end
+
+    local enchantCost = tonumber(enchantment.cost or enchantment.enchantmentCost or enchantment.castCost) or 0
+    local maxCharge = tonumber(enchantment.charge or enchantment.maxCharge or enchantment.enchantmentCharge)
+    local currentCharge = tonumber(itemData.enchantmentCharge)
+    if currentCharge == nil and type(maxCharge) == "number" then
+        currentCharge = maxCharge
+    end
+
+    if currentCharge == nil then
+        return
+    end
+    if enchantCost > 0 and currentCharge < enchantCost then
+        return
+    end
+
+    local selfIndexes, attackerIndexes = splitEffectIndexes(enchantment)
+    if #selfIndexes == 0 and #attackerIndexes == 0 then
+        return
+    end
+
+    local presentation = getPresentationForEnchantment(enchantment)
+    local appliedAny = false
+
+    if #selfIndexes > 0 then
+        local appliedSelf = addEffectsToTarget(blocker, sourceItemId, selfIndexes, blocker, shield)
+        appliedAny = appliedSelf or appliedAny
+        if appliedSelf then
+            applyPresentation(blocker, presentation, "self")
+        end
+    end
+
+    if attacker ~= nil and #attackerIndexes > 0 then
+        local appliedAttacker = addEffectsToTarget(attacker, sourceItemId, attackerIndexes, blocker, shield)
+        appliedAny = appliedAttacker or appliedAny
+        if appliedAttacker then
+            applyPresentation(attacker, presentation, "target")
+        end
+    end
+
+    if not appliedAny then
+        return
+    end
+
+    if enchantCost > 0 then
+        local nextCharge = math.max(0, currentCharge - enchantCost)
+        itemData.enchantmentCharge = nextCharge
+    end
+end
+
+subsystems.block_reactive = {
+    eventHandlers = {
+        SkillPerkSystem_ApplyReactiveShieldEnchant = onApplyReactiveShieldEnchant,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/block_reactive_global.lua
+end
+
+-- 10. block bulwark global logic
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/block_bulwark_global.lua
+local core = require("openmw.core")
+local world = require("openmw.world")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Creature = types.Creature
+
+local BULWARK_DAMAGE_SPELL_ID = "sps_Bullareadmg"
+local BULWARK_RADIUS = 384
+
+-- If these do not resolve in your setup, try the full asset paths instead:
+-- "meshes\\magic_hit_dst.nif" and "Sound\\Fx\\destH.wav"
+local BULWARK_HIT_VFX_MODEL = "meshes\\e\\magic_hit_dst.nif"
+local BULWARK_HIT_SOUND_FILE = "Sound\\Fx\\magic\\destH.wav"
+
+local function isUndeadOrDaedra(actor)
+    if actor == nil then
+        return false
+    end
+    if not Creature.objectIsInstance(actor) then
+        return false
+    end
+
+    local record = Creature.record(actor)
+    if record == nil then
+        return false
+    end
+
+    return record.type == Creature.TYPE.Undead or record.type == Creature.TYPE.Daedra
+end
+
+local function isWithinRadius(source, target, radius)
+    if source == nil or target == nil then
+        return false
+    end
+
+    local sourcePos = source.position
+    local targetPos = target.position
+    if sourcePos == nil or targetPos == nil then
+        return false
+    end
+
+    local dx = targetPos.x - sourcePos.x
+    local dy = targetPos.y - sourcePos.y
+    local dz = targetPos.z - sourcePos.z
+    local distanceSquared = dx * dx + dy * dy + dz * dz
+    return distanceSquared <= (radius * radius)
+end
+
+local function addHitVfx(target)
+    if target == nil then
+        return
+    end
+
+    target:sendEvent("AddVfx", {
+        model = BULWARK_HIT_VFX_MODEL,
+        options = {
+            vfxId = "sps_bulwark_hit_vfx",
+            loop = false,
+        }
+    })
+end
+
+local function playHitSound(target)
+    if target == nil then
+        return
+    end
+
+    core.sound.playSoundFile3d(BULWARK_HIT_SOUND_FILE, target, {
+        volume = 1.0,
+        pitch = 1.0,
+        loop = false,
+    })
+end
+
+local function applyBulwarkSmite(blocker, target)
+    Actor.activeSpells(target):add({
+        id = BULWARK_DAMAGE_SPELL_ID,
+        effects = { 0 },
+        caster = blocker,
+        stackable = true,
+    })
+
+    addHitVfx(target)
+    playHitSound(target)
+end
+
+local function onApplyBulwarkOfLight(e)
+    if type(e) ~= "table" then
+        return
+    end
+
+    local blocker = e.blocker
+    if blocker == nil then
+        return
+    end
+
+    for _, actor in ipairs(world.activeActors) do
+        if actor ~= nil
+            and actor ~= blocker
+            and not Actor.isDead(actor)
+            and isUndeadOrDaedra(actor)
+            and isWithinRadius(blocker, actor, BULWARK_RADIUS)
+        then
+            applyBulwarkSmite(blocker, actor)
+        end
+    end
+end
+
+subsystems.block_bulwark = {
+    eventHandlers = {
+        SkillPerkSystem_ApplyBulwarkOfLight = onApplyBulwarkOfLight,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/block_bulwark_global.lua
+end
+
+-- 11. block aegis rite global logic
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/block_aegis_rite_global.lua
+local core = require("openmw.core")
+
+local AEGIS_RITE_TARGET_SCRIPT = BASEPACK_ACTOR_TARGET_SCRIPT
+local AEGIS_RITE_SMITE_SPELL_ID = "sps_MeleeSmite"
+local AEGIS_RITE_HIT_VFX_MODEL = "meshes\\e\\magic_hit_dst.nif"
+local AEGIS_RITE_HIT_SOUND_FILE = "Sound\\Fx\\magic\\destH.wav"
+
+local function addHitVfx(target)
+    if target == nil then
+        return
+    end
+
+    target:sendEvent("AddVfx", {
+        model = AEGIS_RITE_HIT_VFX_MODEL,
+        options = {
+            vfxId = "sps_aegis_rite_hit_vfx",
+            loop = false,
+        }
+    })
+end
+
+local function playHitSound(target)
+    if target == nil then
+        return
+    end
+
+    core.sound.playSoundFile3d(AEGIS_RITE_HIT_SOUND_FILE, target, {
+        volume = 1.0,
+        pitch = 1.0,
+        loop = false,
+    })
+end
+
+local function onPrimeAegisRite(e)
+    if type(e) ~= "table" then
+        return
+    end
+
+    local blocker = e.blocker
+    local attacker = e.attacker
+    local duration = tonumber(e.duration) or 3.0
+
+    if blocker == nil or attacker == nil then
+        return
+    end
+    if not attacker:isValid() then
+        return
+    end
+
+    local initData = {
+        playerId = blocker.id,
+        duration = duration,
+    }
+
+    if attacker:hasScript(AEGIS_RITE_TARGET_SCRIPT) then
+        attacker:sendEvent("SkillPerkSystem_AegisRiteRefresh", initData)
+    else
+        attacker:addScript(AEGIS_RITE_TARGET_SCRIPT, initData)
+    end
+end
+
+local function onApplyAegisRiteEffect(e)
+    if type(e) ~= "table" then
+        return
+    end
+
+    local attacker = e.attacker
+    local target = e.target
+    if attacker == nil or target == nil then
+        return
+    end
+    if not target:isValid() then
+        return
+    end
+
+    local Actor = require("openmw.types").Actor
+    Actor.activeSpells(target):add({
+        id = AEGIS_RITE_SMITE_SPELL_ID,
+        effects = { 0 },
+        caster = attacker,
+        stackable = true,
+    })
+
+    addHitVfx(target)
+    playHitSound(target)
+
+    if target:hasScript(AEGIS_RITE_TARGET_SCRIPT) then
+        target:sendEvent("SkillPerkSystem_AegisRiteRefresh", {
+            playerId = attacker.id,
+            duration = 0,
+        })
+    end
+end
+
+local function onRemoveAegisRiteTarget(e)
+    if type(e) ~= "table" then
+        return
+    end
+
+    local target = e.target
+    if target == nil then
+        return
+    end
+    if not target:isValid() then
+        return
+    end
+    if not target:hasScript(AEGIS_RITE_TARGET_SCRIPT) then
+        return
+    end
+
+    target:sendEvent("SkillPerkSystem_AegisRiteRefresh", {
+        duration = 0,
+    })
+end
+
+subsystems.block_aegis_rite = {
+    eventHandlers = {
+        SkillPerkSystem_PrimeAegisRite = onPrimeAegisRite,
+        SkillPerkSystem_ApplyAegisRiteEffect = onApplyAegisRiteEffect,
+        SkillPerkSystem_RemoveAegisRiteTarget = onRemoveAegisRiteTarget,
+    },
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/block_aegis_rite_global.lua
+end
+
+-- 12. apprentice hammer capture global logic
+do
+-- Begin consolidated from SkillPerkSystem_BasePack/apprentice_hammer_capture_global.lua
+local interfaces = require("openmw.interfaces")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][ApprenticeHammer][CaptureGlobal]"
+local registered = false
+
+local function logDebug(message)
+    print(string.format("%s %s", LOG_TAG, tostring(message)))
+end
+
+local function registerRepairCapture()
+    if registered then
+        return
+    end
+
+    local itemUsage = interfaces.ItemUsage
+    if itemUsage == nil or type(itemUsage.addHandlerForType) ~= "function" then
+        logDebug("interfaces.ItemUsage.addHandlerForType unavailable")
+        return
+    end
+
+    itemUsage.addHandlerForType(types.Repair, function(repairItem, actor, options)
+        if repairItem == nil or actor == nil then
+            logDebug("repair capture skipped; item or actor missing")
+            return
+        end
+
+        logDebug("captured repair tool " .. tostring(repairItem.recordId))
+        actor:sendEvent("SkillPerkSystem_RecordRepairTool", {
+            item = repairItem,
+            recordId = repairItem.recordId,
+        })
+    end)
+
+    registered = true
+    logDebug("registered repair capture handler")
+end
+
+registerRepairCapture()
+
+subsystems.apprentice_hammer_capture = {
+    eventHandlers = {},
+    engineHandlers = {},
+}
+
+-- End consolidated from SkillPerkSystem_BasePack/apprentice_hammer_capture_global.lua
+end
+
+
+-- 13. combined eventHandlers
+local function dispatchEvent(subsystemName, eventName, data)
+    local subsystem = subsystems[subsystemName]
+    local handlers = subsystem and subsystem.eventHandlers or nil
+    local handler = handlers and handlers[eventName] or nil
+    if type(handler) == "function" then
+        handler(data)
+    end
+end
+
+local eventHandlers = {
+    SkillPerkSystem_BasePack_ModifySecurityToolCondition = function(data) dispatchEvent("security_global", "SkillPerkSystem_BasePack_ModifySecurityToolCondition", data) end,
+    SkillPerkSystem_BasePack_CarefulRepairs_ModifyRepairToolCondition = function(data) dispatchEvent("security_global", "SkillPerkSystem_BasePack_CarefulRepairs_ModifyRepairToolCondition", data) end,
+    SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest = function(data) dispatchEvent("security_global", "SkillPerkSystem_BasePack_ApprenticeHammer_OverrepairRequest", data) end,
+    SkillPerkSystem_BasePack_WeaponTemper_Request = function(data) dispatchEvent("security_global", "SkillPerkSystem_BasePack_WeaponTemper_Request", data) end,
+    SkillPerkSystem_BasePack_ArmorRefit_Request = function(data) dispatchEvent("security_global", "SkillPerkSystem_BasePack_ArmorRefit_Request", data) end,
+    SkillPerkSystem_BasePack_Masterwork_Request = function(data) dispatchEvent("security_global", "SkillPerkSystem_BasePack_Masterwork_Request", data) end,
+    DrainLockpick = function(data) dispatchEvent("security_global", "DrainLockpick", data) end,
+
+    SkillPerkSystem_BasePack_TreasureSense_Toggle = function(data) dispatchEvent("treasure_sense", "SkillPerkSystem_BasePack_TreasureSense_Toggle", data) end,
+    SkillPerkSystem_BasePack_LuckyFind_Toggle = function(data) dispatchEvent("lucky_find", "SkillPerkSystem_BasePack_LuckyFind_Toggle", data) end,
+    SkillPerkSystem_BasePack_FortunesHabit_Toggle = function(data)
+        dispatchEvent("treasure_sense", "SkillPerkSystem_BasePack_FortunesHabit_Toggle", data)
+        dispatchEvent("lucky_find", "SkillPerkSystem_BasePack_FortunesHabit_Toggle", data)
+    end,
+    SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
+
+    SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
+    SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
+    SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
+    SkillPerkSystem_ApplyReactiveShieldEnchant = function(data) dispatchEvent("block_reactive", "SkillPerkSystem_ApplyReactiveShieldEnchant", data) end,
+    SkillPerkSystem_ApplyBulwarkOfLight = function(data) dispatchEvent("block_bulwark", "SkillPerkSystem_ApplyBulwarkOfLight", data) end,
+    SkillPerkSystem_PrimeAegisRite = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_PrimeAegisRite", data) end,
+    SkillPerkSystem_ApplyAegisRiteEffect = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_ApplyAegisRiteEffect", data) end,
+    SkillPerkSystem_RemoveAegisRiteTarget = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_RemoveAegisRiteTarget", data) end,
+}
+
+-- 14. combined engineHandlers
+local engineOrder = {
+    "security_global",
+    "treasure_sense",
+    "lucky_find",
+    "unseen_hand",
+    "axe",
+    "bluntweapon",
+    "duelists_tempo",
+    "block_reactive",
+    "block_bulwark",
+    "block_aegis_rite",
+    "apprentice_hammer_capture",
+}
+
+local function callEngineHandler(name, ...)
+    for _, subsystemName in ipairs(engineOrder) do
+        local subsystem = subsystems[subsystemName]
+        local handlers = subsystem and subsystem.engineHandlers or nil
+        local handler = handlers and handlers[name] or nil
+        if type(handler) == "function" then
+            handler(...)
+        end
+    end
+end
+
+local function saveEngineHandlers()
+    local saved = {}
+    for _, subsystemName in ipairs(engineOrder) do
+        local subsystem = subsystems[subsystemName]
+        local handlers = subsystem and subsystem.engineHandlers or nil
+        local handler = handlers and handlers.onSave or nil
+        if type(handler) == "function" then
+            saved[subsystemName] = handler()
+        end
+    end
+    return saved
+end
+
+local function loadEngineHandlers(savedData)
+    for _, subsystemName in ipairs(engineOrder) do
+        local subsystem = subsystems[subsystemName]
+        local handlers = subsystem and subsystem.engineHandlers or nil
+        local handler = handlers and handlers.onLoad or nil
+        if type(handler) == "function" then
+            local subsystemSavedData = type(savedData) == "table" and savedData[subsystemName] or nil
+            handler(subsystemSavedData)
+        end
+    end
+end
+
+return {
+    eventHandlers = eventHandlers,
+    engineHandlers = {
+        onActivate = function(object, actor) callEngineHandler("onActivate", object, actor) end,
+        onSave = saveEngineHandlers,
+        onLoad = loadEngineHandlers,
+        onNewGame = function() callEngineHandler("onNewGame") end,
+        onUpdate = function(dt) callEngineHandler("onUpdate", dt) end,
     },
 }

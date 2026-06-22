@@ -1,3 +1,4 @@
+-- Superseded by scripts/SkillPerkSystem_BasePack/basepack_global.lua; kept temporarily for save/development compatibility.
 local interfaces = require("openmw.interfaces")
 local types = require("openmw.types")
 

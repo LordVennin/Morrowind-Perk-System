@@ -1,3 +1,4 @@
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
@@ -98,17 +99,6 @@ local function actorHasEquippedBluntWeapon(actor)
 end
 
 
-local ARMOR_EQUIPMENT_SLOTS = {
-    "Cuirass",
-    "Greaves",
-    "Helmet",
-    "LeftGauntlet",
-    "RightGauntlet",
-    "LeftPauldron",
-    "RightPauldron",
-    "Boots",
-    "CarriedLeft",
-}
 
 local function isAttackType(attack, typeName)
     local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
@@ -122,28 +112,6 @@ local function isMeleeAttack(attack)
     local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
     local actual = tonumber(attack.sourceType)
     return expected == nil or actual == nil or actual == expected
-end
-
-local function getEquippedArmorItems(actor)
-    local slots = Actor ~= nil and Actor.EQUIPMENT_SLOT or nil
-    if slots == nil then
-        return {}
-    end
-
-    local armorItems = {}
-    for _, slotName in ipairs(ARMOR_EQUIPMENT_SLOTS) do
-        local slot = slots[slotName]
-        local item = getEquippedItem(actor, slot)
-        if item ~= nil and (Armor == nil or type(Armor.objectIsInstance) ~= "function" or Armor.objectIsInstance(item)) then
-            local itemData = item.type ~= nil and type(item.type.itemData) == "function" and item.type.itemData(item) or nil
-            local condition = itemData ~= nil and tonumber(itemData.condition) or nil
-            if condition ~= nil and condition > 0 then
-                table.insert(armorItems, { item = item, itemData = itemData, condition = condition })
-            end
-        end
-    end
-
-    return armorItems
 end
 
 local function calculatePlatebreakerConditionDamage(attack)
@@ -177,19 +145,15 @@ local function isSuccessfulPlatebreakerHit(attack)
     return actorHasEquippedBluntWeapon(attack.attacker)
 end
 
-local function applyPlatebreaker(attack)
+local function requestPlatebreakerArmorDamage(attack)
     if not isSuccessfulPlatebreakerHit(attack) then
         return
     end
 
-    local armorItems = getEquippedArmorItems(pself)
-    if #armorItems == 0 then
-        return
-    end
-
-    local index = math.random(1, #armorItems)
-    local target = armorItems[index]
-    target.itemData.condition = math.max(0, target.condition - calculatePlatebreakerConditionDamage(attack))
+    core.sendGlobalEvent("SkillPerkSystem_ApplyPlatebreakerArmorDamage", {
+        target = pself,
+        conditionDamage = calculatePlatebreakerConditionDamage(attack),
+    })
 end
 
 local function isSuccessfulStrengthInArmsHit(attack)
@@ -219,7 +183,7 @@ local function onHit(attack)
     if isSuccessfulStrengthInArmsHit(attack) then
         attack.damage.health = (tonumber(attack.damage.health) or 0) + strengthInArmsDamageBonus
     end
-    applyPlatebreaker(attack)
+    requestPlatebreakerArmorDamage(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler

@@ -72,7 +72,7 @@ return {
             x = 160,
             y = 480,
             title = "Staggering Blow",
-            description = "Chop attacks with blunt weapons deal 50% more damage.",
+            description = "Chop attacks with blunt weapons deal 50% more damage, but those chop attacks are 20% slower.",
         },
         {
             id = "bluntweapon_placeholder_iron_bell",

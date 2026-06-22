@@ -3914,7 +3914,7 @@ local HEAVY_HITTER_PERK_ID = "bluntweapon_heavy_hitter"
 local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
-local LOG_TAG = "[SkillPerkSystem_BasePack][StaggeringBlow][Player]"
+local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.8
 
 local refreshTimer = STATE_REFRESH_INTERVAL
 local lastStateKey = nil
@@ -4038,87 +4038,40 @@ local function getEquippedBluntWeaponRecord()
     return record
 end
 
-local function isAttackWindupAnimation(groupName, options)
+local function isChopAttackWindupAnimation(options)
     if type(options) ~= "table" then
         return false
     end
 
+    local startKeyRaw = options.startkey or options.startKey
     local stopKeyRaw = options.stopkey or options.stopKey
+    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
     local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-    if string.sub(stopKey, -11) == " max attack" then
+
+    if startKey == "chop start" or stopKey == "chop max attack" then
         return true
     end
 
-    if type(groupName) ~= "string" then
-        return false
-    end
-
-    local g = string.lower(groupName)
-    return string.find(g, "attack", 1, true) ~= nil
+    return false
 end
 
-local function optionValueForLog(value)
-    if type(value) == "number" or type(value) == "boolean" or type(value) == "string" then
-        return tostring(value)
-    end
-    return "<" .. type(value) .. ">"
-end
-
-local function optionsForLog(options)
-    if type(options) ~= "table" then
-        return "<" .. type(options) .. ">"
-    end
-
-    local keys = {
-        "startkey",
-        "startKey",
-        "stopkey",
-        "stopKey",
-        "speed",
-        "priority",
-        "loop",
-        "forceLoop",
-        "autoDisable",
-    }
-    local parts = {}
-    for _, key in ipairs(keys) do
-        if options[key] ~= nil then
-            parts[#parts + 1] = tostring(key) .. "=" .. optionValueForLog(options[key])
-        end
-    end
-
-    return table.concat(parts, ", ")
-end
-
-local function logStaggeringBlowAttackAnimation(groupName, options)
+local function slowStaggeringBlowChopAttack(_, options)
     if not hasEnabledPerk(STAGGERING_BLOW_PERK_ID) then
         return
     end
     if getEquippedBluntWeaponRecord() == nil then
         return
     end
-    if not isAttackWindupAnimation(groupName, options) then
+    if not isChopAttackWindupAnimation(options) then
         return
     end
 
-    local stopKey = type(options) == "table" and (options.stopkey or options.stopKey) or nil
-    local startKey = type(options) == "table" and (options.startkey or options.startKey) or nil
-    local logKey = tostring(groupName) .. "|" .. tostring(startKey) .. "|" .. tostring(stopKey)
-    if logKey == lastAnimationLogKey then
-        return
-    end
-    lastAnimationLogKey = logKey
-
-    print(string.format(
-        "%s attack animation candidate: groupName=%s; options={%s}",
-        LOG_TAG,
-        tostring(groupName),
-        optionsForLog(options)
-    ))
+    local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
+    options.speed = currentSpeed * STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER
 end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
-    interfaces.AnimationController.addPlayBlendedAnimationHandler(logStaggeringBlowAttackAnimation)
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(slowStaggeringBlowChopAttack)
 end
 
 local function publishState(force)

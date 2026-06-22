@@ -3911,8 +3911,10 @@ local STRENGTH_IN_ARMS_PERK_ID = "bluntweapon_strength_in_arms"
 local PLATEBREAKER_PERK_ID = "bluntweapon_platebreaker"
 local BREATHSTEALER_PERK_ID = "bluntweapon_breathstealer"
 local HEAVY_HITTER_PERK_ID = "bluntweapon_heavy_hitter"
+local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
+local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.8
 
 local refreshTimer = STATE_REFRESH_INTERVAL
 local lastStateKey = nil
@@ -3950,12 +3952,134 @@ local function getStrengthDamageBonus()
     return math.max(0, math.floor(strength / 10))
 end
 
+local function getEquippedItem(actor, slot)
+    local Actor = types.Actor
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getWeaponRecord(item)
+    local Weapon = types.Weapon
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function weaponTypeEquals(record, typeName)
+    local Weapon = types.Weapon
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local expected = tonumber(Weapon.TYPE[typeName])
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function isBluntWeaponRecord(record)
+    return weaponTypeEquals(record, "BluntOneHand")
+        or weaponTypeEquals(record, "BluntTwoClose")
+        or weaponTypeEquals(record, "BluntTwoWide")
+end
+
+local function getEquippedBluntWeaponRecord()
+    local Actor = types.Actor
+    local Weapon = types.Weapon
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil
+    end
+
+    local weapon = getEquippedItem(pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return nil
+    end
+
+    local record = getWeaponRecord(weapon)
+    if not isBluntWeaponRecord(record) then
+        return nil
+    end
+
+    return record
+end
+
+local function isChopAttackWindupAnimation(options)
+    if type(options) ~= "table" then
+        return false
+    end
+
+    local startKeyRaw = options.startkey or options.startKey
+    local stopKeyRaw = options.stopkey or options.stopKey
+    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
+    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
+
+    if startKey == "chop start" or stopKey == "chop max attack" then
+        return true
+    end
+
+    return false
+end
+
+local function slowStaggeringBlowChopAttack(_, options)
+    if not hasEnabledPerk(STAGGERING_BLOW_PERK_ID) then
+        return
+    end
+    if getEquippedBluntWeaponRecord() == nil then
+        return
+    end
+    if not isChopAttackWindupAnimation(options) then
+        return
+    end
+
+    local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
+    options.speed = currentSpeed * STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER
+end
+
+if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(slowStaggeringBlowChopAttack)
+end
+
 local function publishState(force)
     local strengthInArmsEnabled = hasEnabledPerk(STRENGTH_IN_ARMS_PERK_ID)
     local damageBonus = strengthInArmsEnabled and getStrengthDamageBonus() or 0
     local platebreakerEnabled = hasEnabledPerk(PLATEBREAKER_PERK_ID)
     local breathstealerEnabled = hasEnabledPerk(BREATHSTEALER_PERK_ID)
     local heavyHitterEnabled = hasEnabledPerk(HEAVY_HITTER_PERK_ID)
+    local staggeringBlowEnabled = hasEnabledPerk(STAGGERING_BLOW_PERK_ID)
     local stateKey = tostring(strengthInArmsEnabled)
         .. ":"
         .. tostring(damageBonus)
@@ -3965,6 +4089,8 @@ local function publishState(force)
         .. tostring(breathstealerEnabled)
         .. ":"
         .. tostring(heavyHitterEnabled)
+        .. ":"
+        .. tostring(staggeringBlowEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -3978,6 +4104,7 @@ local function publishState(force)
         platebreakerEnabled = platebreakerEnabled,
         breathstealerEnabled = breathstealerEnabled,
         heavyHitterEnabled = heavyHitterEnabled,
+        staggeringBlowEnabled = staggeringBlowEnabled,
     })
 end
 

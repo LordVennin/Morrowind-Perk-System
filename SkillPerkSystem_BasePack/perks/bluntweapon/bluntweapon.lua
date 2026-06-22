@@ -71,8 +71,8 @@ return {
             cost = 1,
             x = 160,
             y = 480,
-            title = "Placeholder Staggering Blow",
-            description = "Placeholder: Heavy blunt weapon strikes will set up a unique stagger or control effect.",
+            title = "Staggering Blow",
+            description = "Chop attacks with blunt weapons deal 50% more damage, but those chop attacks are 20% slower.",
         },
         {
             id = "bluntweapon_placeholder_iron_bell",

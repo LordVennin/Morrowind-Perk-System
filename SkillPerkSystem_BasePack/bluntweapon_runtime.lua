@@ -6,6 +6,7 @@ local types = require("openmw.types")
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local STRENGTH_IN_ARMS_PERK_ID = "bluntweapon_strength_in_arms"
 local PLATEBREAKER_PERK_ID = "bluntweapon_platebreaker"
+local BREATHSTEALER_PERK_ID = "bluntweapon_breathstealer"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
 
@@ -49,7 +50,14 @@ local function publishState(force)
     local strengthInArmsEnabled = hasEnabledPerk(STRENGTH_IN_ARMS_PERK_ID)
     local damageBonus = strengthInArmsEnabled and getStrengthDamageBonus() or 0
     local platebreakerEnabled = hasEnabledPerk(PLATEBREAKER_PERK_ID)
-    local stateKey = tostring(strengthInArmsEnabled) .. ":" .. tostring(damageBonus) .. ":" .. tostring(platebreakerEnabled)
+    local breathstealerEnabled = hasEnabledPerk(BREATHSTEALER_PERK_ID)
+    local stateKey = tostring(strengthInArmsEnabled)
+        .. ":"
+        .. tostring(damageBonus)
+        .. ":"
+        .. tostring(platebreakerEnabled)
+        .. ":"
+        .. tostring(breathstealerEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -61,6 +69,7 @@ local function publishState(force)
         enabled = strengthInArmsEnabled,
         damageBonus = damageBonus,
         platebreakerEnabled = platebreakerEnabled,
+        breathstealerEnabled = breathstealerEnabled,
     })
 end
 

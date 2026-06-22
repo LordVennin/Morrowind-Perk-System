@@ -13,6 +13,7 @@ local strengthInArmsState = {
     enabled = false,
     damageBonus = 0,
     platebreakerEnabled = false,
+    breathstealerEnabled = false,
     playerId = nil,
 }
 
@@ -134,6 +135,7 @@ local function onStrengthInArmsState(data)
         enabled = data.strengthInArmsEnabled == true or data.enabled == true,
         damageBonus = math.max(0, math.floor(tonumber(data.damageBonus) or 0)),
         platebreakerEnabled = data.platebreakerEnabled == true,
+        breathstealerEnabled = data.breathstealerEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

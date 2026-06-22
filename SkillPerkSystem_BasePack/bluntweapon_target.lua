@@ -4,6 +4,7 @@ local pself = require("openmw.self")
 local types = require("openmw.types")
 
 local Actor = types.Actor
+local Armor = types.Armor
 local Weapon = types.Weapon
 
 local strengthInArmsEnabled = false

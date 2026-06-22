@@ -7,8 +7,10 @@ local WATCHER_REFRESH_INTERVAL = 1.0
 
 local refreshTimer = 0
 local strengthInArmsState = {
+    strengthInArmsEnabled = false,
     enabled = false,
     damageBonus = 0,
+    platebreakerEnabled = false,
     playerId = nil,
 }
 
@@ -54,8 +56,10 @@ local function onStrengthInArmsState(data)
     end
 
     strengthInArmsState = {
-        enabled = data.enabled == true,
+        strengthInArmsEnabled = data.strengthInArmsEnabled == true or data.enabled == true,
+        enabled = data.strengthInArmsEnabled == true or data.enabled == true,
         damageBonus = math.max(0, math.floor(tonumber(data.damageBonus) or 0)),
+        platebreakerEnabled = data.platebreakerEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

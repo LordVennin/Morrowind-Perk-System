@@ -540,9 +540,11 @@ local strengthInArmsPlayerId = nil
 local platebreakerEnabled = false
 local breathstealerEnabled = false
 local heavyHitterEnabled = false
+local staggeringBlowEnabled = false
 
 local BREATHSTEALER_FATIGUE_DAMAGE = 20
 local HEAVY_HITTER_SHIELD_CONDITION_DAMAGE = 300
+local STAGGERING_BLOW_CHOP_DAMAGE_MULTIPLIER = 1.5
 
 local function setStrengthInArmsState(data)
     if type(data) ~= "table" then
@@ -555,6 +557,7 @@ local function setStrengthInArmsState(data)
     platebreakerEnabled = data.platebreakerEnabled == true
     breathstealerEnabled = data.breathstealerEnabled == true
     heavyHitterEnabled = data.heavyHitterEnabled == true
+    staggeringBlowEnabled = data.staggeringBlowEnabled == true
 end
 
 local function getWeaponRecord(item)
@@ -820,9 +823,38 @@ local function isSuccessfulStrengthInArmsHit(attack)
     return actorHasEquippedBluntWeapon(attack.attacker)
 end
 
+local function isSuccessfulStaggeringBlowHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not staggeringBlowEnabled then
+        return false
+    end
+    if type(strengthInArmsPlayerId) ~= "string" or strengthInArmsPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= strengthInArmsPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not isAttackType(attack, "Chop") then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return actorHasEquippedBluntWeapon(attack.attacker)
+end
+
 local function onHit(attack)
     if isSuccessfulStrengthInArmsHit(attack) then
         attack.damage.health = (tonumber(attack.damage.health) or 0) + strengthInArmsDamageBonus
+    end
+    if isSuccessfulStaggeringBlowHit(attack) then
+        attack.damage.health = (tonumber(attack.damage.health) or 0) * STAGGERING_BLOW_CHOP_DAMAGE_MULTIPLIER
     end
     requestPlatebreakerArmorDamage(attack)
     applyBreathstealerFatigueDamage(attack)
@@ -851,6 +883,7 @@ local script = {
                 platebreakerEnabled = platebreakerEnabled,
                 breathstealerEnabled = breathstealerEnabled,
                 heavyHitterEnabled = heavyHitterEnabled,
+                staggeringBlowEnabled = staggeringBlowEnabled,
                 playerId = strengthInArmsPlayerId,
             }
         end,

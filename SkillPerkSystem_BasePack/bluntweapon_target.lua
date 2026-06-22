@@ -11,6 +11,9 @@ local strengthInArmsEnabled = false
 local strengthInArmsDamageBonus = 0
 local strengthInArmsPlayerId = nil
 local platebreakerEnabled = false
+local breathstealerEnabled = false
+
+local BREATHSTEALER_FATIGUE_DAMAGE = 20
 
 local function setStrengthInArmsState(data)
     if type(data) ~= "table" then
@@ -21,6 +24,7 @@ local function setStrengthInArmsState(data)
     strengthInArmsDamageBonus = math.max(0, math.floor(tonumber(data.damageBonus) or 0))
     strengthInArmsPlayerId = type(data.playerId) == "string" and data.playerId or nil
     platebreakerEnabled = data.platebreakerEnabled == true
+    breathstealerEnabled = data.breathstealerEnabled == true
 end
 
 local function getWeaponRecord(item)
@@ -99,6 +103,23 @@ local function actorHasEquippedBluntWeapon(actor)
 end
 
 
+local function applyFatigueDamage(amount)
+    local fatigueAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return false
+    end
+
+    local fatigue = fatigueAccessor(pself)
+    if fatigue == nil or type(fatigue.current) ~= "number" then
+        return false
+    end
+
+    fatigue.current = math.max(0, fatigue.current - math.max(0, tonumber(amount) or 0))
+    return true
+end
 
 local function isAttackType(attack, typeName)
     local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
@@ -156,6 +177,38 @@ local function requestPlatebreakerArmorDamage(attack)
     })
 end
 
+local function isSuccessfulBreathstealerHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not breathstealerEnabled then
+        return false
+    end
+    if type(strengthInArmsPlayerId) ~= "string" or strengthInArmsPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= strengthInArmsPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not isAttackType(attack, "Thrust") then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return actorHasEquippedBluntWeapon(attack.attacker)
+end
+
+local function applyBreathstealerFatigueDamage(attack)
+    if isSuccessfulBreathstealerHit(attack) then
+        applyFatigueDamage(BREATHSTEALER_FATIGUE_DAMAGE)
+    end
+end
+
 local function isSuccessfulStrengthInArmsHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
@@ -184,6 +237,7 @@ local function onHit(attack)
         attack.damage.health = (tonumber(attack.damage.health) or 0) + strengthInArmsDamageBonus
     end
     requestPlatebreakerArmorDamage(attack)
+    applyBreathstealerFatigueDamage(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -211,6 +265,7 @@ return {
                 enabled = strengthInArmsEnabled,
                 damageBonus = strengthInArmsDamageBonus,
                 platebreakerEnabled = platebreakerEnabled,
+                breathstealerEnabled = breathstealerEnabled,
                 playerId = strengthInArmsPlayerId,
             }
         end,

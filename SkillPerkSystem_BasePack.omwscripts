@@ -13,6 +13,9 @@ PLAYER:scripts/SkillPerkSystem_BasePack/longblade_runtime.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/axe_runtime.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/axe_global.lua
 CUSTOM:scripts/SkillPerkSystem_BasePack/axe_target.lua
+PLAYER:scripts/SkillPerkSystem_BasePack/bluntweapon_runtime.lua
+GLOBAL:scripts/SkillPerkSystem_BasePack/bluntweapon_global.lua
+CUSTOM:scripts/SkillPerkSystem_BasePack/bluntweapon_target.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/duelists_tempo_global.lua
 CUSTOM:scripts/SkillPerkSystem_BasePack/duelists_tempo_target.lua
 GLOBAL:scripts/SkillPerkSystem_BasePack/block_reactive_global.lua

@@ -2,7 +2,7 @@ return {
     schema = "skillperks.vNext",
     perks = {
         {
-            id = "bluntweapon_placeholder_grip",
+            id = "bluntweapon_strength_in_arms",
             tab = "Blunt Weapon",
             tabDescription = "Blunt Weapon skill helps one use maces, clubs, hammers, and staves effectively.",
             effectId = "demo_noop",
@@ -11,15 +11,15 @@ return {
             cost = 1,
             x = 0,
             y = 0,
-            title = "Placeholder Grip",
-            description = "Placeholder: Blunt weapon hits will focus on steady impact and improved control.",
+            title = "Strength in Arms",
+            description = "Blunt weapon hits deal +1 Health damage per 10 points of your current Strength.",
         },
         {
             id = "bluntweapon_placeholder_platebreaker",
             tab = "Blunt Weapon",
             effectId = "demo_noop",
             minimumSkill = 30,
-            requires = { "bluntweapon_placeholder_grip" },
+            requires = { "bluntweapon_strength_in_arms" },
             cost = 1,
             x = 0,
             y = 120,

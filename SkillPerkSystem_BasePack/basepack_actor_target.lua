@@ -541,9 +541,11 @@ local platebreakerEnabled = false
 local breathstealerEnabled = false
 local heavyHitterEnabled = false
 local staggeringBlowEnabled = false
+local ironBellEnabled = false
 
 local BREATHSTEALER_FATIGUE_DAMAGE = 20
 local HEAVY_HITTER_SHIELD_CONDITION_DAMAGE = 300
+local IRON_BELL_CONDITION_DAMAGE = 200
 local STAGGERING_BLOW_CHOP_DAMAGE_MULTIPLIER = 1.5
 
 local function setStrengthInArmsState(data)
@@ -558,6 +560,7 @@ local function setStrengthInArmsState(data)
     breathstealerEnabled = data.breathstealerEnabled == true
     heavyHitterEnabled = data.heavyHitterEnabled == true
     staggeringBlowEnabled = data.staggeringBlowEnabled == true
+    ironBellEnabled = data.ironBellEnabled == true
 end
 
 local function getWeaponRecord(item)
@@ -599,10 +602,17 @@ local function weaponTypeEquals(record, typeName)
     return expected ~= nil and actual ~= nil and actual == expected
 end
 
-local function isBluntWeaponRecord(record)
+local function isOneHandedBluntWeaponRecord(record)
     return weaponTypeEquals(record, "BluntOneHand")
-        or weaponTypeEquals(record, "BluntTwoClose")
+end
+
+local function isTwoHandedBluntWeaponRecord(record)
+    return weaponTypeEquals(record, "BluntTwoClose")
         or weaponTypeEquals(record, "BluntTwoWide")
+end
+
+local function isBluntWeaponRecord(record)
+    return isOneHandedBluntWeaponRecord(record) or isTwoHandedBluntWeaponRecord(record)
 end
 
 local function getEquippedItem(actor, slot)
@@ -618,7 +628,7 @@ local function getEquippedItem(actor, slot)
     return item
 end
 
-local function actorHasEquippedBluntWeapon(actor)
+local function getEquippedBluntWeaponRecord(actor)
     if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
         return false
     end
@@ -632,11 +642,19 @@ local function actorHasEquippedBluntWeapon(actor)
         return false
     end
 
-    return isBluntWeaponRecord(getWeaponRecord(weapon))
+    local record = getWeaponRecord(weapon)
+    if not isBluntWeaponRecord(record) then
+        return nil
+    end
+
+    return record
 end
 
+local function actorHasEquippedBluntWeapon(actor)
+    return getEquippedBluntWeaponRecord(actor) ~= nil
+end
 
-local function applyFatigueDamage(amount)
+local function applyFatigueDamage(amount, allowNegative)
     local fatigueAccessor = Actor ~= nil
         and Actor.stats ~= nil
         and Actor.stats.dynamic ~= nil
@@ -650,7 +668,15 @@ local function applyFatigueDamage(amount)
         return false
     end
 
-    fatigue.current = math.max(0, fatigue.current - math.max(0, tonumber(amount) or 0))
+    if allowNegative and fatigue.current <= 0 then
+        return false
+    end
+
+    local newFatigue = fatigue.current - math.max(0, tonumber(amount) or 0)
+    if not allowNegative then
+        newFatigue = math.max(0, newFatigue)
+    end
+    fatigue.current = newFatigue
     return true
 end
 
@@ -706,7 +732,10 @@ local function requestPlatebreakerArmorDamage(attack)
 
     core.sendGlobalEvent("SkillPerkSystem_ApplyPlatebreakerArmorDamage", {
         target = pself,
-        conditionDamage = calculatePlatebreakerConditionDamage(attack),
+        conditionDamage = ironBellEnabled
+            and isTwoHandedBluntWeaponRecord(getEquippedBluntWeaponRecord(attack.attacker))
+            and IRON_BELL_CONDITION_DAMAGE
+            or calculatePlatebreakerConditionDamage(attack),
     })
 end
 
@@ -764,7 +793,13 @@ local function requestHeavyHitterShieldDamage(attack)
 
     core.sendGlobalEvent("SkillPerkSystem_ApplyHeavyHitterShieldDamage", {
         target = pself,
-        conditionDamage = HEAVY_HITTER_SHIELD_CONDITION_DAMAGE,
+        conditionDamage = HEAVY_HITTER_SHIELD_CONDITION_DAMAGE
+            + (
+                ironBellEnabled
+                    and isOneHandedBluntWeaponRecord(getEquippedBluntWeaponRecord(attack.attacker))
+                    and IRON_BELL_CONDITION_DAMAGE
+                or 0
+            ),
     })
 end
 
@@ -796,7 +831,7 @@ end
 
 local function applyBreathstealerFatigueDamage(attack)
     if isSuccessfulBreathstealerHit(attack) then
-        applyFatigueDamage(BREATHSTEALER_FATIGUE_DAMAGE)
+        applyFatigueDamage(BREATHSTEALER_FATIGUE_DAMAGE, ironBellEnabled)
     end
 end
 
@@ -884,6 +919,7 @@ local script = {
                 breathstealerEnabled = breathstealerEnabled,
                 heavyHitterEnabled = heavyHitterEnabled,
                 staggeringBlowEnabled = staggeringBlowEnabled,
+                ironBellEnabled = ironBellEnabled,
                 playerId = strengthInArmsPlayerId,
             }
         end,

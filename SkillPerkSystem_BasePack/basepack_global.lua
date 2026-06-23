@@ -2309,6 +2309,8 @@ local strengthInArmsState = {
     platebreakerEnabled = false,
     breathstealerEnabled = false,
     heavyHitterEnabled = false,
+    staggeringBlowEnabled = false,
+    ironBellEnabled = false,
     playerId = nil,
 }
 
@@ -2431,7 +2433,7 @@ local function applyPlatebreakerArmorDamage(data)
     if conditionDamage == nil or conditionDamage <= 0 then
         return
     end
-    conditionDamage = math.max(10, math.min(25, math.floor(conditionDamage)))
+    conditionDamage = math.floor(conditionDamage)
 
     local armorItems = getEquippedArmorItems(target)
     if #armorItems == 0 then
@@ -2490,6 +2492,8 @@ local function onStrengthInArmsState(data)
         platebreakerEnabled = data.platebreakerEnabled == true,
         breathstealerEnabled = data.breathstealerEnabled == true,
         heavyHitterEnabled = data.heavyHitterEnabled == true,
+        staggeringBlowEnabled = data.staggeringBlowEnabled == true,
+        ironBellEnabled = data.ironBellEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

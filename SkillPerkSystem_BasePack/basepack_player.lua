@@ -3913,6 +3913,7 @@ local BREATHSTEALER_PERK_ID = "bluntweapon_breathstealer"
 local HEAVY_HITTER_PERK_ID = "bluntweapon_heavy_hitter"
 local GUARDED_STAMINA_PERK_ID = "bluntweapon_placeholder_guarded_stance"
 local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
+local IRON_BELL_PERK_ID = "bluntweapon_iron_bell"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
 local GUARDED_STAMINA_REFUND_MULTIPLIER = 0.25
@@ -4223,6 +4224,7 @@ local function publishState(force)
     local heavyHitterEnabled = hasEnabledPerk(HEAVY_HITTER_PERK_ID)
     local guardedStaminaEnabled = hasEnabledPerk(GUARDED_STAMINA_PERK_ID)
     local staggeringBlowEnabled = hasEnabledPerk(STAGGERING_BLOW_PERK_ID)
+    local ironBellEnabled = hasEnabledPerk(IRON_BELL_PERK_ID)
     local stateKey = tostring(strengthInArmsEnabled)
         .. ":"
         .. tostring(damageBonus)
@@ -4236,6 +4238,8 @@ local function publishState(force)
         .. tostring(guardedStaminaEnabled)
         .. ":"
         .. tostring(staggeringBlowEnabled)
+        .. ":"
+        .. tostring(ironBellEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -4251,6 +4255,7 @@ local function publishState(force)
         heavyHitterEnabled = heavyHitterEnabled,
         guardedStaminaEnabled = guardedStaminaEnabled,
         staggeringBlowEnabled = staggeringBlowEnabled,
+        ironBellEnabled = ironBellEnabled,
     })
 end
 

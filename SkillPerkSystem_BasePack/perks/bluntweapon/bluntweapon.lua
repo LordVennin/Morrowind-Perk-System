@@ -36,7 +36,7 @@ return {
             x = 0,
             y = 240,
             title = "Breathstealer",
-            description = "Thrust attacks with blunt weapons deal 20 Fatigue damage.",
+            description = "Thrust attacks with blunt weapons deal 20 Fatigue damage, but cannot reduce targets below 0 Fatigue.",
         },
         {
             id = "bluntweapon_heavy_hitter",
@@ -75,7 +75,7 @@ return {
             description = "Chop attacks with blunt weapons deal 50% more damage, but those chop attacks are 30% slower.",
         },
         {
-            id = "bluntweapon_placeholder_iron_bell",
+            id = "bluntweapon_iron_bell",
             tab = "Blunt Weapon",
             effectId = "demo_noop",
             minimumSkill = 65,
@@ -84,8 +84,8 @@ return {
             cost = 1,
             x = 0,
             y = 600,
-            title = "Placeholder Iron Bell",
-            description = "Placeholder: Masterful blunt weapon impacts will combine armor damage, Fatigue damage, and defensive force.",
+            title = "Iron Bell",
+            description = "Two-handed blunt slash attacks deal 200 condition damage to one piece of target armor. One-handed blunt chop attacks deal 200 extra condition damage to shields that block them. Breathstealer thrust attacks can reduce defenders below 0 Fatigue, but cannot lower already-negative Fatigue further.",
         },
     },
 }

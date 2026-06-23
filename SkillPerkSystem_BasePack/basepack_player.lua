@@ -3911,14 +3911,18 @@ local STRENGTH_IN_ARMS_PERK_ID = "bluntweapon_strength_in_arms"
 local PLATEBREAKER_PERK_ID = "bluntweapon_platebreaker"
 local BREATHSTEALER_PERK_ID = "bluntweapon_breathstealer"
 local HEAVY_HITTER_PERK_ID = "bluntweapon_heavy_hitter"
+local GUARDED_STAMINA_PERK_ID = "bluntweapon_placeholder_guarded_stance"
 local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
+local GUARDED_STAMINA_REFUND_MULTIPLIER = 0.25
+local GUARDED_STAMINA_ATTACK_WINDOW = 5.0
 local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.70
 
 local refreshTimer = STATE_REFRESH_INTERVAL
 local lastStateKey = nil
 local lastAnimationLogKey = nil
+local guardedStaminaAttackState = nil
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4038,6 +4042,46 @@ local function getEquippedBluntWeaponRecord()
     return record
 end
 
+local function getCurrentFatigue()
+    local fatigueAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return nil
+    end
+
+    local fatigue = fatigueAccessor(pself)
+    if fatigue == nil then
+        return nil
+    end
+
+    return tonumber(fatigue.current), fatigue
+end
+
+local function getMaxFatigue(fatigue)
+    if fatigue == nil then
+        return nil
+    end
+
+    local base = tonumber(fatigue.base) or 0
+    local modifier = tonumber(fatigue.modifier) or 0
+    return math.max(0, base + modifier)
+end
+
+local function isAttackReleaseTextKey(key)
+    if type(key) ~= "string" then
+        return false
+    end
+
+    local normalized = string.lower(key)
+    return normalized == "chop max attack"
+        or normalized == "slash max attack"
+        or normalized == "thrust max attack"
+        or normalized:find(" max attack$") ~= nil
+        or (normalized:find("hit$") ~= nil and normalized:find("min hit$") == nil)
+end
+
 local function isChopAttackWindupAnimation(options)
     if type(options) ~= "table" then
         return false
@@ -4053,6 +4097,50 @@ local function isChopAttackWindupAnimation(options)
     end
 
     return false
+end
+
+local function isBluntAttackAnimation(options)
+    if type(options) ~= "table" then
+        return false
+    end
+
+    local startKeyRaw = options.startkey or options.startKey
+    local stopKeyRaw = options.stopkey or options.stopKey
+    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
+    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
+
+    return startKey == "chop start"
+        or startKey == "slash start"
+        or startKey == "thrust start"
+        or stopKey == "chop max attack"
+        or stopKey == "slash max attack"
+        or stopKey == "thrust max attack"
+end
+
+local function armGuardedStaminaRefund(_, options)
+    if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) then
+        guardedStaminaAttackState = nil
+        return
+    end
+    if getEquippedBluntWeaponRecord() == nil then
+        guardedStaminaAttackState = nil
+        return
+    end
+    if not isBluntAttackAnimation(options) then
+        return
+    end
+
+    local current = getCurrentFatigue()
+    if current == nil then
+        guardedStaminaAttackState = nil
+        return
+    end
+
+    guardedStaminaAttackState = {
+        elapsed = 0,
+        lastFatigue = current,
+        releaseSeen = isAttackReleaseTextKey(options.stopkey or options.stopKey),
+    }
 end
 
 local function slowStaggeringBlowChopAttack(_, options)
@@ -4071,7 +4159,60 @@ local function slowStaggeringBlowChopAttack(_, options)
 end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(armGuardedStaminaRefund)
     interfaces.AnimationController.addPlayBlendedAnimationHandler(slowStaggeringBlowChopAttack)
+end
+
+if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addTextKeyHandler) == "function" then
+    interfaces.AnimationController.addTextKeyHandler("", function(_, key)
+        if guardedStaminaAttackState == nil then
+            return
+        end
+        if not isAttackReleaseTextKey(key) then
+            return
+        end
+        if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or getEquippedBluntWeaponRecord() == nil then
+            guardedStaminaAttackState = nil
+            return
+        end
+
+        guardedStaminaAttackState.releaseSeen = true
+    end)
+end
+
+local function processGuardedStaminaRefund(dt)
+    if guardedStaminaAttackState == nil then
+        return
+    end
+
+    guardedStaminaAttackState.elapsed = (tonumber(guardedStaminaAttackState.elapsed) or 0) + (tonumber(dt) or 0)
+
+    local current, fatigue = getCurrentFatigue()
+    if current == nil then
+        guardedStaminaAttackState = nil
+        return
+    end
+
+    if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or getEquippedBluntWeaponRecord() == nil then
+        guardedStaminaAttackState = nil
+        return
+    end
+
+    local before = tonumber(guardedStaminaAttackState.lastFatigue) or current
+    local spent = before - current
+    if spent > 0 then
+        local refund = spent * GUARDED_STAMINA_REFUND_MULTIPLIER
+        local maxFatigue = getMaxFatigue(fatigue) or before
+        fatigue.current = math.min(maxFatigue, before, current + refund)
+        guardedStaminaAttackState = nil
+        return
+    end
+
+    guardedStaminaAttackState.lastFatigue = math.max(before, current)
+
+    if guardedStaminaAttackState.elapsed >= GUARDED_STAMINA_ATTACK_WINDOW then
+        guardedStaminaAttackState = nil
+    end
 end
 
 local function publishState(force)
@@ -4080,6 +4221,7 @@ local function publishState(force)
     local platebreakerEnabled = hasEnabledPerk(PLATEBREAKER_PERK_ID)
     local breathstealerEnabled = hasEnabledPerk(BREATHSTEALER_PERK_ID)
     local heavyHitterEnabled = hasEnabledPerk(HEAVY_HITTER_PERK_ID)
+    local guardedStaminaEnabled = hasEnabledPerk(GUARDED_STAMINA_PERK_ID)
     local staggeringBlowEnabled = hasEnabledPerk(STAGGERING_BLOW_PERK_ID)
     local stateKey = tostring(strengthInArmsEnabled)
         .. ":"
@@ -4090,6 +4232,8 @@ local function publishState(force)
         .. tostring(breathstealerEnabled)
         .. ":"
         .. tostring(heavyHitterEnabled)
+        .. ":"
+        .. tostring(guardedStaminaEnabled)
         .. ":"
         .. tostring(staggeringBlowEnabled)
     if not force and stateKey == lastStateKey then
@@ -4105,6 +4249,7 @@ local function publishState(force)
         platebreakerEnabled = platebreakerEnabled,
         breathstealerEnabled = breathstealerEnabled,
         heavyHitterEnabled = heavyHitterEnabled,
+        guardedStaminaEnabled = guardedStaminaEnabled,
         staggeringBlowEnabled = staggeringBlowEnabled,
     })
 end
@@ -4112,6 +4257,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function(dt)
+            processGuardedStaminaRefund(dt)
             refreshTimer = refreshTimer + (tonumber(dt) or 0)
             if refreshTimer >= STATE_REFRESH_INTERVAL then
                 refreshTimer = 0

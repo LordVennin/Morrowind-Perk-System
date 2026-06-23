@@ -3914,7 +3914,7 @@ local HEAVY_HITTER_PERK_ID = "bluntweapon_heavy_hitter"
 local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
-local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.8
+local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.70
 
 local refreshTimer = STATE_REFRESH_INTERVAL
 local lastStateKey = nil

@@ -59,8 +59,8 @@ return {
             cost = 1,
             x = -160,
             y = 480,
-            title = "Placeholder Guarded Stance",
-            description = "Placeholder: Wielding a blunt weapon will grant extra armor.",
+            title = "Guarded Stamina",
+            description = "Blunt weapon attacks refund 25% of the Fatigue spent to make the attack.",
         },
         {
             id = "bluntweapon_placeholder_staggering_blow",

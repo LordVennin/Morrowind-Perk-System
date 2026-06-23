@@ -3916,14 +3916,13 @@ local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local STATE_REFRESH_INTERVAL = 1.0
 local GUARDED_STAMINA_REFUND_MULTIPLIER = 0.25
-local GUARDED_STAMINA_REFUND_WINDOW = 0.25
+local GUARDED_STAMINA_ATTACK_WINDOW = 5.0
 local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.70
 
 local refreshTimer = STATE_REFRESH_INTERVAL
 local lastStateKey = nil
 local lastAnimationLogKey = nil
-local guardedStaminaAttackArmed = false
-local guardedStaminaPendingRefund = nil
+local guardedStaminaAttackState = nil
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4080,6 +4079,7 @@ local function isAttackReleaseTextKey(key)
         or normalized == "slash max attack"
         or normalized == "thrust max attack"
         or normalized:find(" max attack$") ~= nil
+        or (normalized:find("hit$") ~= nil and normalized:find("min hit$") == nil)
 end
 
 local function isChopAttackWindupAnimation(options)
@@ -4117,38 +4117,30 @@ local function isBluntAttackAnimation(options)
         or stopKey == "thrust max attack"
 end
 
-local function queueGuardedStaminaRefund()
-    local before = getCurrentFatigue()
-    if before == nil then
-        guardedStaminaAttackArmed = false
-        guardedStaminaPendingRefund = nil
-        return
-    end
-
-    guardedStaminaAttackArmed = false
-    guardedStaminaPendingRefund = {
-        before = before,
-        elapsed = 0,
-    }
-end
-
 local function armGuardedStaminaRefund(_, options)
     if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) then
-        guardedStaminaAttackArmed = false
+        guardedStaminaAttackState = nil
         return
     end
     if getEquippedBluntWeaponRecord() == nil then
-        guardedStaminaAttackArmed = false
+        guardedStaminaAttackState = nil
         return
     end
     if not isBluntAttackAnimation(options) then
         return
     end
 
-    guardedStaminaAttackArmed = true
-    if isAttackReleaseTextKey(options.stopkey or options.stopKey) then
-        queueGuardedStaminaRefund()
+    local current = getCurrentFatigue()
+    if current == nil then
+        guardedStaminaAttackState = nil
+        return
     end
+
+    guardedStaminaAttackState = {
+        elapsed = 0,
+        lastFatigue = current,
+        releaseSeen = isAttackReleaseTextKey(options.stopkey or options.stopKey),
+    }
 end
 
 local function slowStaggeringBlowChopAttack(_, options)
@@ -4173,47 +4165,53 @@ end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addTextKeyHandler) == "function" then
     interfaces.AnimationController.addTextKeyHandler("", function(_, key)
-        if not guardedStaminaAttackArmed then
+        if guardedStaminaAttackState == nil then
             return
         end
         if not isAttackReleaseTextKey(key) then
             return
         end
         if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or getEquippedBluntWeaponRecord() == nil then
-            guardedStaminaAttackArmed = false
-            guardedStaminaPendingRefund = nil
+            guardedStaminaAttackState = nil
             return
         end
 
-        queueGuardedStaminaRefund()
+        guardedStaminaAttackState.releaseSeen = true
     end)
 end
 
 local function processGuardedStaminaRefund(dt)
-    if guardedStaminaPendingRefund == nil then
+    if guardedStaminaAttackState == nil then
         return
     end
 
-    guardedStaminaPendingRefund.elapsed = (tonumber(guardedStaminaPendingRefund.elapsed) or 0) + (tonumber(dt) or 0)
+    guardedStaminaAttackState.elapsed = (tonumber(guardedStaminaAttackState.elapsed) or 0) + (tonumber(dt) or 0)
 
     local current, fatigue = getCurrentFatigue()
     if current == nil then
-        guardedStaminaPendingRefund = nil
+        guardedStaminaAttackState = nil
         return
     end
 
-    local before = tonumber(guardedStaminaPendingRefund.before) or current
+    if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or getEquippedBluntWeaponRecord() == nil then
+        guardedStaminaAttackState = nil
+        return
+    end
+
+    local before = tonumber(guardedStaminaAttackState.lastFatigue) or current
     local spent = before - current
     if spent > 0 then
         local refund = spent * GUARDED_STAMINA_REFUND_MULTIPLIER
         local maxFatigue = getMaxFatigue(fatigue) or before
         fatigue.current = math.min(maxFatigue, before, current + refund)
-        guardedStaminaPendingRefund = nil
+        guardedStaminaAttackState = nil
         return
     end
 
-    if guardedStaminaPendingRefund.elapsed >= GUARDED_STAMINA_REFUND_WINDOW then
-        guardedStaminaPendingRefund = nil
+    guardedStaminaAttackState.lastFatigue = math.max(before, current)
+
+    if guardedStaminaAttackState.elapsed >= GUARDED_STAMINA_ATTACK_WINDOW then
+        guardedStaminaAttackState = nil
     end
 end
 

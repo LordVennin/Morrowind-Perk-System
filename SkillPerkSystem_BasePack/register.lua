@@ -106,6 +106,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.armorer.armorer",
         data = require("scripts.SkillPerkSystem_BasePack.perks.armorer.armorer"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.marksman.marksman",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.marksman.marksman"),
+    },
 }
 
 local effectModules = {

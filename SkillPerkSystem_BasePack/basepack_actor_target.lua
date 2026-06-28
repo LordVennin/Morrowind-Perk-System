@@ -163,6 +163,21 @@ local function isBelowKindlingGripThreshold()
     return getHealthPercent() < KINDLING_GRIP_HEALTH_THRESHOLD
 end
 
+local function safeObjectField(object, fieldName)
+    if object == nil then
+        return nil
+    end
+
+    local ok, value = pcall(function()
+        return object[fieldName]
+    end)
+    if not ok then
+        return nil
+    end
+
+    return value
+end
+
 local function getWeaponRecord(item)
     if item == nil or Weapon == nil then
         return nil
@@ -173,20 +188,24 @@ local function getWeaponRecord(item)
         if okRecord and record ~= nil then
             return record
         end
-        if type(item.recordId) == "string" then
-            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+
+        local recordId = safeObjectField(item, "recordId")
+        if type(recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, recordId)
             if okRecordId and recordFromId ~= nil then
                 return recordFromId
             end
         end
     end
 
-    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
-        return Weapon.records[item.recordId]
+    local recordId = safeObjectField(item, "recordId")
+    if type(recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[recordId]
     end
 
-    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
-        return item.type.records[item.recordId]
+    local itemType = safeObjectField(item, "type")
+    if itemType ~= nil and type(itemType.records) == "table" and type(recordId) == "string" then
+        return itemType.records[recordId]
     end
 
     return nil
@@ -233,8 +252,11 @@ local function actorHasEquippedThrownWeapon(actor)
         return false
     end
 
-    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
-        return false
+    if type(Weapon.objectIsInstance) == "function" then
+        local okInstance, isInstance = pcall(Weapon.objectIsInstance, weapon)
+        if not okInstance or not isInstance then
+            return false
+        end
     end
 
     return isThrownWeaponRecord(getWeaponRecord(weapon))
@@ -250,8 +272,11 @@ local function actorHasEquippedAxe(actor)
         return false
     end
 
-    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
-        return false
+    if type(Weapon.objectIsInstance) == "function" then
+        local okInstance, isInstance = pcall(Weapon.objectIsInstance, weapon)
+        if not okInstance or not isInstance then
+            return false
+        end
     end
 
     return isAxeRecord(getWeaponRecord(weapon))

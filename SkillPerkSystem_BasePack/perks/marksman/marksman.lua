@@ -60,7 +60,7 @@ return {
             x = 180,
             y = 140,
             title = "Quick Cast",
-            description = "Placeholder thrown path: Fast hands are planned to make thrown weapons feel more responsive in close skirmishes.",
+            description = "Thrown weapon attack animations are 80% faster, letting you release knives, darts, and stars more quickly.",
         },
         {
             id = "marksman_trick_throw",

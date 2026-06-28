@@ -3901,6 +3901,150 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 end
 
 ----------------------------------------------------------------------
+-- marksman runtime logic (from marksman_runtime.lua)
+----------------------------------------------------------------------
+do
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Weapon = types.Weapon
+
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local QUICK_CAST_PERK_ID = "marksman_quick_cast"
+local QUICK_CAST_ATTACK_SPEED_MULTIPLIER = 1.80
+
+local function hasEnabledPerk(perkID)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
+        return false
+    end
+
+    if not playerApi.hasPerk(perkID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(perkID)
+    end
+
+    return true
+end
+
+local function getEquippedItem(actor, slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function weaponTypeEquals(record, typeName)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local expected = tonumber(Weapon.TYPE[typeName])
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function getEquippedThrownMarksmanRecord()
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil
+    end
+
+    local weapon = getEquippedItem(pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return nil
+    end
+
+    local record = getWeaponRecord(weapon)
+    if not weaponTypeEquals(record, "MarksmanThrown") then
+        return nil
+    end
+
+    return record
+end
+
+local function isThrownAttackWindupAnimation(groupName, options)
+    if type(options) ~= "table" then
+        return false
+    end
+
+    local stopKeyRaw = options.stopkey or options.stopKey
+    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
+    if string.sub(stopKey, -11) == " max attack" then
+        return true
+    end
+
+    if type(groupName) ~= "string" then
+        return false
+    end
+
+    local g = string.lower(groupName)
+    return string.find(g, "attack", 1, true) ~= nil
+end
+
+interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+    if not hasEnabledPerk(QUICK_CAST_PERK_ID) then
+        return
+    end
+
+    if getEquippedThrownMarksmanRecord() == nil then
+        return
+    end
+
+    if not isThrownAttackWindupAnimation(groupName, options) then
+        return
+    end
+
+    local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
+    options.speed = currentSpeed * QUICK_CAST_ATTACK_SPEED_MULTIPLIER
+end)
+
+end
+
+----------------------------------------------------------------------
 -- blunt weapon runtime logic (from bluntweapon_runtime.lua)
 ----------------------------------------------------------------------
 do

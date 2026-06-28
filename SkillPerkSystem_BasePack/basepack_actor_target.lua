@@ -33,6 +33,10 @@ local BLOODLETTER_BLOOD_INTERVAL = 2.0
 local IRON_CANOPY_MAGICKA_DAMAGE_MIN = 5
 local IRON_CANOPY_MAGICKA_DAMAGE_MAX = 20
 local IRON_CANOPY_EMPTY_MAGICKA_DAMAGE_BONUS = 0.20
+local THROWN_FUNDAMENTALS_DURATION = 3.0
+local THROWN_FUNDAMENTALS_DAMAGE_INTERVAL = 1.0
+local THROWN_FUNDAMENTALS_DAMAGE_PER_TICK = 1
+local THROWN_FUNDAMENTALS_BLOOD_INTERVAL = 1.0
 
 local kindlingGripEnabled = false
 local kindlingGripPlayerId = nil
@@ -42,6 +46,7 @@ local draggingWoundEnabled = false
 local hewerHeartEnabled = false
 local crimsonCleaveEnabled = false
 local ironCanopyEnabled = false
+local thrownFundamentalsEnabled = false
 
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
@@ -52,6 +57,7 @@ local hewerHeartRemainingTime = 0
 local hewerHeartDamageTimer = 0
 local hewerHeartBloodTimer = 0
 local hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
+local thrownFundamentalsBleedStacks = {}
 
 local updateBleedSpeedPenalty
 
@@ -68,6 +74,7 @@ local function setKindlingGripState(data)
     hewerHeartEnabled = data.hewerHeartEnabled == true
     crimsonCleaveEnabled = data.crimsonCleaveEnabled == true
     ironCanopyEnabled = data.ironCanopyEnabled == true
+    thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true
     updateBleedSpeedPenalty()
 end
 
@@ -199,6 +206,10 @@ local function isAxeRecord(record)
     return weaponTypeEquals(record, "AxeOneHand") or weaponTypeEquals(record, "AxeTwoHand")
 end
 
+local function isThrownWeaponRecord(record)
+    return weaponTypeEquals(record, "MarksmanThrown")
+end
+
 local function getEquippedItem(actor, slot)
     if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
         return nil
@@ -210,6 +221,23 @@ local function getEquippedItem(actor, slot)
     end
 
     return item
+end
+
+local function actorHasEquippedThrownWeapon(actor)
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    local weapon = getEquippedItem(actor, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return false
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return false
+    end
+
+    return isThrownWeaponRecord(getWeaponRecord(weapon))
 end
 
 local function actorHasEquippedAxe(actor)
@@ -393,6 +421,64 @@ local function refreshHewerHeartBleed(attack)
     spawnBloodSpray(attack.hitPos or selfObj.position)
 end
 
+
+local function getAttackWeaponRecord(attack)
+    if type(attack) == "table" and attack.weapon ~= nil then
+        return getWeaponRecord(attack.weapon)
+    end
+
+    return nil
+end
+
+local function isRangedAttack(attack)
+    local rangedType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Ranged
+    return rangedType == nil or (type(attack) == "table" and attack.sourceType == rangedType)
+end
+
+local function isSuccessfulThrownWeaponHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not thrownFundamentalsEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= kindlingGripPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isRangedAttack(attack) then
+        return false
+    end
+
+    local attackWeaponRecord = getAttackWeaponRecord(attack)
+    if attackWeaponRecord ~= nil then
+        if not isThrownWeaponRecord(attackWeaponRecord) then
+            return false
+        end
+    elseif not actorHasEquippedThrownWeapon(attack.attacker) then
+        return false
+    end
+
+    return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
+end
+
+local function addThrownFundamentalsBleed(attack)
+    thrownFundamentalsBleedStacks[#thrownFundamentalsBleedStacks + 1] = {
+        remainingTime = THROWN_FUNDAMENTALS_DURATION,
+        damageTimer = 0,
+        bloodTimer = 0,
+    }
+    spawnBloodSpray(attack.hitPos or selfObj.position)
+end
+
+local function clearThrownFundamentalsBleeds()
+    thrownFundamentalsBleedStacks = {}
+end
+
 local function onHit(attack)
     if isSuccessfulKindlingGripHit(attack) then
         attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
@@ -406,6 +492,10 @@ local function onHit(attack)
 
     if isSuccessfulAxeHit(attack, hewerHeartEnabled) and isBelowKindlingGripThreshold() then
         refreshHewerHeartBleed(attack)
+    end
+
+    if isSuccessfulThrownWeaponHit(attack) then
+        addThrownFundamentalsBleed(attack)
     end
 end
 
@@ -429,6 +519,7 @@ local script = {
                 hewerHeartDamageTimer = math.max(0, tonumber(savedData.hewerHeartDamageTimer) or 0)
                 hewerHeartBloodTimer = math.max(0, tonumber(savedData.hewerHeartBloodTimer) or 0)
                 hewerHeartDamagePerTick = math.max(0, tonumber(savedData.hewerHeartDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
+                thrownFundamentalsBleedStacks = type(savedData.thrownFundamentalsBleedStacks) == "table" and savedData.thrownFundamentalsBleedStacks or {}
             else
                 setKindlingGripState(initData)
             end
@@ -443,6 +534,7 @@ local script = {
                 hewerHeartEnabled = hewerHeartEnabled,
                 crimsonCleaveEnabled = crimsonCleaveEnabled,
                 ironCanopyEnabled = ironCanopyEnabled,
+                thrownFundamentalsEnabled = thrownFundamentalsEnabled,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,
@@ -452,16 +544,18 @@ local script = {
                 hewerHeartDamageTimer = hewerHeartDamageTimer,
                 hewerHeartBloodTimer = hewerHeartBloodTimer,
                 hewerHeartDamagePerTick = hewerHeartDamagePerTick,
+                thrownFundamentalsBleedStacks = thrownFundamentalsBleedStacks,
             }
         end,
         onUpdate = function(dt)
-            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 then
+            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 and #thrownFundamentalsBleedStacks == 0 then
                 updateBleedSpeedPenalty()
                 return
             end
             if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
                 clearBloodletterBleed()
                 clearHewerHeartBleed()
+                clearThrownFundamentalsBleeds()
                 return
             end
 
@@ -478,6 +572,7 @@ local script = {
                     if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
                         clearBloodletterBleed()
                         clearHewerHeartBleed()
+                        clearThrownFundamentalsBleeds()
                         return
                     end
                 end
@@ -501,6 +596,7 @@ local script = {
                     if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
                         clearBloodletterBleed()
                         clearHewerHeartBleed()
+                        clearThrownFundamentalsBleeds()
                         return
                     end
                 end
@@ -510,6 +606,36 @@ local script = {
                 elseif hewerHeartBloodTimer >= BLOODLETTER_BLOOD_INTERVAL then
                     hewerHeartBloodTimer = 0
                     spawnBloodSpray(selfObj.position)
+                end
+            end
+
+
+            for index = #thrownFundamentalsBleedStacks, 1, -1 do
+                local stack = thrownFundamentalsBleedStacks[index]
+                if type(stack) ~= "table" then
+                    table.remove(thrownFundamentalsBleedStacks, index)
+                else
+                    stack.remainingTime = math.max(0, (tonumber(stack.remainingTime) or 0) - elapsed)
+                    stack.damageTimer = (tonumber(stack.damageTimer) or 0) + elapsed
+                    stack.bloodTimer = (tonumber(stack.bloodTimer) or 0) + elapsed
+
+                    while stack.remainingTime > 0 and stack.damageTimer >= THROWN_FUNDAMENTALS_DAMAGE_INTERVAL do
+                        stack.damageTimer = stack.damageTimer - THROWN_FUNDAMENTALS_DAMAGE_INTERVAL
+                        applyHealthDamage(THROWN_FUNDAMENTALS_DAMAGE_PER_TICK)
+                        if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                            clearBloodletterBleed()
+                            clearHewerHeartBleed()
+                            clearThrownFundamentalsBleeds()
+                            return
+                        end
+                    end
+
+                    if stack.remainingTime <= 0 then
+                        table.remove(thrownFundamentalsBleedStacks, index)
+                    elseif stack.bloodTimer >= THROWN_FUNDAMENTALS_BLOOD_INTERVAL then
+                        stack.bloodTimer = 0
+                        spawnBloodSpray(selfObj.position)
+                    end
                 end
             end
 

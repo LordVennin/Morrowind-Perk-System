@@ -47,8 +47,8 @@ return {
             cost = 1,
             x = 180,
             y = 0,
-            title = "Thrown Fundamentals",
-            description = "Placeholder thrown path: Improve basic throwing knife, dart, and throwing star technique before specializing further.",
+            title = "Serrated Throws",
+            description = "Thrown weapon hits apply a stacking bleed, dealing 3 Health damage over 3 seconds per stack.",
         },
         {
             id = "marksman_quick_cast",

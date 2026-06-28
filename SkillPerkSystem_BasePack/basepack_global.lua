@@ -2208,6 +2208,7 @@ local kindlingGripState = {
     hewerHeartEnabled = false,
     crimsonCleaveEnabled = false,
     ironCanopyEnabled = false,
+    thrownFundamentalsEnabled = false,
     playerId = nil,
 }
 
@@ -2262,6 +2263,7 @@ local function onKindlingGripState(data)
         hewerHeartEnabled = data.hewerHeartEnabled == true,
         crimsonCleaveEnabled = data.crimsonCleaveEnabled == true,
         ironCanopyEnabled = data.ironCanopyEnabled == true,
+        thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

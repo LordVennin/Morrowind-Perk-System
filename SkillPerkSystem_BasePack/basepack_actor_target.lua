@@ -34,6 +34,7 @@ local IRON_CANOPY_MAGICKA_DAMAGE_MIN = 5
 local IRON_CANOPY_MAGICKA_DAMAGE_MAX = 20
 local IRON_CANOPY_EMPTY_MAGICKA_DAMAGE_BONUS = 0.20
 local THROWN_FUNDAMENTALS_DURATION = 3.0
+local TRICK_THROW_THROWN_BLEED_DURATION = 5.0
 local THROWN_FUNDAMENTALS_DAMAGE_INTERVAL = 1.0
 local THROWN_FUNDAMENTALS_DAMAGE_PER_TICK = 1
 local THROWN_FUNDAMENTALS_BLOOD_INTERVAL = 1.0
@@ -47,6 +48,7 @@ local hewerHeartEnabled = false
 local crimsonCleaveEnabled = false
 local ironCanopyEnabled = false
 local thrownFundamentalsEnabled = false
+local trickThrowEnabled = false
 
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
@@ -75,6 +77,7 @@ local function setKindlingGripState(data)
     crimsonCleaveEnabled = data.crimsonCleaveEnabled == true
     ironCanopyEnabled = data.ironCanopyEnabled == true
     thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true
+    trickThrowEnabled = data.trickThrowEnabled == true
     updateBleedSpeedPenalty()
 end
 
@@ -492,8 +495,13 @@ local function isSuccessfulThrownWeaponHit(attack)
 end
 
 local function addThrownFundamentalsBleed(attack)
+    if trickThrowEnabled then
+        attack.damage.health = attack.damage.health + #thrownFundamentalsBleedStacks
+    end
+
+    local duration = trickThrowEnabled and TRICK_THROW_THROWN_BLEED_DURATION or THROWN_FUNDAMENTALS_DURATION
     thrownFundamentalsBleedStacks[#thrownFundamentalsBleedStacks + 1] = {
-        remainingTime = THROWN_FUNDAMENTALS_DURATION,
+        remainingTime = duration,
         damageTimer = 0,
         bloodTimer = 0,
     }
@@ -560,6 +568,7 @@ local script = {
                 crimsonCleaveEnabled = crimsonCleaveEnabled,
                 ironCanopyEnabled = ironCanopyEnabled,
                 thrownFundamentalsEnabled = thrownFundamentalsEnabled,
+                trickThrowEnabled = trickThrowEnabled,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,

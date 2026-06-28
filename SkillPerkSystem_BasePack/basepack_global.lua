@@ -2209,6 +2209,7 @@ local kindlingGripState = {
     crimsonCleaveEnabled = false,
     ironCanopyEnabled = false,
     thrownFundamentalsEnabled = false,
+    trickThrowEnabled = false,
     playerId = nil,
 }
 
@@ -2264,6 +2265,7 @@ local function onKindlingGripState(data)
         crimsonCleaveEnabled = data.crimsonCleaveEnabled == true,
         ironCanopyEnabled = data.ironCanopyEnabled == true,
         thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true,
+        trickThrowEnabled = data.trickThrowEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
     }
     refreshWatchers()

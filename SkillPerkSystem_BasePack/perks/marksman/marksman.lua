@@ -71,8 +71,8 @@ return {
             cost = 1,
             x = 180,
             y = 280,
-            title = "Trick Throw",
-            description = "Placeholder thrown path: Thrown weapons are intended to gain a specialty benefit for opportunistic ranged attacks.",
+            title = "Hemorrhaging Throws",
+            description = "Serrated Throws bleeds last 5 seconds. Thrown weapon hits deal 1 bonus Health damage for each Serrated Throws bleed stack already on the target.",
         },
         {
             id = "marksman_deadeye_mastery",

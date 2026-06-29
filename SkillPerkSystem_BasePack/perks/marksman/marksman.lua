@@ -12,7 +12,7 @@ return {
             x = -180,
             y = 0,
             title = "Bow Fundamentals",
-            description = "While a bow is equipped, draw bows 20% faster and fortify Agility by 5.",
+            description = "While a bow or crossbow is equipped, fortify Agility by 5. Bows draw 20% faster.",
         },
         {
             id = "marksman_steady_draw",

@@ -3927,6 +3927,7 @@ local QUICK_CAST_ATTACK_SPEED_MULTIPLIER = 1.80
 local STEADY_DRAW_MAX_HOLD_SECONDS = 4.0
 local STEADY_DRAW_MAX_DAMAGE_BONUS = 0.30
 local STEADY_DRAW_PENDING_SHOT_WINDOW = 5.0
+local STEADY_DRAW_STATE_EVENT = "SkillPerkSystem_MarksmanSteadyDrawState"
 local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_Marksman"
 local BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY = "bow_fundamentals.applied_agility_bonus"
 
@@ -3934,7 +3935,7 @@ local storageSection = storage.playerSection(STORAGE_SECTION_ID)
 local appliedBowFundamentalsAgilityBonus = tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0
 local steadyDrawHoldSeconds = 0
 local steadyDrawWasHoldingAttack = false
-local steadyDrawPendingShot = nil
+local steadyDrawShotSequence = 0
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4092,7 +4093,7 @@ end
 
 local function refreshBowFundamentalsAgilityBonus()
     local desiredBonus = 0
-    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowRecord() ~= nil then
+    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
         desiredBonus = BOW_FUNDAMENTALS_AGILITY_BONUS
     end
 
@@ -4121,25 +4122,6 @@ local function getEquippedThrownMarksmanRecord()
     return record
 end
 
-local function getAttackWeaponRecord(attack)
-    if type(attack) == "table" and attack.weapon ~= nil then
-        return getWeaponRecord(attack.weapon)
-    end
-
-    return nil
-end
-
-local function isRangedAttack(attack)
-    local rangedType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES.Ranged
-    return rangedType == nil or (type(attack) == "table" and attack.sourceType == rangedType)
-end
-
-local function isPlayerAttack(attack)
-    return type(attack) == "table" and attack.attacker == pself
-end
-
 local function steadyDrawAttackHeld()
     if input == nil or type(input.getBooleanActionValue) ~= "function" then
         return false
@@ -4154,15 +4136,21 @@ local function clearSteadyDrawCharge()
     steadyDrawWasHoldingAttack = false
 end
 
+local function publishSteadyDrawShot(multiplier, expiresAt)
+    steadyDrawShotSequence = steadyDrawShotSequence + 1
+    core.sendGlobalEvent(STEADY_DRAW_STATE_EVENT, {
+        player = pself,
+        playerId = pself.id,
+        multiplier = multiplier,
+        expiresAt = expiresAt,
+        sequence = steadyDrawShotSequence,
+    })
+end
+
 local function updateSteadyDraw(dt)
     if not hasEnabledPerk(STEADY_DRAW_PERK_ID) or getEquippedBowOrCrossbowRecord() == nil then
         clearSteadyDrawCharge()
         return
-    end
-
-    local now = core.getSimulationTime()
-    if steadyDrawPendingShot ~= nil and now >= steadyDrawPendingShot.expiresAt then
-        steadyDrawPendingShot = nil
     end
 
     local holdingAttack = steadyDrawAttackHeld()
@@ -4172,51 +4160,16 @@ local function updateSteadyDraw(dt)
             STEADY_DRAW_MAX_HOLD_SECONDS
         )
     elseif steadyDrawWasHoldingAttack and steadyDrawHoldSeconds > 0 then
+        local now = core.getSimulationTime()
         local ratio = math.min(steadyDrawHoldSeconds / STEADY_DRAW_MAX_HOLD_SECONDS, 1)
-        steadyDrawPendingShot = {
-            multiplier = 1 + (ratio * STEADY_DRAW_MAX_DAMAGE_BONUS),
-            expiresAt = now + STEADY_DRAW_PENDING_SHOT_WINDOW,
-        }
+        publishSteadyDrawShot(
+            1 + (ratio * STEADY_DRAW_MAX_DAMAGE_BONUS),
+            now + STEADY_DRAW_PENDING_SHOT_WINDOW
+        )
         steadyDrawHoldSeconds = 0
     end
 
     steadyDrawWasHoldingAttack = holdingAttack
-end
-
-local function applySteadyDrawDamage(attack)
-    if steadyDrawPendingShot == nil then
-        return
-    end
-
-    if core.getSimulationTime() >= steadyDrawPendingShot.expiresAt then
-        steadyDrawPendingShot = nil
-        return
-    end
-
-    if not hasEnabledPerk(STEADY_DRAW_PERK_ID) then
-        steadyDrawPendingShot = nil
-        return
-    end
-
-    if not isPlayerAttack(attack) or not isRangedAttack(attack) then
-        return
-    end
-
-    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
-        return
-    end
-
-    local record = getAttackWeaponRecord(attack)
-    if record ~= nil then
-        if not isBowOrCrossbowRecord(record) then
-            return
-        end
-    elseif getEquippedBowOrCrossbowRecord() == nil then
-        return
-    end
-
-    attack.damage.health = attack.damage.health * steadyDrawPendingShot.multiplier
-    steadyDrawPendingShot = nil
 end
 
 local function isMarksmanBowDrawAnimation(groupName, options)
@@ -4310,7 +4263,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             appliedBowFundamentalsAgilityBonus = math.max(0, tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0)
             steadyDrawHoldSeconds = 0
             steadyDrawWasHoldingAttack = false
-            steadyDrawPendingShot = nil
+            steadyDrawShotSequence = 0
             refreshBowFundamentalsAgilityBonus()
         end,
     },

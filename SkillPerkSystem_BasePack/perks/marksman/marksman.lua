@@ -85,7 +85,7 @@ return {
             x = 0,
             y = 440,
             title = "Deadeye Mastery",
-            description = "Placeholder capstone: Master marksmen are intended to gain a powerful benefit after committing to either the bow or thrown weapon path.",
+            description = "While a bow or longbow is equipped, fortify Agility by 10. Thrown weapon hits apply a separate stacking bleed that deals 0.5 Health damage per second for 5 seconds. Hemorrhaging Throws bonus damage counts Deadeye Mastery bleed stacks too.",
         },
     },
 }

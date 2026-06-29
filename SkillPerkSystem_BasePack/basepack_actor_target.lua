@@ -38,6 +38,8 @@ local THROWN_FUNDAMENTALS_DURATION = 3.0
 local TRICK_THROW_THROWN_BLEED_DURATION = 5.0
 local THROWN_FUNDAMENTALS_DAMAGE_INTERVAL = 1.0
 local THROWN_FUNDAMENTALS_DAMAGE_PER_TICK = 1
+local DEADEYE_MASTERY_THROWN_BLEED_DURATION = 5.0
+local DEADEYE_MASTERY_THROWN_DAMAGE_PER_TICK = 0.5
 local THROWN_FUNDAMENTALS_BLOOD_INTERVAL = 1.0
 local PINNING_SHOT_DURATION = 5.0
 local PINNING_SHOT_SPEED_PENALTY_PER_STACK = 10
@@ -54,6 +56,7 @@ local ironCanopyEnabled = false
 local thrownFundamentalsEnabled = false
 local trickThrowEnabled = false
 local pinningShotEnabled = false
+local deadeyeMasteryEnabled = false
 local steadyDrawPlayerId = nil
 local steadyDrawMultiplier = 1
 local steadyDrawExpiresAt = 0
@@ -70,6 +73,7 @@ local hewerHeartDamageTimer = 0
 local hewerHeartBloodTimer = 0
 local hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
 local thrownFundamentalsBleedStacks = {}
+local deadeyeMasteryBleedStacks = {}
 local pinningShotStacks = {}
 local pinningShotSpeedPenaltyApplied = 0
 
@@ -92,6 +96,7 @@ local function setKindlingGripState(data)
     thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true
     trickThrowEnabled = data.trickThrowEnabled == true
     pinningShotEnabled = data.pinningShotEnabled == true
+    deadeyeMasteryEnabled = data.deadeyeMasteryEnabled == true
     steadyDrawPlayerId = type(data.steadyDrawPlayerId) == "string" and data.steadyDrawPlayerId or nil
     steadyDrawMultiplier = math.max(1, tonumber(data.steadyDrawMultiplier) or 1)
     steadyDrawExpiresAt = math.max(0, tonumber(data.steadyDrawExpiresAt) or 0)
@@ -529,11 +534,11 @@ local function isRangedAttack(attack)
     return rangedType == nil or (type(attack) == "table" and attack.sourceType == rangedType)
 end
 
-local function isSuccessfulThrownWeaponHit(attack)
+local function isSuccessfulThrownWeaponHit(attack, perkEnabled)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
     end
-    if not thrownFundamentalsEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
+    if not perkEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
         return false
     end
     if attack.attacker == nil or attack.attacker.id ~= kindlingGripPlayerId then
@@ -644,7 +649,7 @@ end
 
 local function addThrownFundamentalsBleed(attack)
     if trickThrowEnabled then
-        attack.damage.health = attack.damage.health + #thrownFundamentalsBleedStacks
+        attack.damage.health = attack.damage.health + #thrownFundamentalsBleedStacks + #deadeyeMasteryBleedStacks
     end
 
     local duration = trickThrowEnabled and TRICK_THROW_THROWN_BLEED_DURATION or THROWN_FUNDAMENTALS_DURATION
@@ -658,6 +663,19 @@ end
 
 local function clearThrownFundamentalsBleeds()
     thrownFundamentalsBleedStacks = {}
+end
+
+local function addDeadeyeMasteryBleed(attack)
+    deadeyeMasteryBleedStacks[#deadeyeMasteryBleedStacks + 1] = {
+        remainingTime = DEADEYE_MASTERY_THROWN_BLEED_DURATION,
+        damageTimer = 0,
+        bloodTimer = 0,
+    }
+    spawnBloodSpray(attack.hitPos or selfObj.position)
+end
+
+local function clearDeadeyeMasteryBleeds()
+    deadeyeMasteryBleedStacks = {}
 end
 
 local function clearPinningShotStacks()
@@ -681,8 +699,12 @@ local function onHit(attack)
         refreshHewerHeartBleed(attack)
     end
 
-    if isSuccessfulThrownWeaponHit(attack) then
+    if isSuccessfulThrownWeaponHit(attack, thrownFundamentalsEnabled) then
         addThrownFundamentalsBleed(attack)
+    end
+
+    if isSuccessfulThrownWeaponHit(attack, deadeyeMasteryEnabled) then
+        addDeadeyeMasteryBleed(attack)
     end
 
     if isSuccessfulPinningShotHit(attack) then
@@ -711,6 +733,7 @@ local script = {
                 hewerHeartBloodTimer = math.max(0, tonumber(savedData.hewerHeartBloodTimer) or 0)
                 hewerHeartDamagePerTick = math.max(0, tonumber(savedData.hewerHeartDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
                 thrownFundamentalsBleedStacks = type(savedData.thrownFundamentalsBleedStacks) == "table" and savedData.thrownFundamentalsBleedStacks or {}
+                deadeyeMasteryBleedStacks = type(savedData.deadeyeMasteryBleedStacks) == "table" and savedData.deadeyeMasteryBleedStacks or {}
                 pinningShotStacks = type(savedData.pinningShotStacks) == "table" and savedData.pinningShotStacks or {}
                 pinningShotSpeedPenaltyApplied = math.max(0, math.floor(tonumber(savedData.pinningShotSpeedPenaltyApplied) or 0))
                 steadyDrawPlayerId = type(savedData.steadyDrawPlayerId) == "string" and savedData.steadyDrawPlayerId or steadyDrawPlayerId
@@ -735,6 +758,7 @@ local script = {
                 thrownFundamentalsEnabled = thrownFundamentalsEnabled,
                 trickThrowEnabled = trickThrowEnabled,
                 pinningShotEnabled = pinningShotEnabled,
+                deadeyeMasteryEnabled = deadeyeMasteryEnabled,
                 steadyDrawPlayerId = steadyDrawPlayerId,
                 steadyDrawMultiplier = steadyDrawMultiplier,
                 steadyDrawExpiresAt = steadyDrawExpiresAt,
@@ -750,12 +774,13 @@ local script = {
                 hewerHeartBloodTimer = hewerHeartBloodTimer,
                 hewerHeartDamagePerTick = hewerHeartDamagePerTick,
                 thrownFundamentalsBleedStacks = thrownFundamentalsBleedStacks,
+                deadeyeMasteryBleedStacks = deadeyeMasteryBleedStacks,
                 pinningShotStacks = pinningShotStacks,
                 pinningShotSpeedPenaltyApplied = pinningShotSpeedPenaltyApplied,
             }
         end,
         onUpdate = function(dt)
-            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 and #thrownFundamentalsBleedStacks == 0 and #pinningShotStacks == 0 then
+            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 and #thrownFundamentalsBleedStacks == 0 and #deadeyeMasteryBleedStacks == 0 and #pinningShotStacks == 0 then
                 updateBleedSpeedPenalty()
                 updatePinningShotSpeedPenalty()
                 return
@@ -764,6 +789,7 @@ local script = {
                 clearBloodletterBleed()
                 clearHewerHeartBleed()
                 clearThrownFundamentalsBleeds()
+                clearDeadeyeMasteryBleeds()
                 clearPinningShotStacks()
                 return
             end
@@ -782,6 +808,7 @@ local script = {
                         clearBloodletterBleed()
                         clearHewerHeartBleed()
                         clearThrownFundamentalsBleeds()
+                        clearDeadeyeMasteryBleeds()
                         clearPinningShotStacks()
                         return
                     end
@@ -807,6 +834,7 @@ local script = {
                         clearBloodletterBleed()
                         clearHewerHeartBleed()
                         clearThrownFundamentalsBleeds()
+                        clearDeadeyeMasteryBleeds()
                         clearPinningShotStacks()
                         return
                     end
@@ -837,6 +865,7 @@ local script = {
                             clearBloodletterBleed()
                             clearHewerHeartBleed()
                             clearThrownFundamentalsBleeds()
+                            clearDeadeyeMasteryBleeds()
                             clearPinningShotStacks()
                             return
                         end
@@ -844,6 +873,38 @@ local script = {
 
                     if stack.remainingTime <= 0 then
                         table.remove(thrownFundamentalsBleedStacks, index)
+                    elseif stack.bloodTimer >= THROWN_FUNDAMENTALS_BLOOD_INTERVAL then
+                        stack.bloodTimer = 0
+                        spawnBloodSpray(selfObj.position)
+                    end
+                end
+            end
+
+
+            for index = #deadeyeMasteryBleedStacks, 1, -1 do
+                local stack = deadeyeMasteryBleedStacks[index]
+                if type(stack) ~= "table" then
+                    table.remove(deadeyeMasteryBleedStacks, index)
+                else
+                    stack.remainingTime = math.max(0, (tonumber(stack.remainingTime) or 0) - elapsed)
+                    stack.damageTimer = (tonumber(stack.damageTimer) or 0) + elapsed
+                    stack.bloodTimer = (tonumber(stack.bloodTimer) or 0) + elapsed
+
+                    while stack.remainingTime > 0 and stack.damageTimer >= THROWN_FUNDAMENTALS_DAMAGE_INTERVAL do
+                        stack.damageTimer = stack.damageTimer - THROWN_FUNDAMENTALS_DAMAGE_INTERVAL
+                        applyHealthDamage(DEADEYE_MASTERY_THROWN_DAMAGE_PER_TICK)
+                        if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                            clearBloodletterBleed()
+                            clearHewerHeartBleed()
+                            clearThrownFundamentalsBleeds()
+                            clearDeadeyeMasteryBleeds()
+                            clearPinningShotStacks()
+                            return
+                        end
+                    end
+
+                    if stack.remainingTime <= 0 then
+                        table.remove(deadeyeMasteryBleedStacks, index)
                     elseif stack.bloodTimer >= THROWN_FUNDAMENTALS_BLOOD_INTERVAL then
                         stack.bloodTimer = 0
                         spawnBloodSpray(selfObj.position)

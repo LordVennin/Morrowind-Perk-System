@@ -4127,8 +4127,7 @@ local function steadyDrawAttackHeld()
         return false
     end
 
-    local action = input.ACTION ~= nil and input.ACTION.Use or "Use"
-    return input.getBooleanActionValue(action) == true
+    return input.getBooleanActionValue("Use") == true
 end
 
 local function clearSteadyDrawCharge()

@@ -14,6 +14,7 @@ local aegisRite = {}
 
 -- 3. axe target state/effects
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local selfObj = require("openmw.self")
 local types = require("openmw.types")
@@ -49,6 +50,11 @@ local crimsonCleaveEnabled = false
 local ironCanopyEnabled = false
 local thrownFundamentalsEnabled = false
 local trickThrowEnabled = false
+local steadyDrawPlayerId = nil
+local steadyDrawMultiplier = 1
+local steadyDrawExpiresAt = 0
+local steadyDrawSequence = 0
+local steadyDrawConsumedSequence = 0
 
 local bloodletterRemainingTime = 0
 local bloodletterDamageTimer = 0
@@ -78,6 +84,10 @@ local function setKindlingGripState(data)
     ironCanopyEnabled = data.ironCanopyEnabled == true
     thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true
     trickThrowEnabled = data.trickThrowEnabled == true
+    steadyDrawPlayerId = type(data.steadyDrawPlayerId) == "string" and data.steadyDrawPlayerId or nil
+    steadyDrawMultiplier = math.max(1, tonumber(data.steadyDrawMultiplier) or 1)
+    steadyDrawExpiresAt = math.max(0, tonumber(data.steadyDrawExpiresAt) or 0)
+    steadyDrawSequence = math.max(0, math.floor(tonumber(data.steadyDrawSequence) or 0))
     updateBleedSpeedPenalty()
 end
 
@@ -232,6 +242,10 @@ local function isThrownWeaponRecord(record)
     return weaponTypeEquals(record, "MarksmanThrown")
 end
 
+local function isBowOrCrossbowRecord(record)
+    return weaponTypeEquals(record, "MarksmanBow") or weaponTypeEquals(record, "MarksmanCrossbow")
+end
+
 local function getEquippedItem(actor, slot)
     if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
         return nil
@@ -263,6 +277,26 @@ local function actorHasEquippedThrownWeapon(actor)
     end
 
     return isThrownWeaponRecord(getWeaponRecord(weapon))
+end
+
+local function actorHasEquippedBowOrCrossbow(actor)
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    local weapon = getEquippedItem(actor, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return false
+    end
+
+    if type(Weapon.objectIsInstance) == "function" then
+        local okInstance, isInstance = pcall(Weapon.objectIsInstance, weapon)
+        if not okInstance or not isInstance then
+            return false
+        end
+    end
+
+    return isBowOrCrossbowRecord(getWeaponRecord(weapon))
 end
 
 local function actorHasEquippedAxe(actor)
@@ -494,6 +528,50 @@ local function isSuccessfulThrownWeaponHit(attack)
     return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
 end
 
+local function isSuccessfulSteadyDrawHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if type(steadyDrawPlayerId) ~= "string" or steadyDrawPlayerId == "" then
+        return false
+    end
+    if steadyDrawSequence <= 0 or steadyDrawConsumedSequence == steadyDrawSequence then
+        return false
+    end
+    if core.getSimulationTime() >= steadyDrawExpiresAt then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= steadyDrawPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isRangedAttack(attack) then
+        return false
+    end
+
+    local attackWeaponRecord = getAttackWeaponRecord(attack)
+    if attackWeaponRecord ~= nil then
+        if not isBowOrCrossbowRecord(attackWeaponRecord) then
+            return false
+        end
+    elseif not actorHasEquippedBowOrCrossbow(attack.attacker) then
+        return false
+    end
+
+    return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
+end
+
+local function applySteadyDrawHit(attack)
+    if not isSuccessfulSteadyDrawHit(attack) then
+        return
+    end
+
+    attack.damage.health = attack.damage.health * steadyDrawMultiplier
+    steadyDrawConsumedSequence = steadyDrawSequence
+end
+
 local function addThrownFundamentalsBleed(attack)
     if trickThrowEnabled then
         attack.damage.health = attack.damage.health + #thrownFundamentalsBleedStacks
@@ -517,6 +595,7 @@ local function onHit(attack)
         attack.damage.health = attack.damage.health * (1 + (KINDLING_GRIP_DAMAGE_BONUS * kindlingGripDamageBonusCount))
     end
 
+    applySteadyDrawHit(attack)
     applyIronCanopyHit(attack)
 
     if isSuccessfulAxeHit(attack, bloodletterEnabled) then
@@ -553,6 +632,11 @@ local script = {
                 hewerHeartBloodTimer = math.max(0, tonumber(savedData.hewerHeartBloodTimer) or 0)
                 hewerHeartDamagePerTick = math.max(0, tonumber(savedData.hewerHeartDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
                 thrownFundamentalsBleedStacks = type(savedData.thrownFundamentalsBleedStacks) == "table" and savedData.thrownFundamentalsBleedStacks or {}
+                steadyDrawPlayerId = type(savedData.steadyDrawPlayerId) == "string" and savedData.steadyDrawPlayerId or steadyDrawPlayerId
+                steadyDrawMultiplier = math.max(1, tonumber(savedData.steadyDrawMultiplier) or steadyDrawMultiplier)
+                steadyDrawExpiresAt = math.max(0, tonumber(savedData.steadyDrawExpiresAt) or steadyDrawExpiresAt)
+                steadyDrawSequence = math.max(0, math.floor(tonumber(savedData.steadyDrawSequence) or steadyDrawSequence))
+                steadyDrawConsumedSequence = math.max(0, math.floor(tonumber(savedData.steadyDrawConsumedSequence) or steadyDrawConsumedSequence))
             else
                 setKindlingGripState(initData)
             end
@@ -569,6 +653,11 @@ local script = {
                 ironCanopyEnabled = ironCanopyEnabled,
                 thrownFundamentalsEnabled = thrownFundamentalsEnabled,
                 trickThrowEnabled = trickThrowEnabled,
+                steadyDrawPlayerId = steadyDrawPlayerId,
+                steadyDrawMultiplier = steadyDrawMultiplier,
+                steadyDrawExpiresAt = steadyDrawExpiresAt,
+                steadyDrawSequence = steadyDrawSequence,
+                steadyDrawConsumedSequence = steadyDrawConsumedSequence,
                 bloodletterRemainingTime = bloodletterRemainingTime,
                 bloodletterDamageTimer = bloodletterDamageTimer,
                 bloodletterBloodTimer = bloodletterBloodTimer,

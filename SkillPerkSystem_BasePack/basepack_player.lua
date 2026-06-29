@@ -3909,14 +3909,23 @@ end
 do
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
+local storage = require("openmw.storage")
 local types = require("openmw.types")
 
 local Actor = types.Actor
 local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local BOW_FUNDAMENTALS_PERK_ID = "marksman_bow_fundamentals"
 local QUICK_CAST_PERK_ID = "marksman_quick_cast"
+local BOW_FUNDAMENTALS_DRAW_SPEED_MULTIPLIER = 1.20
+local BOW_FUNDAMENTALS_AGILITY_BONUS = 5
 local QUICK_CAST_ATTACK_SPEED_MULTIPLIER = 1.80
+local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_Marksman"
+local BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY = "bow_fundamentals.applied_agility_bonus"
+
+local storageSection = storage.playerSection(STORAGE_SECTION_ID)
+local appliedBowFundamentalsAgilityBonus = tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -3987,6 +3996,70 @@ local function weaponTypeEquals(record, typeName)
     return expected ~= nil and actual ~= nil and actual == expected
 end
 
+local function isBowRecord(record)
+    return weaponTypeEquals(record, "MarksmanBow") or weaponTypeEquals(record, "Bow")
+end
+
+local function getEquippedBowRecord()
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil
+    end
+
+    local weapon = getEquippedItem(pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return nil
+    end
+
+    local record = getWeaponRecord(weapon)
+    if not isBowRecord(record) then
+        return nil
+    end
+
+    return record
+end
+
+local function resolveAgilityStat()
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes.agility
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyBowFundamentalsAgilityBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedBowFundamentalsAgilityBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveAgilityStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedBowFundamentalsAgilityBonus = desired
+    storageSection:set(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY, desired)
+end
+
+local function refreshBowFundamentalsAgilityBonus()
+    local desiredBonus = 0
+    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowRecord() ~= nil then
+        desiredBonus = BOW_FUNDAMENTALS_AGILITY_BONUS
+    end
+
+    applyBowFundamentalsAgilityBonus(desiredBonus)
+end
+
 local function getEquippedThrownMarksmanRecord()
     if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
         return nil
@@ -4009,6 +4082,25 @@ local function getEquippedThrownMarksmanRecord()
     return record
 end
 
+local function isMarksmanBowDrawAnimation(groupName, options)
+    if type(options) ~= "table" then
+        return false
+    end
+
+    local stopKeyRaw = options.stopkey or options.stopKey
+    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
+    if string.sub(stopKey, -11) == " max attack" then
+        return true
+    end
+
+    if type(groupName) ~= "string" then
+        return false
+    end
+
+    local g = string.lower(groupName)
+    return string.find(g, "attack", 1, true) ~= nil
+end
+
 local function isThrownAttackWindupAnimation(groupName, options)
     if type(options) ~= "table" then
         return false
@@ -4028,22 +4120,53 @@ local function isThrownAttackWindupAnimation(groupName, options)
     return string.find(g, "attack", 1, true) ~= nil
 end
 
-interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-    if not hasEnabledPerk(QUICK_CAST_PERK_ID) then
-        return
-    end
+if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+        if not hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) then
+            return
+        end
 
-    if getEquippedThrownMarksmanRecord() == nil then
-        return
-    end
+        if getEquippedBowRecord() == nil then
+            return
+        end
 
-    if not isThrownAttackWindupAnimation(groupName, options) then
-        return
-    end
+        if not isMarksmanBowDrawAnimation(groupName, options) then
+            return
+        end
 
-    local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-    options.speed = currentSpeed * QUICK_CAST_ATTACK_SPEED_MULTIPLIER
-end)
+        local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
+        options.speed = currentSpeed * BOW_FUNDAMENTALS_DRAW_SPEED_MULTIPLIER
+    end)
+
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+        if not hasEnabledPerk(QUICK_CAST_PERK_ID) then
+            return
+        end
+
+        if getEquippedThrownMarksmanRecord() == nil then
+            return
+        end
+
+        if not isThrownAttackWindupAnimation(groupName, options) then
+            return
+        end
+
+        local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
+        options.speed = currentSpeed * QUICK_CAST_ATTACK_SPEED_MULTIPLIER
+    end)
+end
+
+__basepack_subsystems[#__basepack_subsystems + 1] = {
+    engineHandlers = {
+        onUpdate = function()
+            refreshBowFundamentalsAgilityBonus()
+        end,
+        onLoad = function()
+            appliedBowFundamentalsAgilityBonus = math.max(0, tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0)
+            refreshBowFundamentalsAgilityBonus()
+        end,
+    },
+}
 
 end
 

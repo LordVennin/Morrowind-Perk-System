@@ -4099,7 +4099,7 @@ local function refreshBowFundamentalsAgilityBonus()
         desiredBonus = desiredBonus + BOW_FUNDAMENTALS_AGILITY_BONUS
     end
 
-    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and getEquippedBowRecord() ~= nil then
+    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
         desiredBonus = desiredBonus + DEADEYE_MASTERY_AGILITY_BONUS
     end
 

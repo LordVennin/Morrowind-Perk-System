@@ -3907,9 +3907,10 @@ end
 -- marksman runtime logic (from marksman_runtime.lua)
 ----------------------------------------------------------------------
 do
+local core = require("openmw.core")
+local input = require("openmw.input")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
-local storage = require("openmw.storage")
 local types = require("openmw.types")
 
 local Actor = types.Actor
@@ -3918,14 +3919,18 @@ local Weapon = types.Weapon
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local BOW_FUNDAMENTALS_PERK_ID = "marksman_bow_fundamentals"
 local QUICK_CAST_PERK_ID = "marksman_quick_cast"
+local STEADY_DRAW_PERK_ID = "marksman_steady_draw"
 local BOW_FUNDAMENTALS_DRAW_SPEED_MULTIPLIER = 1.20
 local BOW_FUNDAMENTALS_AGILITY_BONUS = 5
 local QUICK_CAST_ATTACK_SPEED_MULTIPLIER = 1.80
-local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_Marksman"
-local BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY = "bow_fundamentals.applied_agility_bonus"
-
-local storageSection = storage.playerSection(STORAGE_SECTION_ID)
-local appliedBowFundamentalsAgilityBonus = tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0
+local STEADY_DRAW_MAX_HOLD_SECONDS = 4.0
+local STEADY_DRAW_MAX_DAMAGE_BONUS = 0.30
+local STEADY_DRAW_PENDING_SHOT_WINDOW = 5.0
+local STEADY_DRAW_STATE_EVENT = "SkillPerkSystem_MarksmanSteadyDrawState"
+local appliedBowFundamentalsAgilityBonus = 0
+local steadyDrawHoldSeconds = 0
+local steadyDrawWasHoldingAttack = false
+local steadyDrawShotSequence = 0
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -3997,7 +4002,15 @@ local function weaponTypeEquals(record, typeName)
 end
 
 local function isBowRecord(record)
-    return weaponTypeEquals(record, "MarksmanBow") or weaponTypeEquals(record, "Bow")
+    return weaponTypeEquals(record, "MarksmanBow")
+end
+
+local function isCrossbowRecord(record)
+    return weaponTypeEquals(record, "MarksmanCrossbow")
+end
+
+local function isBowOrCrossbowRecord(record)
+    return isBowRecord(record) or isCrossbowRecord(record)
 end
 
 local function getEquippedBowRecord()
@@ -4016,6 +4029,28 @@ local function getEquippedBowRecord()
 
     local record = getWeaponRecord(weapon)
     if not isBowRecord(record) then
+        return nil
+    end
+
+    return record
+end
+
+local function getEquippedBowOrCrossbowRecord()
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil
+    end
+
+    local weapon = getEquippedItem(pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return nil
+    end
+
+    local record = getWeaponRecord(weapon)
+    if not isBowOrCrossbowRecord(record) then
         return nil
     end
 
@@ -4048,12 +4083,11 @@ local function applyBowFundamentalsAgilityBonus(targetBonus)
 
     stat.modifier = stat.modifier - current + desired
     appliedBowFundamentalsAgilityBonus = desired
-    storageSection:set(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY, desired)
 end
 
 local function refreshBowFundamentalsAgilityBonus()
     local desiredBonus = 0
-    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowRecord() ~= nil then
+    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
         desiredBonus = BOW_FUNDAMENTALS_AGILITY_BONUS
     end
 
@@ -4080,6 +4114,55 @@ local function getEquippedThrownMarksmanRecord()
     end
 
     return record
+end
+
+local function steadyDrawAttackHeld()
+    if input == nil or type(input.getBooleanActionValue) ~= "function" then
+        return false
+    end
+
+    return input.getBooleanActionValue("Use") == true
+end
+
+local function clearSteadyDrawCharge()
+    steadyDrawHoldSeconds = 0
+    steadyDrawWasHoldingAttack = false
+end
+
+local function publishSteadyDrawShot(multiplier, expiresAt)
+    steadyDrawShotSequence = steadyDrawShotSequence + 1
+    core.sendGlobalEvent(STEADY_DRAW_STATE_EVENT, {
+        player = pself,
+        playerId = pself.id,
+        multiplier = multiplier,
+        expiresAt = expiresAt,
+        sequence = steadyDrawShotSequence,
+    })
+end
+
+local function updateSteadyDraw(dt)
+    if not hasEnabledPerk(STEADY_DRAW_PERK_ID) or getEquippedBowOrCrossbowRecord() == nil then
+        clearSteadyDrawCharge()
+        return
+    end
+
+    local holdingAttack = steadyDrawAttackHeld()
+    if holdingAttack then
+        steadyDrawHoldSeconds = math.min(
+            steadyDrawHoldSeconds + (tonumber(dt) or 0),
+            STEADY_DRAW_MAX_HOLD_SECONDS
+        )
+    elseif steadyDrawWasHoldingAttack and steadyDrawHoldSeconds > 0 then
+        local now = core.getSimulationTime()
+        local ratio = math.min(steadyDrawHoldSeconds / STEADY_DRAW_MAX_HOLD_SECONDS, 1)
+        publishSteadyDrawShot(
+            1 + (ratio * STEADY_DRAW_MAX_DAMAGE_BONUS),
+            now + STEADY_DRAW_PENDING_SHOT_WINDOW
+        )
+        steadyDrawHoldSeconds = 0
+    end
+
+    steadyDrawWasHoldingAttack = holdingAttack
 end
 
 local function isMarksmanBowDrawAnimation(groupName, options)
@@ -4161,8 +4244,14 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onUpdate = function()
             refreshBowFundamentalsAgilityBonus()
         end,
+        onFrame = function(dt)
+            updateSteadyDraw(dt)
+        end,
         onLoad = function()
-            appliedBowFundamentalsAgilityBonus = math.max(0, tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0)
+            appliedBowFundamentalsAgilityBonus = 0
+            steadyDrawHoldSeconds = 0
+            steadyDrawWasHoldingAttack = false
+            steadyDrawShotSequence = 0
             refreshBowFundamentalsAgilityBonus()
         end,
     },

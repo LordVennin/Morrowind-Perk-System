@@ -2211,6 +2211,10 @@ local kindlingGripState = {
     thrownFundamentalsEnabled = false,
     trickThrowEnabled = false,
     playerId = nil,
+    steadyDrawPlayerId = nil,
+    steadyDrawMultiplier = 1,
+    steadyDrawExpiresAt = 0,
+    steadyDrawSequence = 0,
 }
 
 local function shouldAttachWatcher(actor)
@@ -2267,13 +2271,30 @@ local function onKindlingGripState(data)
         thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true,
         trickThrowEnabled = data.trickThrowEnabled == true,
         playerId = type(data.playerId) == "string" and data.playerId or nil,
+        steadyDrawPlayerId = kindlingGripState.steadyDrawPlayerId,
+        steadyDrawMultiplier = kindlingGripState.steadyDrawMultiplier,
+        steadyDrawExpiresAt = kindlingGripState.steadyDrawExpiresAt,
+        steadyDrawSequence = kindlingGripState.steadyDrawSequence,
     }
+    refreshWatchers()
+end
+
+local function onSteadyDrawState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    kindlingGripState.steadyDrawPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    kindlingGripState.steadyDrawMultiplier = math.max(1, tonumber(data.multiplier) or 1)
+    kindlingGripState.steadyDrawExpiresAt = math.max(0, tonumber(data.expiresAt) or 0)
+    kindlingGripState.steadyDrawSequence = math.max(0, math.floor(tonumber(data.sequence) or 0))
     refreshWatchers()
 end
 
 subsystems.axe = {
     eventHandlers = {
         SkillPerkSystem_AxeKindlingGripState = onKindlingGripState,
+        SkillPerkSystem_MarksmanSteadyDrawState = onSteadyDrawState,
     },
     engineHandlers = {
         onUpdate = function(dt)
@@ -3502,6 +3523,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
 
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
+    SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
     SkillPerkSystem_ApplyHeavyHitterShieldDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyHeavyHitterShieldDamage", data) end,

@@ -12,7 +12,7 @@ return {
             x = -180,
             y = 0,
             title = "Bow Fundamentals",
-            description = "While a bow is equipped, draw bows 20% faster and fortify Agility by 5.",
+            description = "While a bow or crossbow is equipped, fortify Agility by 5. Bows draw 20% faster.",
         },
         {
             id = "marksman_steady_draw",
@@ -24,7 +24,7 @@ return {
             x = -180,
             y = 140,
             title = "Steady Draw",
-            description = "Placeholder bow path: Reward patient aim and controlled releases with bows and crossbows.",
+            description = "Holding a bow or crossbow attack steadily increases the next shot's Health damage by up to 30% after 4 seconds.",
         },
         {
             id = "marksman_pinning_shot",

@@ -3644,6 +3644,7 @@ local Weapon = types.Weapon
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local BLOODLETTER_PERK_ID = "axe_bloodletter"
 local THROWN_FUNDAMENTALS_PERK_ID = "marksman_thrown_fundamentals"
+local PINNING_SHOT_PERK_ID = "marksman_pinning_shot"
 local TRICK_THROW_PERK_ID = "marksman_trick_throw"
 local DRAGGING_WOUND_PERK_ID = "axe_dragging_wound"
 local HEWER_HEART_PERK_ID = "axe_hewer_heart"
@@ -3860,7 +3861,8 @@ local function publishState(force)
     local ironCanopyEnabled = hasEnabledPerk(IRON_CANOPY_PERK_ID)
     local thrownFundamentalsEnabled = hasEnabledPerk(THROWN_FUNDAMENTALS_PERK_ID)
     local trickThrowEnabled = hasEnabledPerk(TRICK_THROW_PERK_ID)
-    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled) .. ":" .. tostring(ironCanopyEnabled) .. ":" .. tostring(thrownFundamentalsEnabled) .. ":" .. tostring(trickThrowEnabled)
+    local pinningShotEnabled = hasEnabledPerk(PINNING_SHOT_PERK_ID)
+    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled) .. ":" .. tostring(ironCanopyEnabled) .. ":" .. tostring(thrownFundamentalsEnabled) .. ":" .. tostring(trickThrowEnabled) .. ":" .. tostring(pinningShotEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -3878,6 +3880,7 @@ local function publishState(force)
         ironCanopyEnabled = ironCanopyEnabled,
         thrownFundamentalsEnabled = thrownFundamentalsEnabled,
         trickThrowEnabled = trickThrowEnabled,
+        pinningShotEnabled = pinningShotEnabled,
     })
 end
 

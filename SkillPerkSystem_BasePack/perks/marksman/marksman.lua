@@ -12,7 +12,7 @@ return {
             x = -180,
             y = 0,
             title = "Bow Fundamentals",
-            description = "Placeholder bow path: Improve basic bow and crossbow handling before specializing further.",
+            description = "While a bow is equipped, draw bows 20% faster and fortify Agility by 5.",
         },
         {
             id = "marksman_steady_draw",

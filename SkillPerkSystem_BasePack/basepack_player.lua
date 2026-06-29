@@ -3646,6 +3646,7 @@ local BLOODLETTER_PERK_ID = "axe_bloodletter"
 local THROWN_FUNDAMENTALS_PERK_ID = "marksman_thrown_fundamentals"
 local PINNING_SHOT_PERK_ID = "marksman_pinning_shot"
 local TRICK_THROW_PERK_ID = "marksman_trick_throw"
+local DEADEYE_MASTERY_PERK_ID = "marksman_deadeye_mastery"
 local DRAGGING_WOUND_PERK_ID = "axe_dragging_wound"
 local HEWER_HEART_PERK_ID = "axe_hewer_heart"
 local CRIMSON_CLEAVE_PERK_ID = "axe_crimson_cleave"
@@ -3862,7 +3863,8 @@ local function publishState(force)
     local thrownFundamentalsEnabled = hasEnabledPerk(THROWN_FUNDAMENTALS_PERK_ID)
     local trickThrowEnabled = hasEnabledPerk(TRICK_THROW_PERK_ID)
     local pinningShotEnabled = hasEnabledPerk(PINNING_SHOT_PERK_ID)
-    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled) .. ":" .. tostring(ironCanopyEnabled) .. ":" .. tostring(thrownFundamentalsEnabled) .. ":" .. tostring(trickThrowEnabled) .. ":" .. tostring(pinningShotEnabled)
+    local deadeyeMasteryEnabled = hasEnabledPerk(DEADEYE_MASTERY_PERK_ID)
+    local stateKey = tostring(enabledCount) .. ":" .. tostring(bloodletterEnabled) .. ":" .. tostring(draggingWoundEnabled) .. ":" .. tostring(hewerHeartEnabled) .. ":" .. tostring(crimsonCleaveEnabled) .. ":" .. tostring(ironCanopyEnabled) .. ":" .. tostring(thrownFundamentalsEnabled) .. ":" .. tostring(trickThrowEnabled) .. ":" .. tostring(pinningShotEnabled) .. ":" .. tostring(deadeyeMasteryEnabled)
     if not force and stateKey == lastStateKey then
         return
     end
@@ -3881,6 +3883,7 @@ local function publishState(force)
         thrownFundamentalsEnabled = thrownFundamentalsEnabled,
         trickThrowEnabled = trickThrowEnabled,
         pinningShotEnabled = pinningShotEnabled,
+        deadeyeMasteryEnabled = deadeyeMasteryEnabled,
     })
 end
 
@@ -3923,8 +3926,10 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local BOW_FUNDAMENTALS_PERK_ID = "marksman_bow_fundamentals"
 local QUICK_CAST_PERK_ID = "marksman_quick_cast"
 local STEADY_DRAW_PERK_ID = "marksman_steady_draw"
+local DEADEYE_MASTERY_PERK_ID = "marksman_deadeye_mastery"
 local BOW_FUNDAMENTALS_DRAW_SPEED_MULTIPLIER = 1.20
 local BOW_FUNDAMENTALS_AGILITY_BONUS = 5
+local DEADEYE_MASTERY_AGILITY_BONUS = 10
 local QUICK_CAST_ATTACK_SPEED_MULTIPLIER = 1.80
 local STEADY_DRAW_MAX_HOLD_SECONDS = 4.0
 local STEADY_DRAW_MAX_DAMAGE_BONUS = 0.30
@@ -4091,7 +4096,11 @@ end
 local function refreshBowFundamentalsAgilityBonus()
     local desiredBonus = 0
     if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
-        desiredBonus = BOW_FUNDAMENTALS_AGILITY_BONUS
+        desiredBonus = desiredBonus + BOW_FUNDAMENTALS_AGILITY_BONUS
+    end
+
+    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
+        desiredBonus = desiredBonus + DEADEYE_MASTERY_AGILITY_BONUS
     end
 
     applyBowFundamentalsAgilityBonus(desiredBonus)

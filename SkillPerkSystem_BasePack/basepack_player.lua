@@ -3911,7 +3911,6 @@ local core = require("openmw.core")
 local input = require("openmw.input")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
-local storage = require("openmw.storage")
 local types = require("openmw.types")
 
 local Actor = types.Actor
@@ -3928,11 +3927,7 @@ local STEADY_DRAW_MAX_HOLD_SECONDS = 4.0
 local STEADY_DRAW_MAX_DAMAGE_BONUS = 0.30
 local STEADY_DRAW_PENDING_SHOT_WINDOW = 5.0
 local STEADY_DRAW_STATE_EVENT = "SkillPerkSystem_MarksmanSteadyDrawState"
-local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_Marksman"
-local BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY = "bow_fundamentals.applied_agility_bonus"
-
-local storageSection = storage.playerSection(STORAGE_SECTION_ID)
-local appliedBowFundamentalsAgilityBonus = tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0
+local appliedBowFundamentalsAgilityBonus = 0
 local steadyDrawHoldSeconds = 0
 local steadyDrawWasHoldingAttack = false
 local steadyDrawShotSequence = 0
@@ -4088,7 +4083,6 @@ local function applyBowFundamentalsAgilityBonus(targetBonus)
 
     stat.modifier = stat.modifier - current + desired
     appliedBowFundamentalsAgilityBonus = desired
-    storageSection:set(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY, desired)
 end
 
 local function refreshBowFundamentalsAgilityBonus()
@@ -4259,7 +4253,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             updateSteadyDraw(dt)
         end,
         onLoad = function()
-            appliedBowFundamentalsAgilityBonus = math.max(0, tonumber(storageSection:get(BOW_FUNDAMENTALS_APPLIED_AGILITY_KEY)) or 0)
+            appliedBowFundamentalsAgilityBonus = 0
             steadyDrawHoldSeconds = 0
             steadyDrawWasHoldingAttack = false
             steadyDrawShotSequence = 0

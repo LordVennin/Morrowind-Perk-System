@@ -39,6 +39,9 @@ local TRICK_THROW_THROWN_BLEED_DURATION = 5.0
 local THROWN_FUNDAMENTALS_DAMAGE_INTERVAL = 1.0
 local THROWN_FUNDAMENTALS_DAMAGE_PER_TICK = 1
 local THROWN_FUNDAMENTALS_BLOOD_INTERVAL = 1.0
+local PINNING_SHOT_DURATION = 5.0
+local PINNING_SHOT_SPEED_PENALTY_PER_STACK = 10
+local PINNING_SHOT_MAX_STACKS = 3
 
 local kindlingGripEnabled = false
 local kindlingGripPlayerId = nil
@@ -50,6 +53,7 @@ local crimsonCleaveEnabled = false
 local ironCanopyEnabled = false
 local thrownFundamentalsEnabled = false
 local trickThrowEnabled = false
+local pinningShotEnabled = false
 local steadyDrawPlayerId = nil
 local steadyDrawMultiplier = 1
 local steadyDrawExpiresAt = 0
@@ -66,8 +70,11 @@ local hewerHeartDamageTimer = 0
 local hewerHeartBloodTimer = 0
 local hewerHeartDamagePerTick = BLOODLETTER_DAMAGE_PER_TICK
 local thrownFundamentalsBleedStacks = {}
+local pinningShotStacks = {}
+local pinningShotSpeedPenaltyApplied = 0
 
 local updateBleedSpeedPenalty
+local updatePinningShotSpeedPenalty
 
 local function setKindlingGripState(data)
     if type(data) ~= "table" then
@@ -84,11 +91,13 @@ local function setKindlingGripState(data)
     ironCanopyEnabled = data.ironCanopyEnabled == true
     thrownFundamentalsEnabled = data.thrownFundamentalsEnabled == true
     trickThrowEnabled = data.trickThrowEnabled == true
+    pinningShotEnabled = data.pinningShotEnabled == true
     steadyDrawPlayerId = type(data.steadyDrawPlayerId) == "string" and data.steadyDrawPlayerId or nil
     steadyDrawMultiplier = math.max(1, tonumber(data.steadyDrawMultiplier) or 1)
     steadyDrawExpiresAt = math.max(0, tonumber(data.steadyDrawExpiresAt) or 0)
     steadyDrawSequence = math.max(0, math.floor(tonumber(data.steadyDrawSequence) or 0))
     updateBleedSpeedPenalty()
+    updatePinningShotSpeedPenalty()
 end
 
 local function resolveSpeedStat()
@@ -117,6 +126,27 @@ local function applyBloodletterSpeedPenalty(targetPenalty)
 
     stat.modifier = stat.modifier + current - desired
     bloodletterSpeedPenaltyApplied = desired
+end
+
+
+local function applyPinningShotSpeedPenalty(targetPenalty)
+    local desired = math.max(0, math.floor(tonumber(targetPenalty) or 0))
+    local current = math.max(0, math.floor(tonumber(pinningShotSpeedPenaltyApplied) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveSpeedStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier + current - desired
+    pinningShotSpeedPenaltyApplied = desired
+end
+
+updatePinningShotSpeedPenalty = function()
+    applyPinningShotSpeedPenalty(math.min(#pinningShotStacks, PINNING_SHOT_MAX_STACKS) * PINNING_SHOT_SPEED_PENALTY_PER_STACK)
 end
 
 updateBleedSpeedPenalty = function()
@@ -572,6 +602,46 @@ local function applySteadyDrawHit(attack)
     steadyDrawConsumedSequence = steadyDrawSequence
 end
 
+local function isSuccessfulPinningShotHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not pinningShotEnabled or type(kindlingGripPlayerId) ~= "string" or kindlingGripPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= kindlingGripPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isRangedAttack(attack) then
+        return false
+    end
+
+    local attackWeaponRecord = getAttackWeaponRecord(attack)
+    if attackWeaponRecord ~= nil then
+        if not isBowOrCrossbowRecord(attackWeaponRecord) then
+            return false
+        end
+    elseif not actorHasEquippedBowOrCrossbow(attack.attacker) then
+        return false
+    end
+
+    return type(attack.damage) == "table" and (tonumber(attack.damage.health) or 0) > 0
+end
+
+local function addPinningShotStack()
+    if #pinningShotStacks >= PINNING_SHOT_MAX_STACKS then
+        table.remove(pinningShotStacks, 1)
+    end
+
+    pinningShotStacks[#pinningShotStacks + 1] = {
+        remainingTime = PINNING_SHOT_DURATION,
+    }
+    updatePinningShotSpeedPenalty()
+end
+
 local function addThrownFundamentalsBleed(attack)
     if trickThrowEnabled then
         attack.damage.health = attack.damage.health + #thrownFundamentalsBleedStacks
@@ -588,6 +658,11 @@ end
 
 local function clearThrownFundamentalsBleeds()
     thrownFundamentalsBleedStacks = {}
+end
+
+local function clearPinningShotStacks()
+    pinningShotStacks = {}
+    updatePinningShotSpeedPenalty()
 end
 
 local function onHit(attack)
@@ -608,6 +683,10 @@ local function onHit(attack)
 
     if isSuccessfulThrownWeaponHit(attack) then
         addThrownFundamentalsBleed(attack)
+    end
+
+    if isSuccessfulPinningShotHit(attack) then
+        addPinningShotStack()
     end
 end
 
@@ -632,6 +711,8 @@ local script = {
                 hewerHeartBloodTimer = math.max(0, tonumber(savedData.hewerHeartBloodTimer) or 0)
                 hewerHeartDamagePerTick = math.max(0, tonumber(savedData.hewerHeartDamagePerTick) or BLOODLETTER_DAMAGE_PER_TICK)
                 thrownFundamentalsBleedStacks = type(savedData.thrownFundamentalsBleedStacks) == "table" and savedData.thrownFundamentalsBleedStacks or {}
+                pinningShotStacks = type(savedData.pinningShotStacks) == "table" and savedData.pinningShotStacks or {}
+                pinningShotSpeedPenaltyApplied = math.max(0, math.floor(tonumber(savedData.pinningShotSpeedPenaltyApplied) or 0))
                 steadyDrawPlayerId = type(savedData.steadyDrawPlayerId) == "string" and savedData.steadyDrawPlayerId or steadyDrawPlayerId
                 steadyDrawMultiplier = math.max(1, tonumber(savedData.steadyDrawMultiplier) or steadyDrawMultiplier)
                 steadyDrawExpiresAt = math.max(0, tonumber(savedData.steadyDrawExpiresAt) or steadyDrawExpiresAt)
@@ -653,6 +734,7 @@ local script = {
                 ironCanopyEnabled = ironCanopyEnabled,
                 thrownFundamentalsEnabled = thrownFundamentalsEnabled,
                 trickThrowEnabled = trickThrowEnabled,
+                pinningShotEnabled = pinningShotEnabled,
                 steadyDrawPlayerId = steadyDrawPlayerId,
                 steadyDrawMultiplier = steadyDrawMultiplier,
                 steadyDrawExpiresAt = steadyDrawExpiresAt,
@@ -668,17 +750,21 @@ local script = {
                 hewerHeartBloodTimer = hewerHeartBloodTimer,
                 hewerHeartDamagePerTick = hewerHeartDamagePerTick,
                 thrownFundamentalsBleedStacks = thrownFundamentalsBleedStacks,
+                pinningShotStacks = pinningShotStacks,
+                pinningShotSpeedPenaltyApplied = pinningShotSpeedPenaltyApplied,
             }
         end,
         onUpdate = function(dt)
-            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 and #thrownFundamentalsBleedStacks == 0 then
+            if bloodletterRemainingTime <= 0 and hewerHeartRemainingTime <= 0 and #thrownFundamentalsBleedStacks == 0 and #pinningShotStacks == 0 then
                 updateBleedSpeedPenalty()
+                updatePinningShotSpeedPenalty()
                 return
             end
             if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
                 clearBloodletterBleed()
                 clearHewerHeartBleed()
                 clearThrownFundamentalsBleeds()
+                clearPinningShotStacks()
                 return
             end
 
@@ -696,6 +782,7 @@ local script = {
                         clearBloodletterBleed()
                         clearHewerHeartBleed()
                         clearThrownFundamentalsBleeds()
+                        clearPinningShotStacks()
                         return
                     end
                 end
@@ -720,6 +807,7 @@ local script = {
                         clearBloodletterBleed()
                         clearHewerHeartBleed()
                         clearThrownFundamentalsBleeds()
+                        clearPinningShotStacks()
                         return
                     end
                 end
@@ -749,6 +837,7 @@ local script = {
                             clearBloodletterBleed()
                             clearHewerHeartBleed()
                             clearThrownFundamentalsBleeds()
+                            clearPinningShotStacks()
                             return
                         end
                     end
@@ -762,7 +851,20 @@ local script = {
                 end
             end
 
+            for index = #pinningShotStacks, 1, -1 do
+                local stack = pinningShotStacks[index]
+                if type(stack) ~= "table" then
+                    table.remove(pinningShotStacks, index)
+                else
+                    stack.remainingTime = math.max(0, (tonumber(stack.remainingTime) or 0) - elapsed)
+                    if stack.remainingTime <= 0 then
+                        table.remove(pinningShotStacks, index)
+                    end
+                end
+            end
+
             updateBleedSpeedPenalty()
+            updatePinningShotSpeedPenalty()
         end,
     },
 }

@@ -36,7 +36,7 @@ return {
             x = -180,
             y = 280,
             title = "Pinning Shot",
-            description = "Placeholder bow path: Precise arrows and bolts are intended to hinder enemies before they can close the gap.",
+            description = "Bow and crossbow hits reduce target Speed by 10 for 5 seconds, stacking up to 3 times.",
         },
         {
             id = "marksman_thrown_fundamentals",

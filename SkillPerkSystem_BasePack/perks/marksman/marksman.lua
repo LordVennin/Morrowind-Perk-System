@@ -24,7 +24,7 @@ return {
             x = -180,
             y = 140,
             title = "Steady Draw",
-            description = "Placeholder bow path: Reward patient aim and controlled releases with bows and crossbows.",
+            description = "Holding a bow or crossbow attack steadily increases the next shot's Health damage by up to 30% after 4 seconds.",
         },
         {
             id = "marksman_pinning_shot",

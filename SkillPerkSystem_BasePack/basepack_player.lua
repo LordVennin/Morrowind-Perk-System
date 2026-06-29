@@ -4203,6 +4203,11 @@ local function isThrownAttackWindupAnimation(groupName, options)
     return string.find(g, "attack", 1, true) ~= nil
 end
 
+local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(addOnHitHandler) == "function" then
+    addOnHitHandler(applySteadyDrawDamage)
+end
+
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
     interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
         if not hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) then

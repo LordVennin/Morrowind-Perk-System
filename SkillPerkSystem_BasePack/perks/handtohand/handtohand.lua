@@ -13,7 +13,7 @@ return {
             x = 0,
             y = 0,
             title = "Centered Stance",
-            description = "Placeholder perk: improves baseline unarmed control and keeps the Hand-to-hand tree available for future implementation.",
+            description = "While you have no weapons or shields equipped, fortify Agility, Endurance, and Willpower by 3 points each.",
         },
         {
             id = "handtohand_open_palm",

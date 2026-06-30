@@ -99,6 +99,10 @@ local modules = {
         data = require("scripts.SkillPerkSystem_BasePack.perks.bluntweapon.bluntweapon"),
     },
     {
+        source = "scripts.SkillPerkSystem_BasePack.perks.handtohand.handtohand",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.handtohand.handtohand"),
+    },
+    {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.security",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.security"),
     },

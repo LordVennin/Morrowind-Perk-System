@@ -6987,6 +6987,186 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 
 end
 
+
+----------------------------------------------------------------------
+-- hand-to-hand runtime logic
+----------------------------------------------------------------------
+do
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Armor = types.Armor
+local Weapon = types.Weapon
+
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
+local CENTERED_STANCE_BONUS = 3
+
+local appliedBonuses = {}
+
+local ATTRIBUTES = {
+    "agility",
+    "endurance",
+    "willpower",
+}
+
+local function hasEnabledPerk(perkID)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
+        return false
+    end
+
+    if not playerApi.hasPerk(perkID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(perkID)
+    end
+
+    return true
+end
+
+local function getEquippedItem(slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, pself, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getArmorRecord(item)
+    if item == nil or Armor == nil then
+        return nil
+    end
+
+    if type(Armor.record) == "function" then
+        local okRecord, record = pcall(Armor.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Armor.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Armor.records) == "table" then
+        return Armor.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function itemIsWeapon(item)
+    return item ~= nil and Weapon ~= nil and type(Weapon.objectIsInstance) == "function" and Weapon.objectIsInstance(item)
+end
+
+local function itemIsShield(item)
+    if item == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(item) then
+        return false
+    end
+
+    local record = getArmorRecord(item)
+    return record ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE.Shield
+end
+
+local function hasEquippedWeaponOrShield()
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return true
+    end
+
+    local slots = {
+        Actor.EQUIPMENT_SLOT.CarriedRight,
+        Actor.EQUIPMENT_SLOT.CarriedLeft,
+    }
+
+    for _, slot in ipairs(slots) do
+        local item = getEquippedItem(slot)
+        if itemIsWeapon(item) or itemIsShield(item) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function resolveAttributeStat(attributeID)
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes[attributeID]
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyAttributeBonus(attributeID, targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedBonuses[attributeID]) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveAttributeStat(attributeID)
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedBonuses[attributeID] = desired
+end
+
+local function refreshCenteredStance()
+    local desiredBonus = 0
+    if hasEnabledPerk(CENTERED_STANCE_PERK_ID) and not hasEquippedWeaponOrShield() then
+        desiredBonus = CENTERED_STANCE_BONUS
+    end
+
+    for _, attributeID in ipairs(ATTRIBUTES) do
+        applyAttributeBonus(attributeID, desiredBonus)
+    end
+end
+
+__basepack_subsystems[#__basepack_subsystems + 1] = {
+    engineHandlers = {
+        onUpdate = function(_dt)
+            refreshCenteredStance()
+        end,
+        onSave = function()
+            refreshCenteredStance()
+            return {
+                centeredStanceAppliedBonuses = appliedBonuses,
+            }
+        end,
+        onLoad = function(data)
+            if type(data) == "table" and type(data.centeredStanceAppliedBonuses) == "table" then
+                appliedBonuses = data.centeredStanceAppliedBonuses
+            else
+                appliedBonuses = {}
+            end
+            refreshCenteredStance()
+        end,
+    },
+}
+
+end
+
 ----------------------------------------------------------------------
 -- combined eventHandlers
 ----------------------------------------------------------------------

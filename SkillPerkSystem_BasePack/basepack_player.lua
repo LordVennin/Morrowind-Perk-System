@@ -7002,7 +7002,9 @@ local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
+local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local CENTERED_STANCE_BONUS = 3
+local IRON_KNUCKLES_FATIGUE_DIVISOR = 20
 
 local appliedBonuses = {}
 
@@ -7132,6 +7134,65 @@ local function applyAttributeBonus(attributeID, targetBonus)
     appliedBonuses[attributeID] = desired
 end
 
+
+local function getCurrentFatigue()
+    local fatigueAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return 0
+    end
+
+    local fatigue = fatigueAccessor(pself)
+    if fatigue == nil then
+        return 0
+    end
+
+    return math.max(0, tonumber(fatigue.current) or 0)
+end
+
+local function isSuccessfulPlayerHandToHandHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.attacker ~= pself then
+        return false
+    end
+
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    if meleeType ~= nil and attack.sourceType ~= meleeType then
+        return false
+    end
+
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    return not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
+end
+
+local function applyIronKnucklesDamage(attack)
+    if not hasEnabledPerk(IRON_KNUCKLES_PERK_ID) then
+        return
+    end
+    if not isSuccessfulPlayerHandToHandHit(attack) then
+        return
+    end
+
+    local bonusDamage = getCurrentFatigue() / IRON_KNUCKLES_FATIGUE_DIVISOR
+    if bonusDamage <= 0 then
+        return
+    end
+
+    if type(attack.damage) ~= "table" then
+        attack.damage = {}
+    end
+    attack.damage.health = (tonumber(attack.damage.health) or 0) + bonusDamage
+end
+
 local function refreshCenteredStance()
     local desiredBonus = 0
     if hasEnabledPerk(CENTERED_STANCE_PERK_ID) and not hasEquippedWeaponOrShield() then
@@ -7141,6 +7202,11 @@ local function refreshCenteredStance()
     for _, attributeID in ipairs(ATTRIBUTES) do
         applyAttributeBonus(attributeID, desiredBonus)
     end
+end
+
+local handToHandAddOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(handToHandAddOnHitHandler) == "function" then
+    handToHandAddOnHitHandler(applyIronKnucklesDamage)
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {

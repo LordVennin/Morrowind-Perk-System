@@ -39,7 +39,7 @@ return {
             x = 180,
             y = 140,
             title = "Iron Knuckles",
-            description = "Hand-to-hand hits deal bonus Health damage equal to your current Fatigue divided by 20.",
+            description = "Hand-to-hand hits deal bonus Health damage equal to your current Fatigue divided by 30.",
         },
         {
             id = "handtohand_flowing_counter",

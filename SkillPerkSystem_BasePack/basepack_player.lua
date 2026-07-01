@@ -7004,7 +7004,7 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local CENTERED_STANCE_BONUS = 3
-local IRON_KNUCKLES_FATIGUE_DIVISOR = 20
+local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
 
 local appliedBonuses = {}
 
@@ -7152,33 +7152,29 @@ local function getCurrentFatigue()
     return math.max(0, tonumber(fatigue.current) or 0)
 end
 
-local function isSuccessfulPlayerHandToHandHit(attack)
-    if type(attack) ~= "table" or attack.successful ~= true then
-        return false
-    end
-    if attack.attacker ~= pself then
-        return false
-    end
+local function isValidIronKnucklesTarget(target)
+    return target ~= nil and type(target.isValid) == "function" and target:isValid()
+end
 
-    local meleeType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
-    if meleeType ~= nil and attack.sourceType ~= meleeType then
-        return false
-    end
-
+local function canApplyIronKnuckles()
     if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
         return false
     end
 
-    return not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
+    return hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
+        and not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
 end
 
-local function applyIronKnucklesDamage(attack)
-    if not hasEnabledPerk(IRON_KNUCKLES_PERK_ID) then
+local function tryApplyIronKnucklesDamage(data)
+    if type(data) ~= "table" then
         return
     end
-    if not isSuccessfulPlayerHandToHandHit(attack) then
+    if not canApplyIronKnuckles() then
+        return
+    end
+
+    local target = data.target
+    if not isValidIronKnucklesTarget(target) then
         return
     end
 
@@ -7187,10 +7183,9 @@ local function applyIronKnucklesDamage(attack)
         return
     end
 
-    if type(attack.damage) ~= "table" then
-        attack.damage = {}
-    end
-    attack.damage.health = (tonumber(attack.damage.health) or 0) + bonusDamage
+    target:sendEvent("SkillPerkSystem_ApplyIronKnucklesDamage", {
+        damage = bonusDamage,
+    })
 end
 
 local function refreshCenteredStance()
@@ -7210,6 +7205,9 @@ if type(handToHandAddOnHitHandler) == "function" then
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
+    eventHandlers = {
+        SkillPerkSystem_TryIronKnucklesDamage = tryApplyIronKnucklesDamage,
+    },
     engineHandlers = {
         onUpdate = function(_dt)
             refreshCenteredStance()

@@ -7003,8 +7003,12 @@ local Weapon = types.Weapon
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
+local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 local CENTERED_STANCE_BONUS = 3
 local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
+local BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER = 0.30
+local BREAKING_FIST_HEALTH_DAMAGE_MIN = 5
+local BREAKING_FIST_HEALTH_DAMAGE_MAX = 15
 
 local appliedBonuses = {}
 
@@ -7152,29 +7156,38 @@ local function getCurrentFatigue()
     return math.max(0, tonumber(fatigue.current) or 0)
 end
 
-local function isValidIronKnucklesTarget(target)
-    return target ~= nil and type(target.isValid) == "function" and target:isValid()
-end
+local function isPlayerHandToHandHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.damage ~= nil and type(attack.damage) ~= "table" then
+        return false
+    end
 
-local function canApplyIronKnuckles()
+    if attack.attacker ~= nil and attack.attacker ~= pself then
+        return false
+    end
+
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    if meleeType ~= nil and attack.sourceType ~= meleeType then
+        return false
+    end
+
+    if attack.weapon ~= nil then
+        return false
+    end
+
     if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
         return false
     end
 
-    return hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
-        and not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
+    return not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
 end
 
-local function tryApplyIronKnucklesDamage(data)
-    if type(data) ~= "table" then
-        return
-    end
-    if not canApplyIronKnuckles() then
-        return
-    end
-
-    local target = data.target
-    if not isValidIronKnucklesTarget(target) then
+local function applyIronKnucklesDamage(attack)
+    if not hasEnabledPerk(IRON_KNUCKLES_PERK_ID) or not isPlayerHandToHandHit(attack) then
         return
     end
 
@@ -7183,9 +7196,29 @@ local function tryApplyIronKnucklesDamage(data)
         return
     end
 
-    target:sendEvent("SkillPerkSystem_ApplyIronKnucklesDamage", {
-        damage = bonusDamage,
-    })
+    attack.damage = type(attack.damage) == "table" and attack.damage or {}
+    attack.damage.health = (tonumber(attack.damage.health) or 0) + bonusDamage
+end
+
+local function applyBreakingFistDamage(attack)
+    if not hasEnabledPerk(BREAKING_FIST_PERK_ID) or not isPlayerHandToHandHit(attack) then
+        return
+    end
+
+    attack.damage = type(attack.damage) == "table" and attack.damage or {}
+
+    local fatigueDamage = tonumber(attack.damage.fatigue) or 0
+    if fatigueDamage > 0 then
+        attack.damage.fatigue = fatigueDamage * BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER
+    end
+
+    attack.damage.health = (tonumber(attack.damage.health) or 0)
+        + math.random(BREAKING_FIST_HEALTH_DAMAGE_MIN, BREAKING_FIST_HEALTH_DAMAGE_MAX)
+end
+
+local function applyHandToHandDamagePerks(attack)
+    applyIronKnucklesDamage(attack)
+    applyBreakingFistDamage(attack)
 end
 
 local function refreshCenteredStance()
@@ -7201,13 +7234,10 @@ end
 
 local handToHandAddOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(handToHandAddOnHitHandler) == "function" then
-    handToHandAddOnHitHandler(applyIronKnucklesDamage)
+    handToHandAddOnHitHandler(applyHandToHandDamagePerks)
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
-    eventHandlers = {
-        SkillPerkSystem_TryIronKnucklesDamage = tryApplyIronKnucklesDamage,
-    },
     engineHandlers = {
         onUpdate = function(_dt)
             refreshCenteredStance()

@@ -7199,6 +7199,11 @@ local function refreshCenteredStance()
     end
 end
 
+local handToHandAddOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(handToHandAddOnHitHandler) == "function" then
+    handToHandAddOnHitHandler(applyIronKnucklesDamage)
+end
+
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryIronKnucklesDamage = tryApplyIronKnucklesDamage,

@@ -7002,7 +7002,9 @@ local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
+local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local CENTERED_STANCE_BONUS = 3
+local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
 
 local appliedBonuses = {}
 
@@ -7132,6 +7134,60 @@ local function applyAttributeBonus(attributeID, targetBonus)
     appliedBonuses[attributeID] = desired
 end
 
+
+local function getCurrentFatigue()
+    local fatigueAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return 0
+    end
+
+    local fatigue = fatigueAccessor(pself)
+    if fatigue == nil then
+        return 0
+    end
+
+    return math.max(0, tonumber(fatigue.current) or 0)
+end
+
+local function isValidIronKnucklesTarget(target)
+    return target ~= nil and type(target.isValid) == "function" and target:isValid()
+end
+
+local function canApplyIronKnuckles()
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    return hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
+        and not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
+end
+
+local function tryApplyIronKnucklesDamage(data)
+    if type(data) ~= "table" then
+        return
+    end
+    if not canApplyIronKnuckles() then
+        return
+    end
+
+    local target = data.target
+    if not isValidIronKnucklesTarget(target) then
+        return
+    end
+
+    local bonusDamage = getCurrentFatigue() / IRON_KNUCKLES_FATIGUE_DIVISOR
+    if bonusDamage <= 0 then
+        return
+    end
+
+    target:sendEvent("SkillPerkSystem_ApplyIronKnucklesDamage", {
+        damage = bonusDamage,
+    })
+end
+
 local function refreshCenteredStance()
     local desiredBonus = 0
     if hasEnabledPerk(CENTERED_STANCE_PERK_ID) and not hasEquippedWeaponOrShield() then
@@ -7144,6 +7200,9 @@ local function refreshCenteredStance()
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
+    eventHandlers = {
+        SkillPerkSystem_TryIronKnucklesDamage = tryApplyIronKnucklesDamage,
+    },
     engineHandlers = {
         onUpdate = function(_dt)
             refreshCenteredStance()

@@ -1420,7 +1420,7 @@ local function applyHealthDamage(amount)
     return true
 end
 
-local function onApplyLongBladeCriticalDamage(data)
+local function applyDirectHealthDamage(data)
     if type(data) ~= "table" then
         return
     end
@@ -1471,12 +1471,16 @@ local function onHit(attack)
     attack.attacker:sendEvent("SkillPerkSystem_TryGrandmasterHeavyCritical", {
         target = selfObj,
     })
+    attack.attacker:sendEvent("SkillPerkSystem_TryIronKnucklesDamage", {
+        target = selfObj,
+    })
 end
 
 local script = {
     eventHandlers = {
         SkillPerkSystem_DuelistsTempoRefresh = setState,
-        SkillPerkSystem_ApplyLongBladeCriticalDamage = onApplyLongBladeCriticalDamage,
+        SkillPerkSystem_ApplyLongBladeCriticalDamage = applyDirectHealthDamage,
+        SkillPerkSystem_ApplyIronKnucklesDamage = applyDirectHealthDamage,
     },
     engineHandlers = {
         onInit = function(initData)

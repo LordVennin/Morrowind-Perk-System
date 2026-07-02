@@ -2332,6 +2332,7 @@ local handToHandState = {
     playerId = nil,
     ironKnucklesEnabled = false,
     breakingFistEnabled = false,
+    flowingCounterMode = "none",
 }
 
 local function shouldAttachWatcher(actor)
@@ -2381,6 +2382,7 @@ local function onHandToHandState(data)
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         ironKnucklesEnabled = data.ironKnucklesEnabled == true,
         breakingFistEnabled = data.breakingFistEnabled == true,
+        flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",
     }
     refreshWatchers()
 end

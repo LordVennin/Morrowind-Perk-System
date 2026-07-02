@@ -2,6 +2,7 @@
 -- Supersedes axe_target.lua, bluntweapon_target.lua, duelists_tempo_target.lua, and aegis_rite_target.lua.
 
 -- 1. shared requires/constants/helpers
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 
 local axe = {}
@@ -9,6 +10,7 @@ local blunt = {}
 local duelistTempo = {}
 local aegisRite = {}
 local handToHand = {}
+local TARGET_SCRIPT_IDLE_EVENT = "SkillPerkSystem_BasePack_TargetScriptIdle"
 
 -- 2. shared actor/stat/weapon/combat helpers
 -- Subsystem-specific copies remain local below to preserve existing behavior and API fallbacks.
@@ -933,6 +935,26 @@ local script = {
 
     axe.eventHandlers = script.eventHandlers or {}
     axe.engineHandlers = script.engineHandlers or {}
+    axe.hasActiveState = function()
+        return bloodletterRemainingTime > 0
+            or bloodletterSpeedPenaltyApplied > 0
+            or hewerHeartRemainingTime > 0
+            or #thrownFundamentalsBleedStacks > 0
+            or #deadeyeMasteryBleedStacks > 0
+            or #pinningShotStacks > 0
+            or pinningShotSpeedPenaltyApplied > 0
+            or kindlingGripEnabled
+            or bloodletterEnabled
+            or draggingWoundEnabled
+            or hewerHeartEnabled
+            or crimsonCleaveEnabled
+            or ironCanopyEnabled
+            or thrownFundamentalsEnabled
+            or trickThrowEnabled
+            or pinningShotEnabled
+            or deadeyeMasteryEnabled
+            or steadyDrawMultiplier > 1
+    end
     axe.onHit = onHit
 end
 
@@ -1341,6 +1363,15 @@ local script = {
 
     blunt.eventHandlers = script.eventHandlers or {}
     blunt.engineHandlers = script.engineHandlers or {}
+    blunt.hasActiveState = function()
+        return strengthInArmsEnabled
+            or strengthInArmsDamageBonus > 0
+            or platebreakerEnabled
+            or breathstealerEnabled
+            or heavyHitterEnabled
+            or staggeringBlowEnabled
+            or ironBellEnabled
+    end
     blunt.onHit = onHit
 end
 
@@ -1527,6 +1558,9 @@ local script = {
 
     duelistTempo.eventHandlers = script.eventHandlers or {}
     duelistTempo.engineHandlers = script.engineHandlers or {}
+    duelistTempo.hasActiveState = function()
+        return remainingTime > 0 or appliedPenalty ~= 0
+    end
     duelistTempo.onHit = onHit
 end
 
@@ -1640,6 +1674,9 @@ local script = {
 
     aegisRite.eventHandlers = script.eventHandlers or {}
     aegisRite.engineHandlers = script.engineHandlers or {}
+    aegisRite.hasActiveState = function()
+        return remainingTime > 0
+    end
     aegisRite.onHit = onHit
 end
 
@@ -1794,6 +1831,10 @@ end
 handToHand.eventHandlers = {
     SkillPerkSystem_HandToHandRefresh = setState,
 }
+handToHand.hasActiveState = function()
+    return ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none"
+end
+
 handToHand.engineHandlers = {
     onInit = function(initData)
         setState(initData)
@@ -1845,6 +1886,33 @@ local function callEngineHandler(subsystem, name, ...)
     end
 end
 
+local function subsystemHasActiveState(subsystem)
+    return subsystem ~= nil and type(subsystem.hasActiveState) == "function" and subsystem.hasActiveState() == true
+end
+
+local function hasAnyActiveTargetState()
+    return subsystemHasActiveState(axe)
+        or subsystemHasActiveState(blunt)
+        or subsystemHasActiveState(duelistTempo)
+        or subsystemHasActiveState(aegisRite)
+        or subsystemHasActiveState(handToHand)
+end
+
+local function requestRemovalIfIdle()
+    if hasAnyActiveTargetState() then
+        return
+    end
+    core.sendGlobalEvent(TARGET_SCRIPT_IDLE_EVENT, {
+        target = require("openmw.self"),
+    })
+end
+
+local function callActiveUpdate(subsystem, dt)
+    if subsystemHasActiveState(subsystem) then
+        callEngineHandler(subsystem, "onUpdate", dt)
+    end
+end
+
 return {
     eventHandlers = eventHandlers,
     engineHandlers = {
@@ -1878,11 +1946,12 @@ return {
             }
         end,
         onUpdate = function(dt)
-            callEngineHandler(axe, "onUpdate", dt)
-            callEngineHandler(blunt, "onUpdate", dt)
-            callEngineHandler(duelistTempo, "onUpdate", dt)
-            callEngineHandler(aegisRite, "onUpdate", dt)
-            callEngineHandler(handToHand, "onUpdate", dt)
+            callActiveUpdate(axe, dt)
+            callActiveUpdate(blunt, dt)
+            callActiveUpdate(duelistTempo, dt)
+            callActiveUpdate(aegisRite, dt)
+            callActiveUpdate(handToHand, dt)
+            requestRemovalIfIdle()
         end,
     },
 }

@@ -6,9 +6,176 @@ local subsystems = {}
 
 -- 2. shared event names/script path constants
 local BASEPACK_ACTOR_TARGET_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
+local TARGET_SCRIPT_IDLE_EVENT = "SkillPerkSystem_BasePack_TargetScriptIdle"
 
 -- 3. shared actor scanning/target attachment helpers
--- Subsystems below preserve their original scanning and attachment filters while sharing the consolidated target script path above.
+-- Target-side systems share one active-actor scan and one attached-target cache so idle state
+-- changes do not require each subsystem to repeatedly walk world.activeActors.
+local targetWatcher = {
+    interval = 1.0,
+    timer = 0,
+    scanRequested = false,
+    providers = {},
+    providerOrder = {},
+    attachedTargets = {},
+}
+
+local function registerTargetWatcherProvider(id, provider)
+    if type(id) ~= "string" or id == "" or type(provider) ~= "table" then
+        return
+    end
+    if targetWatcher.providers[id] == nil then
+        targetWatcher.providerOrder[#targetWatcher.providerOrder + 1] = id
+    end
+    targetWatcher.providers[id] = provider
+end
+
+local function providerIsActive(provider)
+    return provider ~= nil and type(provider.isActive) == "function" and provider.isActive() == true
+end
+
+local function anyTargetWatcherProviderActive()
+    for _, id in ipairs(targetWatcher.providerOrder) do
+        if providerIsActive(targetWatcher.providers[id]) then
+            return true
+        end
+    end
+    return false
+end
+
+local function isValidTargetWatcherActor(actor)
+    local types = require("openmw.types")
+    local world = require("openmw.world")
+    local Actor = types.Actor
+    if actor == nil or Actor == nil then
+        return false
+    end
+    if type(actor.isValid) == "function" and not actor:isValid() then
+        return false
+    end
+    if type(Actor.isDead) == "function" and Actor.isDead(actor) then
+        return false
+    end
+    if world.players ~= nil and actor == world.players[1] then
+        return false
+    end
+    return type(actor.hasScript) == "function" and type(actor.addScript) == "function"
+end
+
+local function rememberAttachedTarget(actor)
+    if actor ~= nil then
+        targetWatcher.attachedTargets[actor] = true
+    end
+end
+
+local function forgetAttachedTarget(actor)
+    if actor ~= nil then
+        targetWatcher.attachedTargets[actor] = nil
+    end
+end
+
+local function sendActiveTargetWatcherStates(actor)
+    if actor == nil or type(actor.sendEvent) ~= "function" then
+        return
+    end
+    for _, id in ipairs(targetWatcher.providerOrder) do
+        local provider = targetWatcher.providers[id]
+        if providerIsActive(provider) and type(provider.sendState) == "function" then
+            provider.sendState(actor)
+        end
+    end
+end
+
+local function sendTargetWatcherStateToAttached(provider)
+    if provider == nil or type(provider.sendState) ~= "function" then
+        return
+    end
+    for actor in pairs(targetWatcher.attachedTargets) do
+        if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+            provider.sendState(actor)
+        else
+            forgetAttachedTarget(actor)
+        end
+    end
+end
+
+local function requestTargetWatcherRefresh()
+    targetWatcher.scanRequested = true
+    targetWatcher.timer = targetWatcher.interval
+end
+
+local function refreshCombinedTargetWatchers()
+    if not anyTargetWatcherProviderActive() then
+        targetWatcher.scanRequested = false
+        return
+    end
+
+    local world = require("openmw.world")
+    for _, actor in ipairs(world.activeActors) do
+        if isValidTargetWatcherActor(actor) then
+            if actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+                rememberAttachedTarget(actor)
+                sendActiveTargetWatcherStates(actor)
+            else
+                actor:addScript(BASEPACK_ACTOR_TARGET_SCRIPT, {})
+                rememberAttachedTarget(actor)
+                sendActiveTargetWatcherStates(actor)
+            end
+        end
+    end
+
+    targetWatcher.scanRequested = false
+end
+
+local function onTargetWatcherProviderStateChanged(id, active)
+    local provider = targetWatcher.providers[id]
+    if active == true then
+        requestTargetWatcherRefresh()
+    else
+        sendTargetWatcherStateToAttached(provider)
+    end
+end
+
+local function removeIdleTargetScript(data)
+    if type(data) ~= "table" then
+        return
+    end
+    local target = data.target
+    if target == nil or type(target.isValid) ~= "function" or not target:isValid() then
+        forgetAttachedTarget(target)
+        return
+    end
+    if type(target.hasScript) ~= "function" or not target:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+        forgetAttachedTarget(target)
+        return
+    end
+    if type(target.removeScript) == "function" then
+        target:removeScript(BASEPACK_ACTOR_TARGET_SCRIPT)
+        forgetAttachedTarget(target)
+    end
+end
+
+subsystems.shared_target_watcher = {
+    eventHandlers = {
+        [TARGET_SCRIPT_IDLE_EVENT] = removeIdleTargetScript,
+    },
+    engineHandlers = {
+        onUpdate = function(dt)
+            if not anyTargetWatcherProviderActive() then
+                targetWatcher.timer = 0
+                targetWatcher.scanRequested = false
+                return
+            end
+
+            targetWatcher.timer = targetWatcher.timer + (tonumber(dt) or 0)
+            if targetWatcher.scanRequested or targetWatcher.timer >= targetWatcher.interval then
+                targetWatcher.timer = 0
+                refreshCombinedTargetWatchers()
+            end
+        end,
+        onLoad = requestTargetWatcherRefresh,
+    },
+}
 
 -- 4. security global hooks
 do
@@ -2263,13 +2430,7 @@ local function axeTargetStateActive()
 end
 
 local function refreshWatchers()
-    for _, actor in ipairs(world.activeActors) do
-        if shouldAttachWatcher(actor) then
-            actor:addScript(AXE_TARGET_SCRIPT, kindlingGripState)
-        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(AXE_TARGET_SCRIPT) then
-            sendState(actor)
-        end
-    end
+    onTargetWatcherProviderStateChanged("axe", axeTargetStateActive())
 end
 
 local function onKindlingGripState(data)
@@ -2310,25 +2471,18 @@ local function onSteadyDrawState(data)
     refreshWatchers()
 end
 
+registerTargetWatcherProvider("axe", {
+    isActive = axeTargetStateActive,
+    sendState = sendState,
+})
+
 subsystems.axe = {
     eventHandlers = {
         SkillPerkSystem_AxeKindlingGripState = onKindlingGripState,
         SkillPerkSystem_MarksmanSteadyDrawState = onSteadyDrawState,
     },
     engineHandlers = {
-        onUpdate = function(dt)
-            if not axeTargetStateActive() then
-                return
-            end
-
-            refreshTimer = refreshTimer + (tonumber(dt) or 0)
-            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
-                refreshTimer = 0
-                refreshWatchers()
-            end
-        end,
         onLoad = function()
-            refreshTimer = WATCHER_REFRESH_INTERVAL
             refreshWatchers()
         end,
     },
@@ -2389,13 +2543,7 @@ local function handToHandTargetStateActive()
 end
 
 local function refreshWatchers()
-    for _, actor in ipairs(world.activeActors) do
-        if shouldAttachWatcher(actor) then
-            actor:addScript(HAND_TO_HAND_TARGET_SCRIPT, handToHandState)
-        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(HAND_TO_HAND_TARGET_SCRIPT) then
-            sendState(actor)
-        end
-    end
+    onTargetWatcherProviderStateChanged("handtohand", handToHandTargetStateActive())
 end
 
 local function onHandToHandState(data)
@@ -2412,24 +2560,17 @@ local function onHandToHandState(data)
     refreshWatchers()
 end
 
+registerTargetWatcherProvider("handtohand", {
+    isActive = handToHandTargetStateActive,
+    sendState = sendState,
+})
+
 subsystems.handtohand = {
     eventHandlers = {
         SkillPerkSystem_HandToHandState = onHandToHandState,
     },
     engineHandlers = {
-        onUpdate = function(dt)
-            if not handToHandTargetStateActive() then
-                return
-            end
-
-            refreshTimer = refreshTimer + (tonumber(dt) or 0)
-            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
-                refreshTimer = 0
-                refreshWatchers()
-            end
-        end,
         onLoad = function()
-            refreshTimer = WATCHER_REFRESH_INTERVAL
             refreshWatchers()
         end,
     },
@@ -2630,13 +2771,7 @@ local function bluntTargetStateActive()
 end
 
 local function refreshWatchers()
-    for _, actor in ipairs(world.activeActors) do
-        if shouldAttachWatcher(actor) then
-            actor:addScript(TARGET_SCRIPT, strengthInArmsState)
-        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(TARGET_SCRIPT) then
-            sendState(actor)
-        end
-    end
+    onTargetWatcherProviderStateChanged("bluntweapon", bluntTargetStateActive())
 end
 
 local function onStrengthInArmsState(data)
@@ -2658,6 +2793,11 @@ local function onStrengthInArmsState(data)
     refreshWatchers()
 end
 
+registerTargetWatcherProvider("bluntweapon", {
+    isActive = bluntTargetStateActive,
+    sendState = sendState,
+})
+
 subsystems.bluntweapon = {
     eventHandlers = {
         SkillPerkSystem_BluntWeaponStrengthInArmsState = onStrengthInArmsState,
@@ -2665,19 +2805,7 @@ subsystems.bluntweapon = {
         SkillPerkSystem_ApplyHeavyHitterShieldDamage = applyHeavyHitterShieldDamage,
     },
     engineHandlers = {
-        onUpdate = function(dt)
-            if not bluntTargetStateActive() then
-                return
-            end
-
-            refreshTimer = refreshTimer + (tonumber(dt) or 0)
-            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
-                refreshTimer = 0
-                refreshWatchers()
-            end
-        end,
         onLoad = function()
-            refreshTimer = WATCHER_REFRESH_INTERVAL
             refreshWatchers()
         end,
     },
@@ -2718,28 +2846,8 @@ local function shouldAttachWatcher(actor)
     return not actor:hasScript(DUELISTS_TEMPO_TARGET_SCRIPT)
 end
 
-local function refreshWatchers()
-    for _, actor in ipairs(world.activeActors) do
-        if shouldAttachWatcher(actor) then
-            actor:addScript(DUELISTS_TEMPO_TARGET_SCRIPT, {})
-        end
-    end
-end
-
 subsystems.duelists_tempo = {
-    engineHandlers = {
-        onUpdate = function(dt)
-            refreshTimer = refreshTimer + (tonumber(dt) or 0)
-            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
-                refreshTimer = 0
-                refreshWatchers()
-            end
-        end,
-        onLoad = function()
-            refreshTimer = WATCHER_REFRESH_INTERVAL
-            refreshWatchers()
-        end,
-    },
+    engineHandlers = {},
 }
 
 -- End consolidated from SkillPerkSystem_BasePack/duelists_tempo_global.lua
@@ -3671,11 +3779,13 @@ local eventHandlers = {
     SkillPerkSystem_PrimeAegisRite = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_PrimeAegisRite", data) end,
     SkillPerkSystem_ApplyAegisRiteEffect = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_ApplyAegisRiteEffect", data) end,
     SkillPerkSystem_RemoveAegisRiteTarget = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_RemoveAegisRiteTarget", data) end,
+    [TARGET_SCRIPT_IDLE_EVENT] = function(data) dispatchEvent("shared_target_watcher", TARGET_SCRIPT_IDLE_EVENT, data) end,
 }
 
 -- 14. combined engineHandlers
 local engineOrder = {
     "security_global",
+    "shared_target_watcher",
     "treasure_sense",
     "lucky_find",
     "unseen_hand",

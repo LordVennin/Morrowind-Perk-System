@@ -114,6 +114,17 @@ These entries track the conversion from fixed-interval player-to-global state pu
 | Marksman player state | Added perk/UI dirty invalidation for Bow Fundamentals/Deadeye agility refresh while leaving Steady Draw shot publishing event-driven. | Continue validating that Steady Draw frame windows cover all held-shot starts. |
 | Hand-to-hand player publisher | Removed the 1-second hand-to-hand state publish timer and publishes target-side hand-to-hand state only when dirty, while keeping Open Palm timer cleanup active. | Replace short equipment scan windows with direct weapon/shield/glove equip events when available. |
 
+## PR7 target-side watcher follow-up checklist
+
+These entries track the target-side conversion from repeated watcher scans toward shared watcher state and idle target-script removal.
+
+| Subsystem | PR7 action | Remaining follow-up |
+| --- | --- | --- |
+| Global target watchers | Replaced separate axe, blunt, and hand-to-hand watcher scans with one shared active-actor watcher that only scans while at least one registered target-side provider is active. | Prefer fully on-demand attachment for hit-modifier-only features if future combat events expose enough target context globally. |
+| Duelist's Tempo | Removed the unconditional Duelist's Tempo active-actor watcher and attaches the combined target script directly when applying target tempo state. | Validate in game that player-side combat handlers cover all previous target-bridge hit paths. |
+| Combined target runtime | Added per-subsystem active-state checks and an idle removal request so target scripts can remove themselves after all local state is inactive. | Keep expanding active-state predicates if future target-side timers/debuffs are added. |
+| Hand-to-hand Open Palm | Added a player-side hit path for Open Palm so it no longer depends on always-attached target bridge scripts. | Validate unarmed hit target detection across OpenMW attack payload variants. |
+
 ## High-cost candidates called out
 
 1. **Hand-to-hand player glove/equipment polling** in `basepack_player.lua`: Centered Stance and Flowing Counter refresh every player update, while state publishing is only throttled after those refreshes.

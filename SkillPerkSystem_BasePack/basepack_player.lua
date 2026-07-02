@@ -7122,19 +7122,86 @@ local function getEquippedGloveRecord(slot)
     return getArmorRecord(item)
 end
 
-local function gloveArmorWeightClass(record)
+local function normalizedRecordText(record)
+    local parts = {}
+    if type(record.id) == "string" then
+        parts[#parts + 1] = record.id
+    end
+    if type(record.name) == "string" then
+        parts[#parts + 1] = record.name
+    end
+    if type(record.icon) == "string" then
+        parts[#parts + 1] = record.icon
+    end
+    if type(record.model) == "string" then
+        parts[#parts + 1] = record.model
+    end
+
+    return string.lower(table.concat(parts, " "))
+end
+
+local function gloveArmorClass(record)
     if record == nil then
         return "none"
     end
 
-    -- OpenMW exposes armor body-part type but not the TES3 armor weight
-    -- class through ArmorRecord, so classify gauntlets/bracers by their
-    -- record weight. Vanilla and most modded gloves use low weights for
-    -- light, middle weights for medium, and high weights for heavy armor.
+    local recordText = normalizedRecordText(record)
+    local lightArmorHints = {
+        "chitin",
+        "dreugh",
+        "glass",
+        "leather",
+        "netch",
+        "nordic fur",
+        "wolv",
+    }
+    for _, hint in ipairs(lightArmorHints) do
+        if string.find(recordText, hint, 1, true) ~= nil then
+            return "light"
+        end
+    end
+
+    local mediumArmorHints = {
+        "adamantium",
+        "bonemold",
+        "chain",
+        "ice armor",
+        "imperial chain",
+        "orcish",
+        "royal guard",
+        "scale",
+        "snow bear",
+        "snow wolf",
+    }
+    for _, hint in ipairs(mediumArmorHints) do
+        if string.find(recordText, hint, 1, true) ~= nil then
+            return "medium"
+        end
+    end
+
+    local heavyArmorHints = {
+        "daedric",
+        "dwemer",
+        "ebony",
+        "her hand",
+        "imperial steel",
+        "iron",
+        "nordic mail",
+        "steel",
+    }
+    for _, hint in ipairs(heavyArmorHints) do
+        if string.find(recordText, hint, 1, true) ~= nil then
+            return "heavy"
+        end
+    end
+
+    -- OpenMW exposes the armor body-part type but not the TES3 armor skill
+    -- class through ArmorRecord, so use the record's weight as a final
+    -- fallback for modded gloves that do not include vanilla material names.
     local weight = tonumber(record.weight) or 0
-    if weight <= 1 then
+    if weight <= 2 then
         return "light"
-    elseif weight <= 4 then
+    elseif weight <= 6 then
         return "medium"
     end
 
@@ -7158,8 +7225,8 @@ local function equippedFlowingCounterMode()
         return "none"
     end
 
-    local leftClass = gloveArmorWeightClass(leftRecord)
-    local rightClass = gloveArmorWeightClass(rightRecord)
+    local leftClass = gloveArmorClass(leftRecord)
+    local rightClass = gloveArmorClass(rightRecord)
     if leftClass == rightClass then
         return leftClass
     end
@@ -7233,7 +7300,7 @@ local function setPlayerAbility(abilityId, shouldHave)
             end
         end
         return ok or flowingCounterAbilityApplied
-    elseif not shouldHave and hasAbility and type(spells.remove) == "function" then
+    elseif not shouldHave and type(spells.remove) == "function" then
         local ok = pcall(function()
             spells:remove(abilityId)
         end)

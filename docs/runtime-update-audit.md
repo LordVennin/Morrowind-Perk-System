@@ -102,6 +102,18 @@ These entries track the second conversion pass for remaining player-side polling
 | Careful Repairs | Replaced enabled-perk repair-tool polling with repair-use/suppression/refund scan windows and persisted pending suppression count. | Prefer a direct repair-tool-use result event if OpenMW exposes one reliably. |
 | Hand-to-hand player | Split Open Palm active timer handling from dirty/static equipment refreshes and removed the idle enabled-perk gate. | Prefer direct equipment/perk dirty events for weapon, shield, and glove changes. |
 
+## PR6 dirty publishing follow-up checklist
+
+These entries track the conversion from fixed-interval player-to-global state publishing to dirty-state publishing. Active effect timers remain update/frame-driven only while live.
+
+| Subsystem | PR6 action | Remaining follow-up |
+| --- | --- | --- |
+| Perk state invalidation | Added a player-local `SkillPerkSystem_PerkStateChanged` event after perk add/remove/respec/effect-toggle paths so basepack publishers can invalidate static perk bundles without polling. | Expand this event if future perk mutation paths are added outside the current player script handlers. |
+| Axe / Fellstar player publisher | Replaced the 1-second axe state/feather publish loop with dirty flags driven by load, perk changes, UI/equipment fallback events, and axe animation checks. | Prefer a direct equipment-changed signal over UI/animation fallback once OpenMW exposes one in this context. |
+| Blunt weapon player publisher | Split Guarded Stamina refund timing from static blunt perk bundle publishing; the update gate now runs only while a refund is pending or blunt state is dirty. | Strength-derived damage bonus still needs invalidation if non-perk strength changes should update target-side damage outside combat/UI activity. |
+| Marksman player state | Added perk/UI dirty invalidation for Bow Fundamentals/Deadeye agility refresh while leaving Steady Draw shot publishing event-driven. | Continue validating that Steady Draw frame windows cover all held-shot starts. |
+| Hand-to-hand player publisher | Removed the 1-second hand-to-hand state publish timer and publishes target-side hand-to-hand state only when dirty, while keeping Open Palm timer cleanup active. | Replace short equipment scan windows with direct weapon/shield/glove equip events when available. |
+
 ## High-cost candidates called out
 
 1. **Hand-to-hand player glove/equipment polling** in `basepack_player.lua`: Centered Stance and Flowing Counter refresh every player update, while state publishing is only throttled after those refreshes.

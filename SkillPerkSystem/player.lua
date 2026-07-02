@@ -333,6 +333,19 @@ local function setPerkEffectEnabledState(perkID, enabled)
     end
 end
 
+local function notifyPerkStateChanged(perkID, reason, enabled)
+    if type(perkID) ~= "string" or perkID == "" then
+        return
+    end
+    if pself ~= nil and type(pself.sendEvent) == "function" then
+        pself:sendEvent(MOD_NAME .. "_PerkStateChanged", {
+            perkID = perkID,
+            reason = reason,
+            enabled = enabled,
+        })
+    end
+end
+
 local function reconcileSaveState()
     local modApi = interfaces[MOD_NAME]
     if modApi == nil or type(modApi.getPerks) ~= "function" then
@@ -476,6 +489,7 @@ local function addPerk(data)
         pointsLedger.getTotalSpent()
     ))
     applyEffectAcquire(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
+    notifyPerkStateChanged(data.perkID, "added", true)
 end
 
 local function removePerk(data)
@@ -495,6 +509,7 @@ local function removePerk(data)
             pointsLedger.addPoints(perk.cost, "Perk removed", data.perkID)
             effectEnabledByPerkId[data.perkID] = nil
             applyEffectRemove(perk.effectId, { perkID = data.perkID, perk = perk, player = pself })
+            notifyPerkStateChanged(data.perkID, "removed", false)
             return
         end
     end
@@ -528,6 +543,7 @@ local function togglePerkEffect(data)
     end
 
     print(string.format("[%s] Perk effect toggled perk=%s enabled=%s", MOD_NAME, tostring(data.perkID), tostring(targetEnabled)))
+    notifyPerkStateChanged(data.perkID, "toggled", targetEnabled)
     return targetEnabled
 end
 
@@ -567,6 +583,7 @@ local function respecAllPerks()
             end
             effectEnabledByPerkId[perkID] = nil
             removedCount = removedCount + 1
+            notifyPerkStateChanged(perkID, "respec", false)
         else
             print("[" .. MOD_NAME .. "] Skipping unknown active perk during respec: " .. tostring(perkID))
         end

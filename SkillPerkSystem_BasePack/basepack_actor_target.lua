@@ -1475,6 +1475,9 @@ local function onHit(attack)
     attack.attacker:sendEvent("SkillPerkSystem_TryIronKnucklesDamage", {
         target = selfObj,
     })
+    attack.attacker:sendEvent("SkillPerkSystem_TryOpenPalm", {
+        target = selfObj,
+    })
 end
 
 local script = {

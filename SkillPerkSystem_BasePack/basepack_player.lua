@@ -6999,17 +6999,25 @@ local types = require("openmw.types")
 
 local Actor = types.Actor
 local Armor = types.Armor
+local NPC = types.NPC
 local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
+local OPEN_PALM_PERK_ID = "handtohand_open_palm"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 local CENTERED_STANCE_BONUS = 3
+local OPEN_PALM_BONUS_PER_STACK = 3
+local OPEN_PALM_MAX_STACKS = 5
+local OPEN_PALM_DURATION = 6.0
 local HAND_TO_HAND_STATE_EVENT = "SkillPerkSystem_HandToHandState"
 local HAND_TO_HAND_STATE_REFRESH_INTERVAL = 1.0
 
 local appliedBonuses = {}
+local openPalmStacks = 0
+local openPalmRemaining = 0
+local appliedOpenPalmBonus = 0
 local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
 local lastHandToHandStateKey = nil
 
@@ -7140,6 +7148,75 @@ local function applyAttributeBonus(attributeID, targetBonus)
 end
 
 
+local function resolveHandToHandStat()
+    local accessor = NPC ~= nil
+        and NPC.stats ~= nil
+        and NPC.stats.skills ~= nil
+        and NPC.stats.skills.handtohand
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyOpenPalmBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedOpenPalmBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveHandToHandStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedOpenPalmBonus = desired
+end
+
+local function clearOpenPalmStacks()
+    openPalmStacks = 0
+    openPalmRemaining = 0
+    applyOpenPalmBonus(0)
+end
+
+local function tryApplyOpenPalm(data)
+    if type(data) ~= "table" or data.target == nil then
+        return
+    end
+    if not hasEnabledPerk(OPEN_PALM_PERK_ID) or hasEquippedWeaponOrShield() then
+        clearOpenPalmStacks()
+        return
+    end
+
+    openPalmStacks = math.min(OPEN_PALM_MAX_STACKS, math.max(0, math.floor(tonumber(openPalmStacks) or 0)) + 1)
+    openPalmRemaining = OPEN_PALM_DURATION
+    applyOpenPalmBonus(openPalmStacks * OPEN_PALM_BONUS_PER_STACK)
+end
+
+local function updateOpenPalm(dt)
+    if openPalmStacks <= 0 then
+        if appliedOpenPalmBonus ~= 0 then
+            applyOpenPalmBonus(0)
+        end
+        return
+    end
+
+    if not hasEnabledPerk(OPEN_PALM_PERK_ID) or hasEquippedWeaponOrShield() then
+        clearOpenPalmStacks()
+        return
+    end
+
+    openPalmRemaining = math.max(0, (tonumber(openPalmRemaining) or 0) - (tonumber(dt) or 0))
+    if openPalmRemaining <= 0 then
+        clearOpenPalmStacks()
+    else
+        applyOpenPalmBonus(openPalmStacks * OPEN_PALM_BONUS_PER_STACK)
+    end
+end
+
 local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
@@ -7169,9 +7246,13 @@ local function refreshCenteredStance()
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
+    eventHandlers = {
+        SkillPerkSystem_TryOpenPalm = tryApplyOpenPalm,
+    },
     engineHandlers = {
         onUpdate = function(dt)
             refreshCenteredStance()
+            updateOpenPalm(dt)
             handToHandStateRefreshTimer = handToHandStateRefreshTimer + (tonumber(dt) or 0)
             if handToHandStateRefreshTimer >= HAND_TO_HAND_STATE_REFRESH_INTERVAL then
                 handToHandStateRefreshTimer = 0
@@ -7180,9 +7261,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         end,
         onSave = function()
             refreshCenteredStance()
+            updateOpenPalm(0)
             refreshHandToHandState(true)
             return {
                 centeredStanceAppliedBonuses = appliedBonuses,
+                openPalmStacks = openPalmStacks,
+                openPalmRemaining = openPalmRemaining,
+                openPalmAppliedBonus = appliedOpenPalmBonus,
             }
         end,
         onLoad = function(data)
@@ -7191,7 +7276,11 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             else
                 appliedBonuses = {}
             end
+            openPalmStacks = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmStacks) or 0))
+            openPalmRemaining = math.max(0, tonumber(type(data) == "table" and data.openPalmRemaining) or 0)
+            appliedOpenPalmBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmAppliedBonus) or 0))
             refreshCenteredStance()
+            updateOpenPalm(0)
             refreshHandToHandState(true)
         end,
     },

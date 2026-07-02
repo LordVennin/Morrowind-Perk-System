@@ -1475,8 +1475,35 @@ local function getEquippedSecurityTool()
     return nil
 end
 
+local function animationStringMethod(value, methodName)
+    if type(value) ~= "string" then
+        return nil
+    end
+
+    return value[methodName]
+end
+
 local function animationKeyLower(value)
-    return type(value) == "string" and string.lower(value) or ""
+    local lower = animationStringMethod(value, "lower")
+    if type(lower) ~= "function" then
+        return ""
+    end
+
+    return lower(value)
+end
+
+local function animationStringContains(value, needle)
+    local find = animationStringMethod(value, "find")
+    return type(find) == "function" and find(value, needle, 1, true) ~= nil
+end
+
+local function animationStringEndsWith(value, suffix)
+    local sub = animationStringMethod(value, "sub")
+    if type(sub) ~= "function" or #value < #suffix then
+        return false
+    end
+
+    return sub(value, #value - #suffix + 1) == suffix
 end
 
 local function multiplyAnimationSpeed(options, multiplier)
@@ -1496,9 +1523,9 @@ local function classifyBlendedAnimationEvent(groupName, options)
     local stopKeyRaw = hasOptions and (options.stopkey or options.stopKey) or nil
     local startKeyLower = animationKeyLower(startKeyRaw)
     local stopKeyLower = animationKeyLower(stopKeyRaw)
-    local isAttackGroup = string.find(groupLower, "attack", 1, true) ~= nil
-    local isMaxAttack = string.sub(stopKeyLower, -11) == " max attack"
-    local isHit = string.sub(stopKeyLower, -3) == "hit" and string.sub(stopKeyLower, -7) ~= "min hit"
+    local isAttackGroup = animationStringContains(groupLower, "attack")
+    local isMaxAttack = animationStringEndsWith(stopKeyLower, " max attack")
+    local isHit = animationStringEndsWith(stopKeyLower, "hit") and not animationStringEndsWith(stopKeyLower, "min hit")
     local isChopStart = startKeyLower == "chop start"
     local isSlashStart = startKeyLower == "slash start"
     local isThrustStart = startKeyLower == "thrust start"
@@ -1530,20 +1557,20 @@ local function classifyBlendedAnimationEvent(groupName, options)
             or isThrustMaxAttack
         ),
         isHandToHandAttackShape = hasOptions and (
-            (string.sub(startKeyLower, -6) == " start" and string.find(startKeyLower, "attack", 1, true) ~= nil)
+            (animationStringEndsWith(startKeyLower, " start") and animationStringContains(startKeyLower, "attack"))
             or isMaxAttack
             or isHit
             or isAttackGroup
         ),
         isToolUseShape = hasGroupName and (
-            string.find(groupLower, "pick", 1, true) ~= nil
-            or string.find(groupLower, "probe", 1, true) ~= nil
-            or string.find(groupLower, "lock", 1, true) ~= nil
-            or string.find(groupLower, "security", 1, true) ~= nil
-            or string.find(startKeyLower, "pick", 1, true) ~= nil
-            or string.find(startKeyLower, "probe", 1, true) ~= nil
-            or string.find(stopKeyLower, "pick", 1, true) ~= nil
-            or string.find(stopKeyLower, "probe", 1, true) ~= nil
+            animationStringContains(groupLower, "pick")
+            or animationStringContains(groupLower, "probe")
+            or animationStringContains(groupLower, "lock")
+            or animationStringContains(groupLower, "security")
+            or animationStringContains(startKeyLower, "pick")
+            or animationStringContains(startKeyLower, "probe")
+            or animationStringContains(stopKeyLower, "pick")
+            or animationStringContains(stopKeyLower, "probe")
         ),
     }
 end
@@ -4868,7 +4895,7 @@ local function handleBluntAnimation(event)
     end
 end
 
-local function handleBasepackAnimationTextKey(_, key)
+local function dispatchBasepackAnimationTextKey(_, key)
     if guardedStaminaAttackState == nil then
         return
     end
@@ -4881,16 +4908,6 @@ local function handleBasepackAnimationTextKey(_, key)
     end
 
     guardedStaminaAttackState.releaseSeen = true
-end
-
-local function dispatchBasepackAnimationTextKey(groupName, key)
-    local ok, result = pcall(handleBasepackAnimationTextKey, groupName, key)
-    if not ok then
-        print("SkillPerkSystem animation text-key handler failed: " .. tostring(result))
-        return
-    end
-
-    return result
 end
 
 local function processGuardedStaminaRefund(dt)
@@ -8112,28 +8129,14 @@ local function handleHandToHandAnimation(event)
     multiplyAnimationSpeed(event.options, FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER)
 end
 
-local function dispatchAnimationHandler(name, handler, event)
-    local ok, result = pcall(handler, event)
-    if not ok then
-        print("SkillPerkSystem animation handler failed (" .. name .. "): " .. tostring(result))
-        return
-    end
-
-    return result
-end
-
 local function dispatchBasepackBlendedAnimation(groupName, options)
-    local ok, event = pcall(classifyBlendedAnimationEvent, groupName, options)
-    if not ok then
-        print("SkillPerkSystem animation classification failed: " .. tostring(event))
-        return
-    end
+    local event = classifyBlendedAnimationEvent(groupName, options)
 
-    dispatchAnimationHandler("security", handleSecurityToolAnimation, event)
-    dispatchAnimationHandler("axe", handleAxeAnimation, event)
-    dispatchAnimationHandler("marksman", handleMarksmanAnimation, event)
-    dispatchAnimationHandler("blunt", handleBluntAnimation, event)
-    dispatchAnimationHandler("handToHand", handleHandToHandAnimation, event)
+    handleSecurityToolAnimation(event)
+    handleAxeAnimation(event)
+    handleMarksmanAnimation(event)
+    handleBluntAnimation(event)
+    handleHandToHandAnimation(event)
 end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then

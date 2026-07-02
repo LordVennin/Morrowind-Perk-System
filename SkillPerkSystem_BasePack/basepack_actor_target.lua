@@ -1665,10 +1665,17 @@ local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
 local BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER = 0.50
 local BREAKING_FIST_HEALTH_DAMAGE_MIN = 5
 local BREAKING_FIST_HEALTH_DAMAGE_MAX = 15
+local FLOWING_COUNTER_LIGHT_MAGICKA_DAMAGE_MIN = 10
+local FLOWING_COUNTER_LIGHT_MAGICKA_DAMAGE_MAX = 20
+local FLOWING_COUNTER_MEDIUM_HEALTH_DAMAGE_MIN = 1
+local FLOWING_COUNTER_MEDIUM_HEALTH_DAMAGE_MAX = 5
+local FLOWING_COUNTER_HEAVY_HEALTH_DAMAGE_MIN = 5
+local FLOWING_COUNTER_HEAVY_HEALTH_DAMAGE_MAX = 10
 
 local playerId = nil
 local ironKnucklesEnabled = false
 local breakingFistEnabled = false
+local flowingCounterMode = "none"
 
 local function setState(data)
     if type(data) ~= "table" then
@@ -1678,6 +1685,7 @@ local function setState(data)
     playerId = type(data.playerId) == "string" and data.playerId or nil
     ironKnucklesEnabled = data.ironKnucklesEnabled == true
     breakingFistEnabled = data.breakingFistEnabled == true
+    flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
 end
 
 local function getEquippedItem(actor, slot)
@@ -1747,7 +1755,7 @@ local function isPlayerHandToHandHit(attack)
 end
 
 local function onHit(attack)
-    if not ironKnucklesEnabled and not breakingFistEnabled then
+    if not ironKnucklesEnabled and not breakingFistEnabled and flowingCounterMode == "none" then
         return
     end
     if not isPlayerHandToHandHit(attack) then
@@ -1770,6 +1778,17 @@ local function onHit(attack)
         attack.damage.health = (tonumber(attack.damage.health) or 0)
             + math.random(BREAKING_FIST_HEALTH_DAMAGE_MIN, BREAKING_FIST_HEALTH_DAMAGE_MAX)
     end
+
+    if flowingCounterMode == "light" then
+        attack.damage.magicka = (tonumber(attack.damage.magicka) or 0)
+            + math.random(FLOWING_COUNTER_LIGHT_MAGICKA_DAMAGE_MIN, FLOWING_COUNTER_LIGHT_MAGICKA_DAMAGE_MAX)
+    elseif flowingCounterMode == "medium" then
+        attack.damage.health = (tonumber(attack.damage.health) or 0)
+            + math.random(FLOWING_COUNTER_MEDIUM_HEALTH_DAMAGE_MIN, FLOWING_COUNTER_MEDIUM_HEALTH_DAMAGE_MAX)
+    elseif flowingCounterMode == "heavy" then
+        attack.damage.health = (tonumber(attack.damage.health) or 0)
+            + math.random(FLOWING_COUNTER_HEAVY_HEALTH_DAMAGE_MIN, FLOWING_COUNTER_HEAVY_HEALTH_DAMAGE_MAX)
+    end
 end
 
 handToHand.eventHandlers = {
@@ -1791,6 +1810,7 @@ handToHand.engineHandlers = {
             playerId = playerId,
             ironKnucklesEnabled = ironKnucklesEnabled,
             breakingFistEnabled = breakingFistEnabled,
+            flowingCounterMode = flowingCounterMode,
         }
     end,
 }

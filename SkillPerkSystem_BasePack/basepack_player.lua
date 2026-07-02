@@ -7006,8 +7006,12 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
 local OPEN_PALM_PERK_ID = "handtohand_open_palm"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
+local FLOWING_COUNTER_PERK_ID = "handtohand_flowing_counter"
 local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 local CENTERED_STANCE_BONUS = 3
+local FLOWING_COUNTER_ABILITY_ID = "sps_DeflectingPalm"
+local FLOWING_COUNTER_HEAVY_AGILITY_PENALTY = 10
+local FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER = 0.80
 local OPEN_PALM_BONUS_PER_STACK = 3
 local OPEN_PALM_MAX_STACKS = 5
 local OPEN_PALM_DURATION = 6.0
@@ -7015,6 +7019,9 @@ local HAND_TO_HAND_STATE_EVENT = "SkillPerkSystem_HandToHandState"
 local HAND_TO_HAND_STATE_REFRESH_INTERVAL = 1.0
 
 local appliedBonuses = {}
+local flowingCounterAppliedAgilityPenalty = 0
+local flowingCounterAbilityApplied = false
+local resolveAttributeStat
 local openPalmStacks = 0
 local openPalmRemaining = 0
 local appliedOpenPalmBonus = 0
@@ -7099,6 +7106,167 @@ local function itemIsShield(item)
     return record ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE.Shield
 end
 
+local function armorTypeEquals(record, typeName)
+    return record ~= nil and Armor ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE[typeName]
+end
+
+local function getEquippedGloveRecord(slot)
+    local item = getEquippedItem(slot)
+    if item == nil then
+        return nil
+    end
+    if Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(item) then
+        return nil
+    end
+
+    return getArmorRecord(item)
+end
+
+local function gloveArmorWeightClass(record)
+    if record == nil then
+        return "none"
+    end
+
+    -- OpenMW exposes armor body-part type but not the TES3 armor weight
+    -- class through ArmorRecord, so classify gauntlets/bracers by their
+    -- record weight. Vanilla and most modded gloves use low weights for
+    -- light, middle weights for medium, and high weights for heavy armor.
+    local weight = tonumber(record.weight) or 0
+    if weight <= 1 then
+        return "light"
+    elseif weight <= 4 then
+        return "medium"
+    end
+
+    return "heavy"
+end
+
+local function equippedFlowingCounterMode()
+    if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) or Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return "none"
+    end
+
+    local leftRecord = getEquippedGloveRecord(Actor.EQUIPMENT_SLOT.LeftGauntlet)
+    local rightRecord = getEquippedGloveRecord(Actor.EQUIPMENT_SLOT.RightGauntlet)
+    local leftHasGlove = leftRecord ~= nil and (armorTypeEquals(leftRecord, "LGauntlet") or armorTypeEquals(leftRecord, "LBracer"))
+    local rightHasGlove = rightRecord ~= nil and (armorTypeEquals(rightRecord, "RGauntlet") or armorTypeEquals(rightRecord, "RBracer"))
+
+    if not leftHasGlove and not rightHasGlove then
+        return "bare"
+    end
+    if not leftHasGlove or not rightHasGlove then
+        return "none"
+    end
+
+    local leftClass = gloveArmorWeightClass(leftRecord)
+    local rightClass = gloveArmorWeightClass(rightRecord)
+    if leftClass == rightClass then
+        return leftClass
+    end
+
+    return "none"
+end
+
+local function resolveAbilityRecord(abilityId)
+    local okRecords, records = pcall(function()
+        return core.magic.spells.records
+    end)
+    if okRecords and type(records) == "table" then
+        return records[abilityId]
+    end
+    return nil
+end
+
+local function playerHasAbility(spells, abilityId)
+    if spells == nil then
+        return false
+    end
+    if type(spells.has) == "function" then
+        local okHasById, hasById = pcall(function()
+            return spells:has(abilityId)
+        end)
+        if okHasById and hasById == true then
+            return true
+        end
+
+        local record = resolveAbilityRecord(abilityId)
+        if record ~= nil then
+            local okHasByRecord, hasByRecord = pcall(function()
+                return spells:has(record)
+            end)
+            if okHasByRecord and hasByRecord == true then
+                return true
+            end
+        end
+    end
+
+    for _, spell in pairs(spells) do
+        if type(spell) == "table" and spell.id == abilityId then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function setPlayerAbility(abilityId, shouldHave)
+    if Actor == nil or type(Actor.spells) ~= "function" then
+        return shouldHave and flowingCounterAbilityApplied or false
+    end
+
+    local okSpells, spells = pcall(Actor.spells, pself)
+    if not okSpells or spells == nil then
+        return shouldHave and flowingCounterAbilityApplied or false
+    end
+
+    local hasAbility = playerHasAbility(spells, abilityId)
+    if shouldHave and not hasAbility and type(spells.add) == "function" then
+        local ok = pcall(function()
+            spells:add(abilityId)
+        end)
+        if not ok then
+            local record = resolveAbilityRecord(abilityId)
+            if record ~= nil then
+                ok = pcall(function()
+                    spells:add(record)
+                end)
+            end
+        end
+        return ok or flowingCounterAbilityApplied
+    elseif not shouldHave and hasAbility and type(spells.remove) == "function" then
+        local ok = pcall(function()
+            spells:remove(abilityId)
+        end)
+        if not ok then
+            local record = resolveAbilityRecord(abilityId)
+            if record ~= nil then
+                ok = pcall(function()
+                    spells:remove(record)
+                end)
+            end
+        end
+        return not ok and flowingCounterAbilityApplied or false
+    end
+
+    return shouldHave and hasAbility
+end
+
+local function applyFlowingCounterAgilityPenalty(targetPenalty)
+    local desired = math.max(0, math.floor(tonumber(targetPenalty) or 0))
+    local current = math.max(0, math.floor(tonumber(flowingCounterAppliedAgilityPenalty) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveAttributeStat("agility")
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier + current - desired
+    flowingCounterAppliedAgilityPenalty = desired
+end
+
 local function hasEquippedWeaponOrShield()
     if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
         return true
@@ -7119,7 +7287,7 @@ local function hasEquippedWeaponOrShield()
     return false
 end
 
-local function resolveAttributeStat(attributeID)
+function resolveAttributeStat(attributeID)
     local accessor = Actor ~= nil
         and Actor.stats ~= nil
         and Actor.stats.attributes ~= nil
@@ -7220,7 +7388,10 @@ end
 local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
-    local stateKey = tostring(ironKnucklesEnabled) .. ":" .. tostring(breakingFistEnabled)
+    local flowingCounterMode = equippedFlowingCounterMode()
+    local stateKey = tostring(ironKnucklesEnabled) .. ":"
+        .. tostring(breakingFistEnabled) .. ":"
+        .. tostring(flowingCounterMode)
     if not force and stateKey == lastHandToHandStateKey then
         return
     end
@@ -7231,7 +7402,14 @@ local function refreshHandToHandState(force)
         playerId = pself.id,
         ironKnucklesEnabled = ironKnucklesEnabled,
         breakingFistEnabled = breakingFistEnabled,
+        flowingCounterMode = flowingCounterMode,
     })
+end
+
+local function refreshFlowingCounter()
+    local mode = equippedFlowingCounterMode()
+    flowingCounterAbilityApplied = setPlayerAbility(FLOWING_COUNTER_ABILITY_ID, mode == "bare")
+    applyFlowingCounterAgilityPenalty(mode == "heavy" and FLOWING_COUNTER_HEAVY_AGILITY_PENALTY or 0)
 end
 
 local function refreshCenteredStance()
@@ -7245,6 +7423,39 @@ local function refreshCenteredStance()
     end
 end
 
+local function isHandToHandAttackAnimation(groupName, options)
+    if type(options) ~= "table" then
+        return false
+    end
+
+    local stopKeyRaw = options.stopkey or options.stopKey
+    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
+    if string.sub(stopKey, -11) == " max attack" then
+        return true
+    end
+
+    if type(groupName) ~= "string" then
+        return false
+    end
+
+    local lowered = string.lower(groupName)
+    return string.find(lowered, "attack", 1, true) ~= nil
+end
+
+if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+        if equippedFlowingCounterMode() ~= "heavy" then
+            return
+        end
+        if hasEquippedWeaponOrShield() or not isHandToHandAttackAnimation(groupName, options) then
+            return
+        end
+
+        local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
+        options.speed = currentSpeed * FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER
+    end)
+end
+
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryOpenPalm = tryApplyOpenPalm,
@@ -7252,6 +7463,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function(dt)
             refreshCenteredStance()
+            refreshFlowingCounter()
             updateOpenPalm(dt)
             handToHandStateRefreshTimer = handToHandStateRefreshTimer + (tonumber(dt) or 0)
             if handToHandStateRefreshTimer >= HAND_TO_HAND_STATE_REFRESH_INTERVAL then
@@ -7261,10 +7473,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         end,
         onSave = function()
             refreshCenteredStance()
+            refreshFlowingCounter()
             updateOpenPalm(0)
             refreshHandToHandState(true)
             return {
                 centeredStanceAppliedBonuses = appliedBonuses,
+                flowingCounterAppliedAgilityPenalty = flowingCounterAppliedAgilityPenalty,
+                flowingCounterAbilityApplied = flowingCounterAbilityApplied,
                 openPalmStacks = openPalmStacks,
                 openPalmRemaining = openPalmRemaining,
                 openPalmAppliedBonus = appliedOpenPalmBonus,
@@ -7276,10 +7491,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             else
                 appliedBonuses = {}
             end
+            flowingCounterAppliedAgilityPenalty = math.max(0, math.floor(tonumber(type(data) == "table" and data.flowingCounterAppliedAgilityPenalty) or 0))
+            flowingCounterAbilityApplied = type(data) == "table" and data.flowingCounterAbilityApplied == true
             openPalmStacks = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmStacks) or 0))
             openPalmRemaining = math.max(0, tonumber(type(data) == "table" and data.openPalmRemaining) or 0)
             appliedOpenPalmBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmAppliedBonus) or 0))
             refreshCenteredStance()
+            refreshFlowingCounter()
             updateOpenPalm(0)
             refreshHandToHandState(true)
         end,

@@ -51,8 +51,8 @@ return {
             cost = 1,
             x = -180,
             y = 280,
-            title = "Flowing Counter",
-            description = "Placeholder perk: reserves space for counterattack-focused unarmed gameplay.",
+            title = "Way of the Bound Fist",
+            description = "While both glove slots match, your hand-to-hand style changes: bare or clothing-covered hands gain Deflecting Palm; two light gauntlets deal 10-20 Magicka damage; two medium gauntlets deal 1-5 extra Health damage; two heavy gauntlets lower Agility by 10 and slow hand-to-hand attacks by 20%, but deal 5-10 extra Health damage.",
         },
         {
             id = "handtohand_empty_body_mastery",

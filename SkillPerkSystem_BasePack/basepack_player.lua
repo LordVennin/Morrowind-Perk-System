@@ -3925,12 +3925,12 @@ local EXECUTION_DAMAGE_PERK_IDS = {
     "axe_crescent_hook",
 }
 local STATE_EVENT = "SkillPerkSystem_AxeKindlingGripState"
-local STATE_REFRESH_INTERVAL = 1.0
 local FELLSTAR_CROWN_ATTACK_SPEED_MULTIPLIER = 1.10
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
 local FELLSTAR_CROWN_FEATHER_KEY = "axe.fellstar_crown.feather"
 
-local refreshTimer = STATE_REFRESH_INTERVAL
+local axeStateDirty = true
+local axeFeatherDirty = true
 local lastStateKey = nil
 local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
 local appliedAxeFeather = math.max(0, tonumber(effectsSection:get(FELLSTAR_CROWN_FEATHER_KEY)) or 0)
@@ -4104,7 +4104,13 @@ local function isAxeAttackWindupAnimation(groupName, options)
     return string.find(g, "attack", 1, true) ~= nil
 end
 
+local function markAxeStateDirty()
+    axeStateDirty = true
+    axeFeatherDirty = true
+end
+
 interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+    markAxeStateDirty()
     if not hasEnabledPerk(FELLSTAR_CROWN_PERK_ID) then
         return
     end
@@ -4120,6 +4126,28 @@ interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName
     local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
     options.speed = currentSpeed * FELLSTAR_CROWN_ATTACK_SPEED_MULTIPLIER
 end)
+
+local AXE_STATE_PERKS = {
+    axe_kindling_grip = true,
+    axe_crescent_hook = true,
+    axe_bloodletter = true,
+    axe_dragging_wound = true,
+    axe_hewer_heart = true,
+    axe_crimson_cleave = true,
+    axe_iron_canopy = true,
+    axe_fellstar_crown = true,
+    marksman_thrown_fundamentals = true,
+    marksman_pinning_shot = true,
+    marksman_trick_throw = true,
+    marksman_deadeye_mastery = true,
+}
+
+local function handlePerkStateChanged(data)
+    if type(data) ~= "table" or AXE_STATE_PERKS[data.perkID] ~= true then
+        return
+    end
+    markAxeStateDirty()
+end
 
 local function publishState(force)
     local enabledCount = executionDamagePerkCount()
@@ -4157,21 +4185,33 @@ end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
-        onUpdate = function(dt)
-            refreshTimer = refreshTimer + (tonumber(dt) or 0)
-            if refreshTimer >= STATE_REFRESH_INTERVAL then
-                refreshTimer = 0
+        onUpdate = function()
+            if axeFeatherDirty then
+                axeFeatherDirty = false
                 refreshFellstarCrownFeather()
+            end
+            if axeStateDirty then
+                axeStateDirty = false
                 publishState(false)
             end
         end,
+        shouldUpdate = function()
+            return axeFeatherDirty or axeStateDirty
+        end,
         onLoad = function()
-            refreshTimer = STATE_REFRESH_INTERVAL
             lastStateKey = nil
             appliedAxeFeather = math.max(0, tonumber(effectsSection:get(FELLSTAR_CROWN_FEATHER_KEY)) or 0)
+            markAxeStateDirty()
             refreshFellstarCrownFeather()
             publishState(true)
+            axeFeatherDirty = false
+            axeStateDirty = false
         end,
+    },
+    eventHandlers = {
+        SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_AxeStateDirty = function() markAxeStateDirty() end,
+        UiModeChanged = function() markAxeStateDirty() end,
     },
 }
 
@@ -4387,6 +4427,22 @@ local function markMarksmanEquipmentDirty(scanWindow)
     marksmanAgilityDirty = true
     marksmanEquipmentScanRemaining = math.max(marksmanEquipmentScanRemaining, tonumber(scanWindow) or MARKSMAN_EQUIPMENT_SCAN_WINDOW)
     bowFundamentalsRefreshTimer = MARKSMAN_STATE_REFRESH_INTERVAL
+end
+
+local MARKSMAN_STATE_PERKS = {
+    marksman_bow_fundamentals = true,
+    marksman_deadeye_mastery = true,
+    marksman_steady_draw = true,
+}
+
+local function handlePerkStateChanged(data)
+    if type(data) ~= "table" or MARKSMAN_STATE_PERKS[data.perkID] ~= true then
+        return
+    end
+    markMarksmanEquipmentDirty(MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+    if data.perkID == STEADY_DRAW_PERK_ID then
+        steadyDrawArmedWindowRemaining = math.max(steadyDrawArmedWindowRemaining, MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+    end
 end
 
 local function shouldUpdateBowFundamentals(dt)
@@ -4608,6 +4664,11 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             refreshBowFundamentalsAgilityBonus()
         end,
     },
+    eventHandlers = {
+        SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_MarksmanStateDirty = function() markMarksmanEquipmentDirty(MARKSMAN_EQUIPMENT_SCAN_WINDOW) end,
+        UiModeChanged = function() markMarksmanEquipmentDirty(MARKSMAN_EQUIPMENT_SCAN_WINDOW) end,
+    },
 }
 
 end
@@ -4630,12 +4691,11 @@ local GUARDED_STAMINA_PERK_ID = "bluntweapon_placeholder_guarded_stance"
 local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local IRON_BELL_PERK_ID = "bluntweapon_iron_bell"
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
-local STATE_REFRESH_INTERVAL = 1.0
 local GUARDED_STAMINA_REFUND_MULTIPLIER = 0.25
 local GUARDED_STAMINA_ATTACK_WINDOW = 5.0
 local STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER = 0.70
 
-local refreshTimer = STATE_REFRESH_INTERVAL
+local bluntStateDirty = true
 local lastStateKey = nil
 local lastAnimationLogKey = nil
 local guardedStaminaAttackState = nil
@@ -4931,6 +4991,31 @@ local function processGuardedStaminaRefund(dt)
     end
 end
 
+local BLUNT_STATE_PERKS = {
+    bluntweapon_strength_in_arms = true,
+    bluntweapon_platebreaker = true,
+    bluntweapon_breathstealer = true,
+    bluntweapon_heavy_hitter = true,
+    bluntweapon_placeholder_guarded_stance = true,
+    bluntweapon_placeholder_staggering_blow = true,
+    bluntweapon_iron_bell = true,
+}
+
+local function markBluntStateDirty()
+    bluntStateDirty = true
+end
+
+local function handlePerkStateChanged(data)
+    if type(data) ~= "table" or BLUNT_STATE_PERKS[data.perkID] ~= true then
+        return
+    end
+    markBluntStateDirty()
+end
+
+local function shouldUpdateBlunt()
+    return bluntStateDirty or guardedStaminaAttackState ~= nil
+end
+
 local function publishState(force)
     local strengthInArmsEnabled = hasEnabledPerk(STRENGTH_IN_ARMS_PERK_ID)
     local damageBonus = strengthInArmsEnabled and getStrengthDamageBonus() or 0
@@ -4977,18 +5062,26 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function(dt)
-            processGuardedStaminaRefund(dt)
-            refreshTimer = refreshTimer + (tonumber(dt) or 0)
-            if refreshTimer >= STATE_REFRESH_INTERVAL then
-                refreshTimer = 0
+            if guardedStaminaAttackState ~= nil then
+                processGuardedStaminaRefund(dt)
+            end
+            if bluntStateDirty then
+                bluntStateDirty = false
                 publishState(false)
             end
         end,
+        shouldUpdate = shouldUpdateBlunt,
         onLoad = function()
-            refreshTimer = STATE_REFRESH_INTERVAL
             lastStateKey = nil
+            bluntStateDirty = true
             publishState(true)
+            bluntStateDirty = false
         end,
+    },
+    eventHandlers = {
+        SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_BluntWeaponStateDirty = function() markBluntStateDirty() end,
+        UiModeChanged = function() markBluntStateDirty() end,
     },
 }
 
@@ -7413,7 +7506,6 @@ local OPEN_PALM_BONUS_PER_STACK = 3
 local OPEN_PALM_MAX_STACKS = 5
 local OPEN_PALM_DURATION = 6.0
 local HAND_TO_HAND_STATE_EVENT = "SkillPerkSystem_HandToHandState"
-local HAND_TO_HAND_STATE_REFRESH_INTERVAL = 1.0
 local HAND_TO_HAND_IDLE_REFRESH_INTERVAL = 0.5
 
 local appliedBonuses = {}
@@ -7423,7 +7515,7 @@ local resolveAttributeStat
 local openPalmStacks = 0
 local openPalmRemaining = 0
 local appliedOpenPalmBonus = 0
-local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
+local handToHandStateDirty = true
 local handToHandIdleRefreshTimer = HAND_TO_HAND_IDLE_REFRESH_INTERVAL
 local handToHandDirty = true
 local handToHandScanRemaining = 0
@@ -7976,14 +8068,31 @@ local function refreshCenteredStance()
     end
 end
 
+local HAND_TO_HAND_STATE_PERKS = {
+    handtohand_centered_stance = true,
+    handtohand_open_palm = true,
+    handtohand_iron_knuckles = true,
+    handtohand_flowing_counter = true,
+    handtohand_breaking_fist = true,
+}
+
 local function markHandToHandDirty(scanWindow)
     handToHandDirty = true
+    handToHandStateDirty = true
     handToHandScanRemaining = math.max(handToHandScanRemaining, tonumber(scanWindow) or HAND_TO_HAND_SCAN_WINDOW)
     handToHandScanTimer = HAND_TO_HAND_SCAN_INTERVAL
 end
 
+local function handlePerkStateChanged(data)
+    if type(data) ~= "table" or HAND_TO_HAND_STATE_PERKS[data.perkID] ~= true then
+        return
+    end
+    markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
+end
+
 local function shouldRunHandToHandUpdate(dt)
     if handToHandDirty
+        or handToHandStateDirty
         or openPalmStacks > 0
         or appliedOpenPalmBonus ~= 0
         or (hasAppliedCenteredStanceBonus() and not hasEnabledPerk(CENTERED_STANCE_PERK_ID))
@@ -8054,6 +8163,8 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryOpenPalm = tryApplyOpenPalm,
+        SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_HandToHandStateDirty = function() markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW) end,
         UiModeChanged = function()
             markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
         end,
@@ -8065,9 +8176,8 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             refreshCenteredStance()
             refreshFlowingCounter()
             updateOpenPalm(dt)
-            handToHandStateRefreshTimer = handToHandStateRefreshTimer + (tonumber(dt) or 0)
-            if handToHandStateRefreshTimer >= HAND_TO_HAND_STATE_REFRESH_INTERVAL then
-                handToHandStateRefreshTimer = 0
+            if handToHandStateDirty then
+                handToHandStateDirty = false
                 refreshHandToHandState(false)
             end
         end,
@@ -8104,6 +8214,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             openPalmRemaining = math.max(0, tonumber(type(data) == "table" and data.openPalmRemaining) or 0)
             appliedOpenPalmBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmAppliedBonus) or 0))
             handToHandIdleRefreshTimer = HAND_TO_HAND_IDLE_REFRESH_INTERVAL
+            handToHandStateDirty = true
             markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
             local savedEquipmentCache = type(data) == "table"
                 and type(data.handToHandEquipmentCache) == "table"

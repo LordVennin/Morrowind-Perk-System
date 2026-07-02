@@ -6992,6 +6992,7 @@ end
 -- hand-to-hand runtime logic
 ----------------------------------------------------------------------
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
@@ -7005,12 +7006,12 @@ local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 local CENTERED_STANCE_BONUS = 3
-local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
-local BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER = 0.30
-local BREAKING_FIST_HEALTH_DAMAGE_MIN = 5
-local BREAKING_FIST_HEALTH_DAMAGE_MAX = 15
+local HAND_TO_HAND_STATE_EVENT = "SkillPerkSystem_HandToHandState"
+local HAND_TO_HAND_STATE_REFRESH_INTERVAL = 1.0
 
 local appliedBonuses = {}
+local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
+local lastHandToHandStateKey = nil
 
 local ATTRIBUTES = {
     "agility",
@@ -7139,86 +7140,21 @@ local function applyAttributeBonus(attributeID, targetBonus)
 end
 
 
-local function getCurrentFatigue()
-    local fatigueAccessor = Actor ~= nil
-        and Actor.stats ~= nil
-        and Actor.stats.dynamic ~= nil
-        and Actor.stats.dynamic.fatigue
-    if type(fatigueAccessor) ~= "function" then
-        return 0
-    end
-
-    local fatigue = fatigueAccessor(pself)
-    if fatigue == nil then
-        return 0
-    end
-
-    return math.max(0, tonumber(fatigue.current) or 0)
-end
-
-local function isPlayerHandToHandHit(attack)
-    if type(attack) ~= "table" or attack.successful ~= true then
-        return false
-    end
-    if attack.damage ~= nil and type(attack.damage) ~= "table" then
-        return false
-    end
-
-    if attack.attacker ~= nil and attack.attacker ~= pself then
-        return false
-    end
-
-    local meleeType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
-    if meleeType ~= nil and attack.sourceType ~= meleeType then
-        return false
-    end
-
-    if attack.weapon ~= nil then
-        return false
-    end
-
-    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
-        return false
-    end
-
-    return not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
-end
-
-local function applyIronKnucklesDamage(attack)
-    if not hasEnabledPerk(IRON_KNUCKLES_PERK_ID) or not isPlayerHandToHandHit(attack) then
+local function refreshHandToHandState(force)
+    local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
+    local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
+    local stateKey = tostring(ironKnucklesEnabled) .. ":" .. tostring(breakingFistEnabled)
+    if not force and stateKey == lastHandToHandStateKey then
         return
     end
 
-    local bonusDamage = getCurrentFatigue() / IRON_KNUCKLES_FATIGUE_DIVISOR
-    if bonusDamage <= 0 then
-        return
-    end
-
-    attack.damage = type(attack.damage) == "table" and attack.damage or {}
-    attack.damage.health = (tonumber(attack.damage.health) or 0) + bonusDamage
-end
-
-local function applyBreakingFistDamage(attack)
-    if not hasEnabledPerk(BREAKING_FIST_PERK_ID) or not isPlayerHandToHandHit(attack) then
-        return
-    end
-
-    attack.damage = type(attack.damage) == "table" and attack.damage or {}
-
-    local fatigueDamage = tonumber(attack.damage.fatigue) or 0
-    if fatigueDamage > 0 then
-        attack.damage.fatigue = fatigueDamage * BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER
-    end
-
-    attack.damage.health = (tonumber(attack.damage.health) or 0)
-        + math.random(BREAKING_FIST_HEALTH_DAMAGE_MIN, BREAKING_FIST_HEALTH_DAMAGE_MAX)
-end
-
-local function applyHandToHandDamagePerks(attack)
-    applyIronKnucklesDamage(attack)
-    applyBreakingFistDamage(attack)
+    lastHandToHandStateKey = stateKey
+    core.sendGlobalEvent(HAND_TO_HAND_STATE_EVENT, {
+        player = pself,
+        playerId = pself.id,
+        ironKnucklesEnabled = ironKnucklesEnabled,
+        breakingFistEnabled = breakingFistEnabled,
+    })
 end
 
 local function refreshCenteredStance()
@@ -7232,18 +7168,19 @@ local function refreshCenteredStance()
     end
 end
 
-local handToHandAddOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
-if type(handToHandAddOnHitHandler) == "function" then
-    handToHandAddOnHitHandler(applyHandToHandDamagePerks)
-end
-
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
-        onUpdate = function(_dt)
+        onUpdate = function(dt)
             refreshCenteredStance()
+            handToHandStateRefreshTimer = handToHandStateRefreshTimer + (tonumber(dt) or 0)
+            if handToHandStateRefreshTimer >= HAND_TO_HAND_STATE_REFRESH_INTERVAL then
+                handToHandStateRefreshTimer = 0
+                refreshHandToHandState(false)
+            end
         end,
         onSave = function()
             refreshCenteredStance()
+            refreshHandToHandState(true)
             return {
                 centeredStanceAppliedBonuses = appliedBonuses,
             }
@@ -7255,6 +7192,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
                 appliedBonuses = {}
             end
             refreshCenteredStance()
+            refreshHandToHandState(true)
         end,
     },
 }

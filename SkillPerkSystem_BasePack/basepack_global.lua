@@ -2318,6 +2318,94 @@ subsystems.axe = {
 -- End consolidated from SkillPerkSystem_BasePack/axe_global.lua
 end
 
+-- 6b. hand-to-hand global state handling
+do
+local world = require("openmw.world")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local HAND_TO_HAND_TARGET_SCRIPT = BASEPACK_ACTOR_TARGET_SCRIPT
+local WATCHER_REFRESH_INTERVAL = 1.0
+
+local refreshTimer = 0
+local handToHandState = {
+    playerId = nil,
+    ironKnucklesEnabled = false,
+    breakingFistEnabled = false,
+}
+
+local function shouldAttachWatcher(actor)
+    if actor == nil or Actor == nil then
+        return false
+    end
+    if type(actor.isValid) == "function" and not actor:isValid() then
+        return false
+    end
+    if type(Actor.isDead) == "function" and Actor.isDead(actor) then
+        return false
+    end
+    if world.players ~= nil and actor == world.players[1] then
+        return false
+    end
+    if type(actor.hasScript) ~= "function" or type(actor.addScript) ~= "function" then
+        return false
+    end
+
+    return not actor:hasScript(HAND_TO_HAND_TARGET_SCRIPT)
+end
+
+local function sendState(actor)
+    if actor == nil or type(actor.sendEvent) ~= "function" then
+        return
+    end
+
+    actor:sendEvent("SkillPerkSystem_HandToHandRefresh", handToHandState)
+end
+
+local function refreshWatchers()
+    for _, actor in ipairs(world.activeActors) do
+        if shouldAttachWatcher(actor) then
+            actor:addScript(HAND_TO_HAND_TARGET_SCRIPT, handToHandState)
+        elseif actor ~= nil and type(actor.hasScript) == "function" and actor:hasScript(HAND_TO_HAND_TARGET_SCRIPT) then
+            sendState(actor)
+        end
+    end
+end
+
+local function onHandToHandState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    handToHandState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        ironKnucklesEnabled = data.ironKnucklesEnabled == true,
+        breakingFistEnabled = data.breakingFistEnabled == true,
+    }
+    refreshWatchers()
+end
+
+subsystems.handtohand = {
+    eventHandlers = {
+        SkillPerkSystem_HandToHandState = onHandToHandState,
+    },
+    engineHandlers = {
+        onUpdate = function(dt)
+            refreshTimer = refreshTimer + (tonumber(dt) or 0)
+            if refreshTimer >= WATCHER_REFRESH_INTERVAL then
+                refreshTimer = 0
+                refreshWatchers()
+            end
+        end,
+        onLoad = function()
+            refreshTimer = WATCHER_REFRESH_INTERVAL
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 7. blunt weapon global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/bluntweapon_global.lua
@@ -3528,6 +3616,7 @@ local eventHandlers = {
 
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
+    SkillPerkSystem_HandToHandState = function(data) dispatchEvent("handtohand", "SkillPerkSystem_HandToHandState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
     SkillPerkSystem_ApplyHeavyHitterShieldDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyHeavyHitterShieldDamage", data) end,

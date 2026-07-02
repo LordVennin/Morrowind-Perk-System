@@ -26,7 +26,7 @@ return {
             x = -180,
             y = 140,
             title = "Open Palm",
-            description = "Placeholder perk: represents a defensive unarmed technique path for future implementation.",
+            description = "Hand-to-hand hits fortify Hand-to-hand by 3 for 6 seconds, stacking up to 5 times. Gaining a stack refreshes all Open Palm stacks.",
         },
         {
             id = "handtohand_iron_knuckles",

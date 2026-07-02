@@ -89,6 +89,19 @@ These entries track the first conversion pass from unconditional polling to expl
 | Block / Aegis Rite / Hallowed Guard | Added a `shouldUpdate` gate so momentum stacks run only while active and Hallowed Guard ability refreshes are throttled through a state refresh interval. | Move Hallowed Guard refresh to perk/equipment dirty-state events when a reliable equipment-change signal exists. |
 | Long Blade | Added a `shouldUpdate` gate so Duelist's Tempo remains active while timed and static ability/fundamentals refreshes are throttled through a state refresh interval. | Move static Long Blade ability/fundamentals refresh to perk/equipment dirty-state events and keep update only for active Duelist's Tempo cleanup. |
 
+
+## PR5 gating follow-up checklist
+
+These entries track the second conversion pass for remaining player-side polling patterns.
+
+| Subsystem | PR5 action | Remaining follow-up |
+| --- | --- | --- |
+| Lucky Find / Fortune's Favor | Replaced the enabled-perk update gate with dirty-state and short inventory scan windows; persisted the applied Luck bonus in player save data. | Prefer an explicit Lucky Coin inventory-change event from the award/drop path if one becomes available. |
+| Burglar's Instinct / Unseen Hand | Replaced the enabled-perk ability refresh gate with dirty-state, short equipment/inventory scan windows, and runtime-owned spell cleanup retry state. | Prefer a direct equipment-change signal for lockpick/probe equip and unequip transitions. |
+| Marksman Bow Fundamentals / Steady Draw | Replaced the timer-only agility refresh with dirty/window gating and limited Steady Draw frame checks to armed attack windows or active charge state. | Validate in game that bow attack animation windows arm Steady Draw early enough for held attacks. |
+| Careful Repairs | Replaced enabled-perk repair-tool polling with repair-use/suppression/refund scan windows and persisted pending suppression count. | Prefer a direct repair-tool-use result event if OpenMW exposes one reliably. |
+| Hand-to-hand player | Split Open Palm active timer handling from dirty/static equipment refreshes and removed the idle enabled-perk gate. | Prefer direct equipment/perk dirty events for weapon, shield, and glove changes. |
+
 ## High-cost candidates called out
 
 1. **Hand-to-hand player glove/equipment polling** in `basepack_player.lua`: Centered Stance and Flowing Counter refresh every player update, while state publishing is only throttled after those refreshes.

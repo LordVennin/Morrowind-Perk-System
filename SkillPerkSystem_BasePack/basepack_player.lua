@@ -7495,9 +7495,17 @@ local function isHandToHandAttackAnimation(groupName, options)
         return false
     end
 
+    local startKeyRaw = options.startkey or options.startKey
     local stopKeyRaw = options.stopkey or options.stopKey
+    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
     local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
+    if string.sub(startKey, -6) == " start" and string.find(startKey, "attack", 1, true) ~= nil then
+        return true
+    end
     if string.sub(stopKey, -11) == " max attack" then
+        return true
+    end
+    if string.sub(stopKey, -3) == "hit" and string.sub(stopKey, -7) ~= "min hit" then
         return true
     end
 

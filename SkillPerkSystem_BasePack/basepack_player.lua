@@ -4868,7 +4868,7 @@ local function handleBluntAnimation(event)
     end
 end
 
-local function dispatchBasepackAnimationTextKey(_, key)
+local function handleBasepackAnimationTextKey(_, key)
     if guardedStaminaAttackState == nil then
         return
     end
@@ -4881,6 +4881,16 @@ local function dispatchBasepackAnimationTextKey(_, key)
     end
 
     guardedStaminaAttackState.releaseSeen = true
+end
+
+local function dispatchBasepackAnimationTextKey(groupName, key)
+    local ok, result = pcall(handleBasepackAnimationTextKey, groupName, key)
+    if not ok then
+        print("SkillPerkSystem animation text-key handler failed: " .. tostring(result))
+        return
+    end
+
+    return result
 end
 
 local function processGuardedStaminaRefund(dt)
@@ -8102,14 +8112,28 @@ local function handleHandToHandAnimation(event)
     multiplyAnimationSpeed(event.options, FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER)
 end
 
-local function dispatchBasepackBlendedAnimation(groupName, options)
-    local event = classifyBlendedAnimationEvent(groupName, options)
+local function dispatchAnimationHandler(name, handler, event)
+    local ok, result = pcall(handler, event)
+    if not ok then
+        print("SkillPerkSystem animation handler failed (" .. name .. "): " .. tostring(result))
+        return
+    end
 
-    handleSecurityToolAnimation(event)
-    handleAxeAnimation(event)
-    handleMarksmanAnimation(event)
-    handleBluntAnimation(event)
-    handleHandToHandAnimation(event)
+    return result
+end
+
+local function dispatchBasepackBlendedAnimation(groupName, options)
+    local ok, event = pcall(classifyBlendedAnimationEvent, groupName, options)
+    if not ok then
+        print("SkillPerkSystem animation classification failed: " .. tostring(event))
+        return
+    end
+
+    dispatchAnimationHandler("security", handleSecurityToolAnimation, event)
+    dispatchAnimationHandler("axe", handleAxeAnimation, event)
+    dispatchAnimationHandler("marksman", handleMarksmanAnimation, event)
+    dispatchAnimationHandler("blunt", handleBluntAnimation, event)
+    dispatchAnimationHandler("handToHand", handleHandToHandAnimation, event)
 end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then

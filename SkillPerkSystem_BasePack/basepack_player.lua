@@ -1564,6 +1564,11 @@ local effectsSection = storage.globalSection(EFFECTS_SECTION_ID)
 local appliedLuckBonus = 0
 local lastLoggedCoinCount = nil
 local enabledOverride = nil
+local luckBonusDirty = true
+local luckBonusScanRemaining = 0
+local luckBonusScanTimer = 0
+local LUCKY_COIN_SCAN_WINDOW = 1.5
+local LUCKY_COIN_SCAN_INTERVAL = 0.5
 
 local function log(message)
     if not DEBUG_LUCKY_FIND then
@@ -1715,7 +1720,14 @@ local function applyLuckBonus(targetBonus)
     log(string.format("applied luck bonus %d -> %d (new modifier=%d)", current, desired, newModifier))
 end
 
+local function markLuckBonusDirty(scanWindow)
+    luckBonusDirty = true
+    luckBonusScanRemaining = math.max(luckBonusScanRemaining, tonumber(scanWindow) or LUCKY_COIN_SCAN_WINDOW)
+    luckBonusScanTimer = LUCKY_COIN_SCAN_INTERVAL
+end
+
 local function refreshLuckBonus()
+    luckBonusDirty = false
     if not luckyFindEnabled() then
         applyLuckBonus(0)
         return
@@ -1724,8 +1736,23 @@ local function refreshLuckBonus()
     applyLuckBonus(countLuckyCoinsInInventory())
 end
 
-local function shouldUpdateLuckBonus()
-    return luckyFindEnabled() or appliedLuckBonus ~= 0
+local function shouldUpdateLuckBonus(dt)
+    if luckBonusDirty or appliedLuckBonus ~= 0 and not luckyFindEnabled() then
+        return true
+    end
+
+    luckBonusScanRemaining = math.max(0, luckBonusScanRemaining - (tonumber(dt) or 0))
+    if luckBonusScanRemaining <= 0 then
+        return false
+    end
+
+    luckBonusScanTimer = luckBonusScanTimer + (tonumber(dt) or 0)
+    if luckBonusScanTimer < LUCKY_COIN_SCAN_INTERVAL then
+        return false
+    end
+
+    luckBonusScanTimer = 0
+    return true
 end
 
 local function handleToggle(data)
@@ -1733,13 +1760,19 @@ local function handleToggle(data)
         enabledOverride = data.enable == true
         log(string.format("toggle enable=%s", tostring(data.enable == true)))
     end
+    markLuckBonusDirty(LUCKY_COIN_SCAN_WINDOW)
     refreshLuckBonus()
 end
 
-local function onLoad()
-    appliedLuckBonus = 0
+local function handleInventoryMaybeChanged()
+    markLuckBonusDirty(LUCKY_COIN_SCAN_WINDOW)
+end
+
+local function onLoad(data)
+    appliedLuckBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.appliedLuckBonus) or 0))
     lastLoggedCoinCount = nil
     enabledOverride = nil
+    markLuckBonusDirty(LUCKY_COIN_SCAN_WINDOW)
     refreshLuckBonus()
 end
 
@@ -1748,9 +1781,15 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onUpdate = refreshLuckBonus,
         shouldUpdate = shouldUpdateLuckBonus,
         onLoad = onLoad,
+        onSave = function()
+            return {
+                appliedLuckBonus = appliedLuckBonus,
+            }
+        end,
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,
+        UiModeChanged = handleInventoryMaybeChanged,
     },
 }
 
@@ -1780,6 +1819,11 @@ local removeSpellFailureLogged = false
 local playerSpellsFailureState = nil
 local enabledOverride = nil
 local spellAddedByRuntime = false
+local burglarsInstinctDirty = true
+local burglarsInstinctScanRemaining = 0
+local burglarsInstinctScanTimer = 0
+local BURGLARS_INSTINCT_SCAN_WINDOW = 1.5
+local BURGLARS_INSTINCT_SCAN_INTERVAL = 0.25
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
@@ -1979,12 +2023,19 @@ local function refreshBurglarsInstinctAbility(forceDisable)
     end
 end
 
+local function markBurglarsInstinctDirty(scanWindow)
+    burglarsInstinctDirty = true
+    burglarsInstinctScanRemaining = math.max(burglarsInstinctScanRemaining, tonumber(scanWindow) or BURGLARS_INSTINCT_SCAN_WINDOW)
+    burglarsInstinctScanTimer = BURGLARS_INSTINCT_SCAN_INTERVAL
+end
+
 local function onPlayerToggle(data)
     if type(data) ~= "table" then
         return
     end
 
     enabledOverride = data.enable == true
+    markBurglarsInstinctDirty(BURGLARS_INSTINCT_SCAN_WINDOW)
     if not enabledOverride then
         refreshBurglarsInstinctAbility(true)
         return
@@ -1993,26 +2044,56 @@ local function onPlayerToggle(data)
     refreshBurglarsInstinctAbility(false)
 end
 
-local function shouldUpdateBurglarsInstinct()
-    return unseenHandEnabled() or spellAddedByRuntime or removeSpellFailureLogged
+local function handleBurglarsInventoryMaybeChanged()
+    markBurglarsInstinctDirty(BURGLARS_INSTINCT_SCAN_WINDOW)
 end
 
-local function onLoad()
+local function shouldUpdateBurglarsInstinct(dt)
+    if burglarsInstinctDirty
+        or addSpellFailureLogged
+        or removeSpellFailureLogged
+        or (spellAddedByRuntime and not unseenHandEnabled()) then
+        return true
+    end
+
+    burglarsInstinctScanRemaining = math.max(0, burglarsInstinctScanRemaining - (tonumber(dt) or 0))
+    if burglarsInstinctScanRemaining <= 0 then
+        return false
+    end
+
+    burglarsInstinctScanTimer = burglarsInstinctScanTimer + (tonumber(dt) or 0)
+    if burglarsInstinctScanTimer < BURGLARS_INSTINCT_SCAN_INTERVAL then
+        return false
+    end
+
+    burglarsInstinctScanTimer = 0
+    return true
+end
+
+local function onLoad(data)
     enabledOverride = nil
-    spellAddedByRuntime = false
+    spellAddedByRuntime = type(data) == "table" and data.spellAddedByRuntime == true
+    markBurglarsInstinctDirty(BURGLARS_INSTINCT_SCAN_WINDOW)
     refreshBurglarsInstinctAbility(false)
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function()
+            burglarsInstinctDirty = false
             refreshBurglarsInstinctAbility(false)
         end,
         shouldUpdate = shouldUpdateBurglarsInstinct,
         onLoad = onLoad,
+        onSave = function()
+            return {
+                spellAddedByRuntime = spellAddedByRuntime,
+            }
+        end,
     },
     eventHandlers = {
         [PLAYER_TOGGLE_EVENT] = onPlayerToggle,
+        UiModeChanged = handleBurglarsInventoryMaybeChanged,
     },
 }
 
@@ -4124,9 +4205,13 @@ local STEADY_DRAW_PENDING_SHOT_WINDOW = 5.0
 local STEADY_DRAW_STATE_EVENT = "SkillPerkSystem_MarksmanSteadyDrawState"
 local MARKSMAN_STATE_REFRESH_INTERVAL = 0.5
 local STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL = 0.25
+local MARKSMAN_EQUIPMENT_SCAN_WINDOW = 1.5
 local appliedBowFundamentalsAgilityBonus = 0
 local bowFundamentalsRefreshTimer = MARKSMAN_STATE_REFRESH_INTERVAL
 local steadyDrawIdleFrameCheckTimer = STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL
+local marksmanAgilityDirty = true
+local marksmanEquipmentScanRemaining = 0
+local steadyDrawArmedWindowRemaining = 0
 local steadyDrawHoldSeconds = 0
 local steadyDrawWasHoldingAttack = false
 local steadyDrawShotSequence = 0
@@ -4298,7 +4383,28 @@ local function refreshBowFundamentalsAgilityBonus()
     applyBowFundamentalsAgilityBonus(desiredBonus)
 end
 
+local function markMarksmanEquipmentDirty(scanWindow)
+    marksmanAgilityDirty = true
+    marksmanEquipmentScanRemaining = math.max(marksmanEquipmentScanRemaining, tonumber(scanWindow) or MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+    bowFundamentalsRefreshTimer = MARKSMAN_STATE_REFRESH_INTERVAL
+end
+
 local function shouldUpdateBowFundamentals(dt)
+    if marksmanAgilityDirty then
+        return true
+    end
+
+    if appliedBowFundamentalsAgilityBonus ~= 0
+        and (not (hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) or hasEnabledPerk(DEADEYE_MASTERY_PERK_ID))
+            or getEquippedBowOrCrossbowRecord() == nil) then
+        return true
+    end
+
+    marksmanEquipmentScanRemaining = math.max(0, marksmanEquipmentScanRemaining - (tonumber(dt) or 0))
+    if marksmanEquipmentScanRemaining <= 0 then
+        return false
+    end
+
     bowFundamentalsRefreshTimer = bowFundamentalsRefreshTimer + (tonumber(dt) or 0)
     return bowFundamentalsRefreshTimer >= MARKSMAN_STATE_REFRESH_INTERVAL
 end
@@ -4354,13 +4460,18 @@ local function shouldFrameSteadyDraw(dt)
         return true
     end
 
+    steadyDrawArmedWindowRemaining = math.max(0, steadyDrawArmedWindowRemaining - (tonumber(dt) or 0))
+    if steadyDrawArmedWindowRemaining <= 0 then
+        return false
+    end
+
     steadyDrawIdleFrameCheckTimer = steadyDrawIdleFrameCheckTimer + (tonumber(dt) or 0)
     if steadyDrawIdleFrameCheckTimer < STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL then
         return false
     end
     steadyDrawIdleFrameCheckTimer = 0
 
-    return hasEnabledPerk(STEADY_DRAW_PERK_ID)
+    return hasEnabledPerk(STEADY_DRAW_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil
 end
 
 local function updateSteadyDraw(dt)
@@ -4433,6 +4544,11 @@ end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
     interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+        markMarksmanEquipmentDirty(MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+        if hasEnabledPerk(STEADY_DRAW_PERK_ID) then
+            steadyDrawArmedWindowRemaining = math.max(steadyDrawArmedWindowRemaining, MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+        end
+
         if not hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) then
             return
         end
@@ -4470,6 +4586,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function()
+            marksmanAgilityDirty = false
             bowFundamentalsRefreshTimer = 0
             refreshBowFundamentalsAgilityBonus()
         end,
@@ -4482,6 +4599,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             appliedBowFundamentalsAgilityBonus = 0
             bowFundamentalsRefreshTimer = MARKSMAN_STATE_REFRESH_INTERVAL
             steadyDrawIdleFrameCheckTimer = STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL
+            marksmanAgilityDirty = true
+            marksmanEquipmentScanRemaining = MARKSMAN_EQUIPMENT_SCAN_WINDOW
+            steadyDrawArmedWindowRemaining = MARKSMAN_EQUIPMENT_SCAN_WINDOW
             steadyDrawHoldSeconds = 0
             steadyDrawWasHoldingAttack = false
             steadyDrawShotSequence = 0
@@ -6901,6 +7021,11 @@ local LOG_TAG = "[SkillPerkSystem_BasePack][CarefulRepairs]"
 
 local trackedToolsByKey = {}
 local suppressDropsRemaining = 0
+local repairToolScanRemaining = 0
+local repairToolScanTimer = 0
+local repairToolsDirty = false
+local REPAIR_TOOL_SCAN_WINDOW = 2.0
+local REPAIR_TOOL_SCAN_INTERVAL = 0.25
 
 local function log(message)
     print(string.format("%s %s", LOG_TAG, tostring(message)))
@@ -7145,8 +7270,34 @@ local function hasTrackedRepairTools()
     return next(trackedToolsByKey) ~= nil
 end
 
-local function shouldUpdateCarefulRepairs()
-    return carefulRepairsEnabled() or suppressDropsRemaining > 0 or hasTrackedRepairTools()
+local function openRepairToolScanWindow(scanWindow)
+    repairToolsDirty = true
+    repairToolScanRemaining = math.max(repairToolScanRemaining, tonumber(scanWindow) or REPAIR_TOOL_SCAN_WINDOW)
+    repairToolScanTimer = REPAIR_TOOL_SCAN_INTERVAL
+end
+
+local function shouldUpdateCarefulRepairs(dt)
+    if suppressDropsRemaining > 0 or repairToolsDirty then
+        return true
+    end
+
+    if hasTrackedRepairTools() and repairToolScanRemaining > 0 then
+        repairToolScanRemaining = math.max(0, repairToolScanRemaining - (tonumber(dt) or 0))
+        if repairToolScanRemaining <= 0 then
+            trackedToolsByKey = {}
+            return false
+        end
+
+        repairToolScanTimer = repairToolScanTimer + (tonumber(dt) or 0)
+        if repairToolScanTimer < REPAIR_TOOL_SCAN_INTERVAL then
+            return false
+        end
+
+        repairToolScanTimer = 0
+        return true
+    end
+
+    return false
 end
 
 local function onUpdate()
@@ -7156,6 +7307,7 @@ local function onUpdate()
         return
     end
 
+    repairToolsDirty = false
     local currentToolsByKey = snapshotRepairTools()
 
     for key, currentState in pairs(currentToolsByKey) do
@@ -7177,6 +7329,7 @@ local function handleSuppressRepairToolDrops(data)
 
     suppressDropsRemaining = suppressDropsRemaining + amount
     trackedToolsByKey = snapshotRepairTools()
+    openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
     log(string.format("suppressing next repair tool drops amount=%d total=%d", amount, suppressDropsRemaining))
 end
 
@@ -7202,6 +7355,7 @@ local function handleRefundResult(data)
 
     local useLabel = amount == 1 and "use" or "uses"
     ui.showMessage(string.format("Careful Repairs preserved %d repair tool %s.", amount, useLabel), { showInDialogue = false })
+    openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
     log(string.format("refunded uses=%d recordId=%s", amount, tostring(data.recordId)))
 end
 
@@ -7209,6 +7363,18 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = onUpdate,
         shouldUpdate = shouldUpdateCarefulRepairs,
+        onLoad = function(data)
+            suppressDropsRemaining = math.max(0, math.floor(tonumber(type(data) == "table" and data.suppressDropsRemaining) or 0))
+            trackedToolsByKey = {}
+            if suppressDropsRemaining > 0 then
+                openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
+            end
+        end,
+        onSave = function()
+            return {
+                suppressDropsRemaining = suppressDropsRemaining,
+            }
+        end,
     },
     eventHandlers = {
         [SUPPRESS_EVENT] = handleSuppressRepairToolDrops,
@@ -7259,6 +7425,11 @@ local openPalmRemaining = 0
 local appliedOpenPalmBonus = 0
 local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
 local handToHandIdleRefreshTimer = HAND_TO_HAND_IDLE_REFRESH_INTERVAL
+local handToHandDirty = true
+local handToHandScanRemaining = 0
+local handToHandScanTimer = 0
+local HAND_TO_HAND_SCAN_WINDOW = 1.5
+local HAND_TO_HAND_SCAN_INTERVAL = 0.25
 local DEFAULT_HAND_TO_HAND_STATE_KEY = "false:false:none"
 local lastHandToHandStateKey = nil
 local handToHandEquipmentCache = {
@@ -7805,27 +7976,33 @@ local function refreshCenteredStance()
     end
 end
 
+local function markHandToHandDirty(scanWindow)
+    handToHandDirty = true
+    handToHandScanRemaining = math.max(handToHandScanRemaining, tonumber(scanWindow) or HAND_TO_HAND_SCAN_WINDOW)
+    handToHandScanTimer = HAND_TO_HAND_SCAN_INTERVAL
+end
+
 local function shouldRunHandToHandUpdate(dt)
-    if hasAppliedCenteredStanceBonus()
-        or flowingCounterAbilityApplied
-        or flowingCounterAppliedAgilityPenalty ~= 0
+    if handToHandDirty
         or openPalmStacks > 0
         or appliedOpenPalmBonus ~= 0
-        or (lastHandToHandStateKey ~= nil and lastHandToHandStateKey ~= DEFAULT_HAND_TO_HAND_STATE_KEY) then
+        or (hasAppliedCenteredStanceBonus() and not hasEnabledPerk(CENTERED_STANCE_PERK_ID))
+        or ((flowingCounterAbilityApplied or flowingCounterAppliedAgilityPenalty ~= 0) and not hasEnabledPerk(FLOWING_COUNTER_PERK_ID)) then
         return true
     end
 
-    handToHandIdleRefreshTimer = handToHandIdleRefreshTimer + (tonumber(dt) or 0)
-    if handToHandIdleRefreshTimer < HAND_TO_HAND_IDLE_REFRESH_INTERVAL then
+    handToHandScanRemaining = math.max(0, handToHandScanRemaining - (tonumber(dt) or 0))
+    if handToHandScanRemaining <= 0 then
         return false
     end
-    handToHandIdleRefreshTimer = 0
 
-    return hasEnabledPerk(CENTERED_STANCE_PERK_ID)
-        or hasEnabledPerk(FLOWING_COUNTER_PERK_ID)
-        or hasEnabledPerk(OPEN_PALM_PERK_ID)
-        or hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
-        or hasEnabledPerk(BREAKING_FIST_PERK_ID)
+    handToHandScanTimer = handToHandScanTimer + (tonumber(dt) or 0)
+    if handToHandScanTimer < HAND_TO_HAND_SCAN_INTERVAL then
+        return false
+    end
+
+    handToHandScanTimer = 0
+    return true
 end
 
 local function isHandToHandAttackAnimation(groupName, options)
@@ -7857,6 +8034,7 @@ end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
     interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+        markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
         if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
             return
         end
@@ -7876,9 +8054,13 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryOpenPalm = tryApplyOpenPalm,
+        UiModeChanged = function()
+            markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
+        end,
     },
     engineHandlers = {
         onUpdate = function(dt)
+            handToHandDirty = false
             refreshHandToHandEquipmentCache(false)
             refreshCenteredStance()
             refreshFlowingCounter()
@@ -7922,6 +8104,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             openPalmRemaining = math.max(0, tonumber(type(data) == "table" and data.openPalmRemaining) or 0)
             appliedOpenPalmBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmAppliedBonus) or 0))
             handToHandIdleRefreshTimer = HAND_TO_HAND_IDLE_REFRESH_INTERVAL
+            markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
             local savedEquipmentCache = type(data) == "table"
                 and type(data.handToHandEquipmentCache) == "table"
                 and data.handToHandEquipmentCache

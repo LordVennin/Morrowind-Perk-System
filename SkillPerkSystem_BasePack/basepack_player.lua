@@ -3945,7 +3945,11 @@ local STEADY_DRAW_MAX_HOLD_SECONDS = 4.0
 local STEADY_DRAW_MAX_DAMAGE_BONUS = 0.30
 local STEADY_DRAW_PENDING_SHOT_WINDOW = 5.0
 local STEADY_DRAW_STATE_EVENT = "SkillPerkSystem_MarksmanSteadyDrawState"
+local MARKSMAN_STATE_REFRESH_INTERVAL = 0.5
+local STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL = 0.25
 local appliedBowFundamentalsAgilityBonus = 0
+local bowFundamentalsRefreshTimer = MARKSMAN_STATE_REFRESH_INTERVAL
+local steadyDrawIdleFrameCheckTimer = STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL
 local steadyDrawHoldSeconds = 0
 local steadyDrawWasHoldingAttack = false
 local steadyDrawShotSequence = 0
@@ -4117,10 +4121,9 @@ local function refreshBowFundamentalsAgilityBonus()
     applyBowFundamentalsAgilityBonus(desiredBonus)
 end
 
-local function shouldUpdateBowFundamentals()
-    return hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID)
-        or hasEnabledPerk(DEADEYE_MASTERY_PERK_ID)
-        or appliedBowFundamentalsAgilityBonus ~= 0
+local function shouldUpdateBowFundamentals(dt)
+    bowFundamentalsRefreshTimer = bowFundamentalsRefreshTimer + (tonumber(dt) or 0)
+    return bowFundamentalsRefreshTimer >= MARKSMAN_STATE_REFRESH_INTERVAL
 end
 
 local function getEquippedThrownMarksmanRecord()
@@ -4169,10 +4172,18 @@ local function publishSteadyDrawShot(multiplier, expiresAt)
     })
 end
 
-local function shouldFrameSteadyDraw()
+local function shouldFrameSteadyDraw(dt)
+    if steadyDrawHoldSeconds > 0 or steadyDrawWasHoldingAttack then
+        return true
+    end
+
+    steadyDrawIdleFrameCheckTimer = steadyDrawIdleFrameCheckTimer + (tonumber(dt) or 0)
+    if steadyDrawIdleFrameCheckTimer < STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL then
+        return false
+    end
+    steadyDrawIdleFrameCheckTimer = 0
+
     return hasEnabledPerk(STEADY_DRAW_PERK_ID)
-        or steadyDrawHoldSeconds > 0
-        or steadyDrawWasHoldingAttack
 end
 
 local function updateSteadyDraw(dt)
@@ -4282,6 +4293,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function()
+            bowFundamentalsRefreshTimer = 0
             refreshBowFundamentalsAgilityBonus()
         end,
         shouldUpdate = shouldUpdateBowFundamentals,
@@ -4291,6 +4303,8 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         shouldFrame = shouldFrameSteadyDraw,
         onLoad = function()
             appliedBowFundamentalsAgilityBonus = 0
+            bowFundamentalsRefreshTimer = MARKSMAN_STATE_REFRESH_INTERVAL
+            steadyDrawIdleFrameCheckTimer = STEADY_DRAW_IDLE_FRAME_CHECK_INTERVAL
             steadyDrawHoldSeconds = 0
             steadyDrawWasHoldingAttack = false
             steadyDrawShotSequence = 0
@@ -7057,6 +7071,7 @@ local OPEN_PALM_MAX_STACKS = 5
 local OPEN_PALM_DURATION = 6.0
 local HAND_TO_HAND_STATE_EVENT = "SkillPerkSystem_HandToHandState"
 local HAND_TO_HAND_STATE_REFRESH_INTERVAL = 1.0
+local HAND_TO_HAND_IDLE_REFRESH_INTERVAL = 0.5
 
 local appliedBonuses = {}
 local flowingCounterAppliedAgilityPenalty = 0
@@ -7066,6 +7081,7 @@ local openPalmStacks = 0
 local openPalmRemaining = 0
 local appliedOpenPalmBonus = 0
 local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
+local handToHandIdleRefreshTimer = HAND_TO_HAND_IDLE_REFRESH_INTERVAL
 local DEFAULT_HAND_TO_HAND_STATE_KEY = "false:false:none"
 local lastHandToHandStateKey = nil
 local handToHandEquipmentCache = {
@@ -7612,18 +7628,27 @@ local function refreshCenteredStance()
     end
 end
 
-local function shouldRunHandToHandUpdate()
-    return hasEnabledPerk(CENTERED_STANCE_PERK_ID)
-        or hasAppliedCenteredStanceBonus()
-        or hasEnabledPerk(FLOWING_COUNTER_PERK_ID)
+local function shouldRunHandToHandUpdate(dt)
+    if hasAppliedCenteredStanceBonus()
         or flowingCounterAbilityApplied
         or flowingCounterAppliedAgilityPenalty ~= 0
-        or hasEnabledPerk(OPEN_PALM_PERK_ID)
         or openPalmStacks > 0
         or appliedOpenPalmBonus ~= 0
+        or (lastHandToHandStateKey ~= nil and lastHandToHandStateKey ~= DEFAULT_HAND_TO_HAND_STATE_KEY) then
+        return true
+    end
+
+    handToHandIdleRefreshTimer = handToHandIdleRefreshTimer + (tonumber(dt) or 0)
+    if handToHandIdleRefreshTimer < HAND_TO_HAND_IDLE_REFRESH_INTERVAL then
+        return false
+    end
+    handToHandIdleRefreshTimer = 0
+
+    return hasEnabledPerk(CENTERED_STANCE_PERK_ID)
+        or hasEnabledPerk(FLOWING_COUNTER_PERK_ID)
+        or hasEnabledPerk(OPEN_PALM_PERK_ID)
         or hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
         or hasEnabledPerk(BREAKING_FIST_PERK_ID)
-        or (lastHandToHandStateKey ~= nil and lastHandToHandStateKey ~= DEFAULT_HAND_TO_HAND_STATE_KEY)
 end
 
 local function isHandToHandAttackAnimation(groupName, options)
@@ -7719,6 +7744,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             openPalmStacks = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmStacks) or 0))
             openPalmRemaining = math.max(0, tonumber(type(data) == "table" and data.openPalmRemaining) or 0)
             appliedOpenPalmBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmAppliedBonus) or 0))
+            handToHandIdleRefreshTimer = HAND_TO_HAND_IDLE_REFRESH_INTERVAL
             local savedEquipmentCache = type(data) == "table"
                 and type(data.handToHandEquipmentCache) == "table"
                 and data.handToHandEquipmentCache

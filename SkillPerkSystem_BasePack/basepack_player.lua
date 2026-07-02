@@ -1401,80 +1401,6 @@ end
 ----------------------------------------------------------------------
 -- quick pick logic (from quick_pick_runtime.lua)
 ----------------------------------------------------------------------
-do
-local interfaces = require("openmw.interfaces")
-local pself = require("openmw.self")
-local storage = require("openmw.storage")
-local types = require("openmw.types")
-
-local I = interfaces
-local Actor = types.Actor
-local Lockpick = types.Lockpick
-local Probe = types.Probe
-
-local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
-local ENABLED_KEY = "security.quick_pick.enabled"
-local TOOL_SPEED_MULTIPLIER_KEY = "security.quick_pick.tool_speed_multiplier"
-local DEFAULT_TOOL_SPEED_MULTIPLIER = 1.75
-local TOGGLE_EVENT = "SkillPerkSystem_BasePack_QuickPick_Toggle"
-local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
-local QUICK_PICK_PERK_ID = "security_quick_pick"
-
-local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
-local function quickPickEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
-    end
-
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(QUICK_PICK_PERK_ID) then
-        return false
-    end
-
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(QUICK_PICK_PERK_ID) then
-        return false
-    end
-
-    return true
-end
-
-local function toolSpeedMultiplier()
-    local value = tonumber(effectsSection:get(TOOL_SPEED_MULTIPLIER_KEY))
-    if type(value) ~= "number" or value < 1 then
-        return DEFAULT_TOOL_SPEED_MULTIPLIER
-    end
-    return value
-end
-
-local function getEquippedSecurityTool()
-    local right = nil
-    local left = nil
-
-    local okRight, rightItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedRight)
-    if okRight then
-        right = rightItem
-    end
-
-    local okLeft, leftItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedLeft)
-    if okLeft then
-        left = leftItem
-    end
-
-    if right and (Lockpick.objectIsInstance(right) or Probe.objectIsInstance(right)) then
-        return right
-    end
-
-    if left and (Lockpick.objectIsInstance(left) or Probe.objectIsInstance(left)) then
-        return left
-    end
-
-    return nil
-end
-
 local function animationStringMethod(value, methodName)
     if type(value) ~= "string" then
         return nil
@@ -1575,6 +1501,87 @@ local function classifyBlendedAnimationEvent(groupName, options)
     }
 end
 
+local __basepack_animation_handlers = {}
+local dispatchBasepackAnimationTextKey = nil
+
+local function registerBasepackAnimationHandler(handler)
+    __basepack_animation_handlers[#__basepack_animation_handlers + 1] = handler
+end
+
+do
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local storage = require("openmw.storage")
+local types = require("openmw.types")
+
+local I = interfaces
+local Actor = types.Actor
+local Lockpick = types.Lockpick
+local Probe = types.Probe
+
+local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
+local ENABLED_KEY = "security.quick_pick.enabled"
+local TOOL_SPEED_MULTIPLIER_KEY = "security.quick_pick.tool_speed_multiplier"
+local DEFAULT_TOOL_SPEED_MULTIPLIER = 1.75
+local TOGGLE_EVENT = "SkillPerkSystem_BasePack_QuickPick_Toggle"
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local QUICK_PICK_PERK_ID = "security_quick_pick"
+
+local effectsSection = storage.playerSection(EFFECTS_SECTION_ID)
+local function quickPickEnabled()
+    if effectsSection:get(ENABLED_KEY) ~= true then
+        return false
+    end
+
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil then
+        return false
+    end
+
+    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(QUICK_PICK_PERK_ID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(QUICK_PICK_PERK_ID) then
+        return false
+    end
+
+    return true
+end
+
+local function toolSpeedMultiplier()
+    local value = tonumber(effectsSection:get(TOOL_SPEED_MULTIPLIER_KEY))
+    if type(value) ~= "number" or value < 1 then
+        return DEFAULT_TOOL_SPEED_MULTIPLIER
+    end
+    return value
+end
+
+local function getEquippedSecurityTool()
+    local right = nil
+    local left = nil
+
+    local okRight, rightItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if okRight then
+        right = rightItem
+    end
+
+    local okLeft, leftItem = pcall(Actor.getEquipment, pself, Actor.EQUIPMENT_SLOT.CarriedLeft)
+    if okLeft then
+        left = leftItem
+    end
+
+    if right and (Lockpick.objectIsInstance(right) or Probe.objectIsInstance(right)) then
+        return right
+    end
+
+    if left and (Lockpick.objectIsInstance(left) or Probe.objectIsInstance(left)) then
+        return left
+    end
+
+    return nil
+end
+
 local function handleSecurityToolAnimation(event)
     if not event.isToolUseShape then
         return
@@ -1588,6 +1595,7 @@ local function handleSecurityToolAnimation(event)
 
     multiplyAnimationSpeed(event.options, toolSpeedMultiplier())
 end
+registerBasepackAnimationHandler(handleSecurityToolAnimation)
 
 local function handleQuickPickToggle(data)
     if type(data) ~= "table" then
@@ -4181,6 +4189,7 @@ local function handleAxeAnimation(event)
 
     multiplyAnimationSpeed(event.options, FELLSTAR_CROWN_ATTACK_SPEED_MULTIPLIER)
 end
+registerBasepackAnimationHandler(handleAxeAnimation)
 
 local AXE_STATE_PERKS = {
     axe_kindling_grip = true,
@@ -4633,6 +4642,7 @@ local function handleMarksmanAnimation(event)
         multiplyAnimationSpeed(event.options, QUICK_CAST_ATTACK_SPEED_MULTIPLIER)
     end
 end
+registerBasepackAnimationHandler(handleMarksmanAnimation)
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
@@ -4894,8 +4904,9 @@ local function handleBluntAnimation(event)
         multiplyAnimationSpeed(event.options, STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER)
     end
 end
+registerBasepackAnimationHandler(handleBluntAnimation)
 
-local function dispatchBasepackAnimationTextKey(_, key)
+dispatchBasepackAnimationTextKey = function(_, key)
     if guardedStaminaAttackState == nil then
         return
     end
@@ -8128,15 +8139,14 @@ local function handleHandToHandAnimation(event)
 
     multiplyAnimationSpeed(event.options, FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER)
 end
+registerBasepackAnimationHandler(handleHandToHandAnimation)
 
 local function dispatchBasepackBlendedAnimation(groupName, options)
     local event = classifyBlendedAnimationEvent(groupName, options)
 
-    handleSecurityToolAnimation(event)
-    handleAxeAnimation(event)
-    handleMarksmanAnimation(event)
-    handleBluntAnimation(event)
-    handleHandToHandAnimation(event)
+    for _, handler in ipairs(__basepack_animation_handlers) do
+        handler(event)
+    end
 end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then

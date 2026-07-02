@@ -3597,11 +3597,18 @@ local function applyDuelistTempoToTarget(target, stacks)
         return
     end
 
-    target:sendEvent("SkillPerkSystem_DuelistsTempoRefresh", {
+    local initData = {
         stacks = stacks,
         duration = DUELISTS_TEMPO_DURATION,
         agilityPerStack = DUELISTS_TEMPO_AGILITY_PER_STACK,
-    })
+    }
+    local targetScript = "scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua"
+    if type(target.hasScript) == "function" and type(target.addScript) == "function" and not target:hasScript(targetScript) then
+        target:addScript(targetScript, initData)
+        return
+    end
+
+    target:sendEvent("SkillPerkSystem_DuelistsTempoRefresh", initData)
 end
 
 local function recentlyAppliedDuelistTempo(target)
@@ -8139,6 +8146,47 @@ local function isHandToHandAttackAnimation(groupName, options)
 
     local lowered = string.lower(groupName)
     return string.find(lowered, "attack", 1, true) ~= nil
+end
+
+local function getHandToHandAttackTarget(attack)
+    if type(attack) ~= "table" then
+        return nil
+    end
+
+    return attack.target or attack.victim or attack.defender or attack.hitObject or attack.object
+end
+
+local function isSuccessfulPlayerHandToHandHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.attacker ~= pself or attack.weapon ~= nil then
+        return false
+    end
+
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    if meleeType ~= nil and attack.sourceType ~= meleeType then
+        return false
+    end
+
+    return true
+end
+
+local function onHandToHandHit(attack)
+    if not isSuccessfulPlayerHandToHandHit(attack) then
+        return
+    end
+
+    tryApplyOpenPalm({
+        target = getHandToHandAttackTarget(attack),
+    })
+end
+
+local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(addOnHitHandler) == "function" then
+    addOnHitHandler(onHandToHandHit)
 end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then

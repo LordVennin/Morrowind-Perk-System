@@ -8,6 +8,7 @@ local axe = {}
 local blunt = {}
 local duelistTempo = {}
 local aegisRite = {}
+local handToHand = {}
 
 -- 2. shared actor/stat/weapon/combat helpers
 -- Subsystem-specific copies remain local below to preserve existing behavior and API fallbacks.
@@ -1648,12 +1649,160 @@ local function copyEventHandlers(source)
     end
 end
 
+
+-- 7b. hand-to-hand target damage modifiers
+do
+local interfaces = require("openmw.interfaces")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Weapon = types.Weapon
+
+local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
+local BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER = 0.50
+local BREAKING_FIST_HEALTH_DAMAGE_MIN = 5
+local BREAKING_FIST_HEALTH_DAMAGE_MAX = 15
+
+local playerId = nil
+local ironKnucklesEnabled = false
+local breakingFistEnabled = false
+
+local function setState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    playerId = type(data.playerId) == "string" and data.playerId or nil
+    ironKnucklesEnabled = data.ironKnucklesEnabled == true
+    breakingFistEnabled = data.breakingFistEnabled == true
+end
+
+local function getEquippedItem(actor, slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function itemIsWeapon(item)
+    return item ~= nil and Weapon ~= nil and type(Weapon.objectIsInstance) == "function" and Weapon.objectIsInstance(item)
+end
+
+local function getCurrentFatigue(actor)
+    local fatigueAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return 0
+    end
+
+    local fatigue = fatigueAccessor(actor)
+    if fatigue == nil then
+        return 0
+    end
+
+    return math.max(0, tonumber(fatigue.current) or 0)
+end
+
+local function isPlayerHandToHandHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if type(attack.damage) ~= "table" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= playerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    if meleeType ~= nil and attack.sourceType ~= meleeType then
+        return false
+    end
+
+    if attack.weapon ~= nil then
+        return false
+    end
+
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    return not itemIsWeapon(getEquippedItem(attack.attacker, Actor.EQUIPMENT_SLOT.CarriedRight))
+end
+
+local function onHit(attack)
+    if not ironKnucklesEnabled and not breakingFistEnabled then
+        return
+    end
+    if not isPlayerHandToHandHit(attack) then
+        return
+    end
+
+    if ironKnucklesEnabled then
+        local bonusDamage = getCurrentFatigue(attack.attacker) / IRON_KNUCKLES_FATIGUE_DIVISOR
+        if bonusDamage > 0 then
+            attack.damage.health = (tonumber(attack.damage.health) or 0) + bonusDamage
+        end
+    end
+
+    if breakingFistEnabled then
+        local fatigueDamage = tonumber(attack.damage.fatigue) or 0
+        if fatigueDamage > 0 then
+            attack.damage.fatigue = fatigueDamage * BREAKING_FIST_FATIGUE_DAMAGE_MULTIPLIER
+        end
+
+        attack.damage.health = (tonumber(attack.damage.health) or 0)
+            + math.random(BREAKING_FIST_HEALTH_DAMAGE_MIN, BREAKING_FIST_HEALTH_DAMAGE_MAX)
+    end
+end
+
+handToHand.eventHandlers = {
+    SkillPerkSystem_HandToHandRefresh = setState,
+}
+handToHand.engineHandlers = {
+    onInit = function(initData)
+        setState(initData)
+    end,
+    onLoad = function(savedData, initData)
+        if type(savedData) == "table" then
+            setState(savedData)
+        else
+            setState(initData)
+        end
+    end,
+    onSave = function()
+        return {
+            playerId = playerId,
+            ironKnucklesEnabled = ironKnucklesEnabled,
+            breakingFistEnabled = breakingFistEnabled,
+        }
+    end,
+}
+handToHand.onHit = onHit
+
+end
+
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
 copyEventHandlers(duelistTempo.eventHandlers)
 copyEventHandlers(aegisRite.eventHandlers)
+copyEventHandlers(handToHand.eventHandlers)
 
 local function combinedOnHit(attack)
+    handToHand.onHit(attack)
     axe.onHit(attack)
     blunt.onHit(attack)
     duelistTempo.onHit(attack)
@@ -1681,17 +1830,20 @@ return {
             callEngineHandler(blunt, "onInit", initData)
             callEngineHandler(duelistTempo, "onInit", initData)
             callEngineHandler(aegisRite, "onInit", initData)
+            callEngineHandler(handToHand, "onInit", initData)
         end,
         onLoad = function(savedData, initData)
             local axeData = type(savedData) == "table" and type(savedData.axe) == "table" and savedData.axe or savedData
             local bluntData = type(savedData) == "table" and type(savedData.blunt) == "table" and savedData.blunt or savedData
             local duelistTempoData = type(savedData) == "table" and type(savedData.duelistTempo) == "table" and savedData.duelistTempo or savedData
             local aegisRiteData = type(savedData) == "table" and type(savedData.aegisRite) == "table" and savedData.aegisRite or savedData
+            local handToHandData = type(savedData) == "table" and type(savedData.handToHand) == "table" and savedData.handToHand or savedData
 
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
             callEngineHandler(duelistTempo, "onLoad", duelistTempoData, initData)
             callEngineHandler(aegisRite, "onLoad", aegisRiteData, initData)
+            callEngineHandler(handToHand, "onLoad", handToHandData, initData)
         end,
         onSave = function()
             return {
@@ -1699,6 +1851,7 @@ return {
                 blunt = type(blunt.engineHandlers.onSave) == "function" and blunt.engineHandlers.onSave() or nil,
                 duelistTempo = type(duelistTempo.engineHandlers.onSave) == "function" and duelistTempo.engineHandlers.onSave() or nil,
                 aegisRite = type(aegisRite.engineHandlers.onSave) == "function" and aegisRite.engineHandlers.onSave() or nil,
+                handToHand = type(handToHand.engineHandlers.onSave) == "function" and handToHand.engineHandlers.onSave() or nil,
             }
         end,
         onUpdate = function(dt)
@@ -1706,6 +1859,7 @@ return {
             callEngineHandler(blunt, "onUpdate", dt)
             callEngineHandler(duelistTempo, "onUpdate", dt)
             callEngineHandler(aegisRite, "onUpdate", dt)
+            callEngineHandler(handToHand, "onUpdate", dt)
         end,
     },
 }

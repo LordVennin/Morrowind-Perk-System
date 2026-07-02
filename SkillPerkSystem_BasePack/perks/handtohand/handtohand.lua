@@ -78,7 +78,7 @@ return {
             x = 180,
             y = 440,
             title = "Breaking Fist",
-            description = "Placeholder capstone perk: reserves the offensive mastery endpoint of the Hand-to-hand tree.",
+            description = "Hand-to-hand hits deal 50% less Fatigue damage, but deal 5 to 15 bonus Health damage.",
         },
     },
 }

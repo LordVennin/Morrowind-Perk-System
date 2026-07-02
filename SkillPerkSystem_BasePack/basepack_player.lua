@@ -6992,6 +6992,7 @@ end
 -- hand-to-hand runtime logic
 ----------------------------------------------------------------------
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
@@ -7003,10 +7004,14 @@ local Weapon = types.Weapon
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
+local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 local CENTERED_STANCE_BONUS = 3
-local IRON_KNUCKLES_FATIGUE_DIVISOR = 30
+local HAND_TO_HAND_STATE_EVENT = "SkillPerkSystem_HandToHandState"
+local HAND_TO_HAND_STATE_REFRESH_INTERVAL = 1.0
 
 local appliedBonuses = {}
+local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
+local lastHandToHandStateKey = nil
 
 local ATTRIBUTES = {
     "agility",
@@ -7135,56 +7140,20 @@ local function applyAttributeBonus(attributeID, targetBonus)
 end
 
 
-local function getCurrentFatigue()
-    local fatigueAccessor = Actor ~= nil
-        and Actor.stats ~= nil
-        and Actor.stats.dynamic ~= nil
-        and Actor.stats.dynamic.fatigue
-    if type(fatigueAccessor) ~= "function" then
-        return 0
-    end
-
-    local fatigue = fatigueAccessor(pself)
-    if fatigue == nil then
-        return 0
-    end
-
-    return math.max(0, tonumber(fatigue.current) or 0)
-end
-
-local function isValidIronKnucklesTarget(target)
-    return target ~= nil and type(target.isValid) == "function" and target:isValid()
-end
-
-local function canApplyIronKnuckles()
-    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
-        return false
-    end
-
-    return hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
-        and not itemIsWeapon(getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight))
-end
-
-local function tryApplyIronKnucklesDamage(data)
-    if type(data) ~= "table" then
-        return
-    end
-    if not canApplyIronKnuckles() then
+local function refreshHandToHandState(force)
+    local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
+    local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
+    local stateKey = tostring(ironKnucklesEnabled) .. ":" .. tostring(breakingFistEnabled)
+    if not force and stateKey == lastHandToHandStateKey then
         return
     end
 
-    local target = data.target
-    if not isValidIronKnucklesTarget(target) then
-        return
-    end
-
-    local bonusDamage = getCurrentFatigue() / IRON_KNUCKLES_FATIGUE_DIVISOR
-    if bonusDamage <= 0 then
-        return
-    end
-
-    target:sendEvent("SkillPerkSystem_ApplyIronKnucklesDamage", {
-        damage = bonusDamage,
+    lastHandToHandStateKey = stateKey
+    core.sendGlobalEvent(HAND_TO_HAND_STATE_EVENT, {
+        player = pself,
+        playerId = pself.id,
+        ironKnucklesEnabled = ironKnucklesEnabled,
+        breakingFistEnabled = breakingFistEnabled,
     })
 end
 
@@ -7199,21 +7168,19 @@ local function refreshCenteredStance()
     end
 end
 
-local handToHandAddOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
-if type(handToHandAddOnHitHandler) == "function" then
-    handToHandAddOnHitHandler(applyIronKnucklesDamage)
-end
-
 __basepack_subsystems[#__basepack_subsystems + 1] = {
-    eventHandlers = {
-        SkillPerkSystem_TryIronKnucklesDamage = tryApplyIronKnucklesDamage,
-    },
     engineHandlers = {
-        onUpdate = function(_dt)
+        onUpdate = function(dt)
             refreshCenteredStance()
+            handToHandStateRefreshTimer = handToHandStateRefreshTimer + (tonumber(dt) or 0)
+            if handToHandStateRefreshTimer >= HAND_TO_HAND_STATE_REFRESH_INTERVAL then
+                handToHandStateRefreshTimer = 0
+                refreshHandToHandState(false)
+            end
         end,
         onSave = function()
             refreshCenteredStance()
+            refreshHandToHandState(true)
             return {
                 centeredStanceAppliedBonuses = appliedBonuses,
             }
@@ -7225,6 +7192,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
                 appliedBonuses = {}
             end
             refreshCenteredStance()
+            refreshHandToHandState(true)
         end,
     },
 }

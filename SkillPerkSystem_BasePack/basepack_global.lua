@@ -2247,6 +2247,21 @@ local function sendState(actor)
     actor:sendEvent("SkillPerkSystem_AxeKindlingGripRefresh", kindlingGripState)
 end
 
+local function axeTargetStateActive()
+    return kindlingGripState.enabled
+        or kindlingGripState.damageBonusCount > 0
+        or kindlingGripState.bloodletterEnabled
+        or kindlingGripState.draggingWoundEnabled
+        or kindlingGripState.hewerHeartEnabled
+        or kindlingGripState.crimsonCleaveEnabled
+        or kindlingGripState.ironCanopyEnabled
+        or kindlingGripState.thrownFundamentalsEnabled
+        or kindlingGripState.trickThrowEnabled
+        or kindlingGripState.pinningShotEnabled
+        or kindlingGripState.deadeyeMasteryEnabled
+        or kindlingGripState.steadyDrawMultiplier > 1
+end
+
 local function refreshWatchers()
     for _, actor in ipairs(world.activeActors) do
         if shouldAttachWatcher(actor) then
@@ -2302,6 +2317,10 @@ subsystems.axe = {
     },
     engineHandlers = {
         onUpdate = function(dt)
+            if not axeTargetStateActive() then
+                return
+            end
+
             refreshTimer = refreshTimer + (tonumber(dt) or 0)
             if refreshTimer >= WATCHER_REFRESH_INTERVAL then
                 refreshTimer = 0
@@ -2363,6 +2382,12 @@ local function sendState(actor)
     actor:sendEvent("SkillPerkSystem_HandToHandRefresh", handToHandState)
 end
 
+local function handToHandTargetStateActive()
+    return handToHandState.ironKnucklesEnabled
+        or handToHandState.breakingFistEnabled
+        or handToHandState.flowingCounterMode ~= "none"
+end
+
 local function refreshWatchers()
     for _, actor in ipairs(world.activeActors) do
         if shouldAttachWatcher(actor) then
@@ -2393,6 +2418,10 @@ subsystems.handtohand = {
     },
     engineHandlers = {
         onUpdate = function(dt)
+            if not handToHandTargetStateActive() then
+                return
+            end
+
             refreshTimer = refreshTimer + (tonumber(dt) or 0)
             if refreshTimer >= WATCHER_REFRESH_INTERVAL then
                 refreshTimer = 0
@@ -2589,6 +2618,17 @@ local function sendState(actor)
     end
 end
 
+local function bluntTargetStateActive()
+    return strengthInArmsState.strengthInArmsEnabled
+        or strengthInArmsState.enabled
+        or strengthInArmsState.damageBonus > 0
+        or strengthInArmsState.platebreakerEnabled
+        or strengthInArmsState.breathstealerEnabled
+        or strengthInArmsState.heavyHitterEnabled
+        or strengthInArmsState.staggeringBlowEnabled
+        or strengthInArmsState.ironBellEnabled
+end
+
 local function refreshWatchers()
     for _, actor in ipairs(world.activeActors) do
         if shouldAttachWatcher(actor) then
@@ -2626,6 +2666,10 @@ subsystems.bluntweapon = {
     },
     engineHandlers = {
         onUpdate = function(dt)
+            if not bluntTargetStateActive() then
+                return
+            end
+
             refreshTimer = refreshTimer + (tonumber(dt) or 0)
             if refreshTimer >= WATCHER_REFRESH_INTERVAL then
                 refreshTimer = 0

@@ -78,6 +78,17 @@ The target script is attached to active actors by global watcher subsystems. Its
 | Aegis Rite target prime | anonymous `onUpdate(dt)` | Counts down primed target duration and requests removal when it expires. | Only needed while effect is active. | Well-scoped timer; should not require a broad always-attached script after expiry. |
 | Combined target update dispatch | `onUpdate = function(dt) callEngineHandler(...) ... end` | Dispatches update to axe, blunt, Duelist's Tempo, Aegis Rite, and hand-to-hand target modules on every actor carrying the combined target script. | Required by current target consolidation architecture; high-cost candidate. | **High-cost candidate:** attached active actors pay dispatch overhead for all target modules, including modules without an `onUpdate` or without active state. Consider reference-counted attachment, per-feature active flags, or removal when no module has live state. |
 
+## PR4 gating follow-up checklist
+
+These entries track the first conversion pass from unconditional polling to explicit gates. Future PRs should continue this table instead of re-auditing from scratch.
+
+| Subsystem | PR4 action | Remaining follow-up |
+| --- | --- | --- |
+| Steady Hands / security tools | Added a `shouldUpdate` gate and short scan window so the fallback equipment condition comparison runs around toggles/tool-drain events and debug frames instead of unconditionally. | Prefer direct tool-drain events when reliable; keep fallback window narrow and only expand if condition-loss edge cases appear in game. |
+| Tumbler Sense / security tools | Added a `shouldUpdate` gate and short scan window while preserving active stack expiry cleanup. | Replace fallback condition detection with direct security failure events wherever possible. |
+| Block / Aegis Rite / Hallowed Guard | Added a `shouldUpdate` gate so momentum stacks run only while active and Hallowed Guard ability refreshes are throttled through a state refresh interval. | Move Hallowed Guard refresh to perk/equipment dirty-state events when a reliable equipment-change signal exists. |
+| Long Blade | Added a `shouldUpdate` gate so Duelist's Tempo remains active while timed and static ability/fundamentals refreshes are throttled through a state refresh interval. | Move static Long Blade ability/fundamentals refresh to perk/equipment dirty-state events and keep update only for active Duelist's Tempo cleanup. |
+
 ## High-cost candidates called out
 
 1. **Hand-to-hand player glove/equipment polling** in `basepack_player.lua`: Centered Stance and Flowing Counter refresh every player update, while state publishing is only throttled after those refreshes.

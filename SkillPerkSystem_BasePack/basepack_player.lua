@@ -32,6 +32,10 @@ local trackedToolState = nil
 local conditionDebugFramesRemaining = 1
 local conditionSourceDebugFramesRemaining = 60
 local slotLabel
+local TOOL_TRACKING_SCAN_WINDOW = 1.0
+local TOOL_TRACKING_SCAN_INTERVAL = 0.2
+local toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+local toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
 -- Fallback condition tracking can miss intermediate onUpdate frames. When that
 -- happens we treat each lost condition point as one consumed-use attempt, but
 -- cap rolls per update to avoid runaway refunds after large desyncs.
@@ -533,6 +537,8 @@ local function rollAndRefund(toolState, contextLabel, attempts)
     ))
 end
 
+local withLastComparableCondition
+
 local function handleToolDrainEvent(data)
     if type(data) ~= "table" then
         return
@@ -560,9 +566,11 @@ local function handleToolDrainEvent(data)
     ))
 
     rollAndRefund(toolState, "event")
+    toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+    trackedToolState = withLastComparableCondition(trackedToolState, toolState)
 end
 
-local function withLastComparableCondition(previousState, currentState)
+withLastComparableCondition = function(previousState, currentState)
     if currentState == nil then
         return nil
     end
@@ -707,6 +715,34 @@ local function maybeRefundCondition(previousState, currentState)
     rollAndRefund(currentState, "onUpdate-fallback", rollAttempts)
 end
 
+local function shouldUpdate(dt)
+    if conditionDebugFramesRemaining > 0 or conditionSourceDebugFramesRemaining > 0 then
+        return true
+    end
+
+    if not steadyHandsEnabled() then
+        trackedToolState = nil
+        return false
+    end
+
+    toolTrackingScanRemaining = math.max(0, toolTrackingScanRemaining - (tonumber(dt) or 0))
+    if trackedToolState ~= nil and toolTrackingScanRemaining <= 0 then
+        trackedToolState = nil
+    end
+
+    if toolTrackingScanRemaining <= 0 then
+        return false
+    end
+
+    toolTrackingScanTimer = toolTrackingScanTimer + (tonumber(dt) or 0)
+    if toolTrackingScanTimer < TOOL_TRACKING_SCAN_INTERVAL then
+        return false
+    end
+
+    toolTrackingScanTimer = 0
+    return true
+end
+
 local function onUpdate()
     local currentState = findEquippedSecurityTool()
     logConditionDebugForFrame(currentState)
@@ -736,8 +772,12 @@ local function handleSteadyHandsToggle(data)
     effectsSection:set(ENABLED_KEY, enabled)
     if enabled then
         effectsSection:set(NO_CONSUME_CHANCE_KEY, clampChance(data.chance))
+        toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+        toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
     else
         effectsSection:set(NO_CONSUME_CHANCE_KEY, 0.0)
+        trackedToolState = nil
+        toolTrackingScanRemaining = 0
     end
 
     log(string.format("[SkillPerkSystem_BasePack] Steady Hands %s (chance=%.2f)", enabled and "enabled" or "disabled", effectsSection:get(NO_CONSUME_CHANCE_KEY) or 0.0))
@@ -746,6 +786,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = onUpdate,
+        shouldUpdate = shouldUpdate,
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleSteadyHandsToggle,
@@ -814,6 +855,10 @@ end
 log("[SkillPerkSystem_BasePack][TumblerSense] runtime script loaded")
 local trackedToolState = nil
 local appliedSkillBonus = 0
+local TOOL_TRACKING_SCAN_WINDOW = 1.0
+local TOOL_TRACKING_SCAN_INTERVAL = 0.2
+local toolTrackingScanRemaining = 0
+local toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
 
 local EQUIPMENT_SLOT = (types.Actor ~= nil and types.Actor.EQUIPMENT_SLOT) or {}
 local TRACKED_SLOTS = {
@@ -1119,6 +1164,8 @@ local function handleToggle(data)
     effectsSection:set(SHARED_DECAY_SECONDS_KEY, math.max(0, tonumber(data.sharedDecaySeconds) or DEFAULT_DECAY_SECONDS))
 
     if enabled then
+        toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+        toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
         if (tonumber(appliedSkillBonus) or 0) > 0 then
             applySecuritySkillBonus(0)
         end
@@ -1140,6 +1187,8 @@ local function handleToggle(data)
         currentBonus()
     else
         clearStacks("disabled")
+        trackedToolState = nil
+        toolTrackingScanRemaining = 0
     end
 
     log(string.format(
@@ -1199,6 +1248,8 @@ local function handleFailure(data)
     effectsSection:set(EXPIRY_TIMESTAMP_KEY, expiry)
 
     local _, bonus = currentBonus()
+    toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+    toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
     log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] stack gain source=%s normalizedSource=%s mode=%s accepted=%s stacks=%d->%d bonus=%.2f",
         tostring(rawSource),
@@ -1258,6 +1309,35 @@ local function handleRefreshChance(data)
     end
 end
 
+local function shouldUpdate(dt)
+    local stackCount = tonumber(effectsSection:get(STACK_COUNT_KEY)) or 0
+    if stackCount > 0 or appliedSkillBonus ~= 0 then
+        return true
+    end
+
+    if not tumblerSenseEnabled() then
+        trackedToolState = nil
+        return false
+    end
+
+    toolTrackingScanRemaining = math.max(0, toolTrackingScanRemaining - (tonumber(dt) or 0))
+    if trackedToolState ~= nil and toolTrackingScanRemaining <= 0 then
+        trackedToolState = nil
+    end
+
+    if toolTrackingScanRemaining <= 0 then
+        return false
+    end
+
+    toolTrackingScanTimer = toolTrackingScanTimer + (tonumber(dt) or 0)
+    if toolTrackingScanTimer < TOOL_TRACKING_SCAN_INTERVAL then
+        return false
+    end
+
+    toolTrackingScanTimer = 0
+    return true
+end
+
 local function requestRefreshChance(data)
     handleRefreshChance(data)
     return getActiveBonusPercentPoints()
@@ -1307,6 +1387,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     },
     engineHandlers = {
         onUpdate = onUpdate,
+        shouldUpdate = shouldUpdate,
     },
     eventHandlers = {
         [TOGGLE_EVENT] = handleToggle,
@@ -1973,6 +2054,7 @@ local STEADY_WALL_MAX_STACKS = 5
 local STEADY_WALL_DURATION = 5.0
 local STEADY_WALL_BLOCK_PER_STACK = 4
 local STEADY_WALL_ARMOR_PER_STACK = 3
+local BLOCK_STATE_REFRESH_INTERVAL = 0.5
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local BULWARK_SELF_SPELL_ID = "sps_bullightself"
@@ -1987,6 +2069,8 @@ local hallowedGuardApplied = false
 local hallowedGuardAddFailureLogged = false
 local hallowedGuardRemoveFailureLogged = false
 local hallowedGuardSpellBookFailureState = nil
+local blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
+local blockStateRefreshDue = false
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -2771,6 +2855,25 @@ local function processBlockPerks(attack)
     applyBulwarkOfLight(attack)
 end
 
+local function shouldUpdateBlock(dt)
+    if #momentumExpirations > 0 or hallowedGuardAddFailureLogged or hallowedGuardRemoveFailureLogged then
+        return true
+    end
+
+    if not hallowedGuardApplied and not hallowedGuardEnabled() then
+        return false
+    end
+
+    blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
+    if blockStateRefreshTimer < BLOCK_STATE_REFRESH_INTERVAL then
+        return false
+    end
+
+    blockStateRefreshTimer = 0
+    blockStateRefreshDue = true
+    return true
+end
+
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then
     addOnHitHandler(processBlockPerks)
@@ -2804,6 +2907,8 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             runtimeTime = 0
             momentumExpirations = {}
             hallowedGuardApplied = false
+            blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
+            blockStateRefreshDue = false
             applyMomentumBlockModifier()
             updateHallowedGuardAbility()
         end,
@@ -2811,8 +2916,17 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             runtimeTime = runtimeTime + (tonumber(dt) or 0)
             pruneMomentumStacks()
             applyMomentumBlockModifier()
-            updateHallowedGuardAbility()
+            blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
+            if blockStateRefreshDue
+                or blockStateRefreshTimer >= BLOCK_STATE_REFRESH_INTERVAL
+                or hallowedGuardAddFailureLogged
+                or hallowedGuardRemoveFailureLogged then
+                blockStateRefreshTimer = 0
+                blockStateRefreshDue = false
+                updateHallowedGuardAbility()
+            end
         end,
+        shouldUpdate = shouldUpdateBlock,
         onInterfaceOverride = function(base)
             baseCombatInterface = base
         end,
@@ -2845,6 +2959,7 @@ local KEEN_EDGE_PERK_ID = "longblade_keen_edge"
 local GRANDMASTER_FORM_PERK_ID = "longblade_demo_mastery"
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
+local LONG_BLADE_STATE_REFRESH_INTERVAL = 0.5
 local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_LongBlade"
 local APPLIED_BONUS_KEY = "fundamentals.applied_bonus"
 local DUELISTS_TEMPO_APPLIED_KEY = "duelists_tempo.applied_agility_bonus"
@@ -2884,6 +2999,8 @@ local duelistsFormAbilityApplied = false
 local greatbladeFormAbilityApplied = false
 local spellAbilityFailureStates = {}
 local playerSpellBookFailureState = nil
+local longBladeStateRefreshTimer = LONG_BLADE_STATE_REFRESH_INTERVAL
+local longBladeStateRefreshDue = false
 
 local function logDebug(message)
     print(string.format("%s[debug] %s", LOG_TAG, tostring(message)))
@@ -3365,6 +3482,31 @@ local function updateLongBladeAbilities()
     )
 end
 
+local function hasLongBladeAbilityFailure()
+    if playerSpellBookFailureState ~= nil then
+        return true
+    end
+
+    for _, state in pairs(spellAbilityFailureStates) do
+        if type(state) == "table" and (state.add == true or state.remove == true) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function anyLongBladeStatePerkEnabled()
+    return longBladeFundamentalsEnabled()
+        or greatbladeFormEnabled()
+        or duelistsFormEnabled()
+end
+
+local function refreshLongBladeStaticState()
+    refreshLongBladeFundamentals()
+    updateLongBladeAbilities()
+end
+
 local function isValidDuelistTempoTarget(target)
     return target ~= nil and type(target.isValid) == "function" and target:isValid()
 end
@@ -3440,6 +3582,7 @@ local function tryApplyDuelistTempo(data)
     end
 
     rememberDuelistTempoApplication(target)
+    longBladeStateRefreshDue = true
     duelistTempoStacks = math.min(DUELISTS_TEMPO_MAX_STACKS, duelistTempoStacks + 1)
     duelistTempoRemaining = DUELISTS_TEMPO_DURATION
     applyDuelistTempoAgilityBonus(duelistTempoStacks * DUELISTS_TEMPO_AGILITY_PER_STACK)
@@ -3562,6 +3705,7 @@ local function onHit(attack)
         return
     end
 
+    longBladeStateRefreshDue = true
     local target = getAttackTarget(attack)
     tryApplyDuelistTempo({
         target = target,
@@ -3595,8 +3739,9 @@ local function onLoad()
     lastKeenEdgeCriticalApplyTime = -1
     lastGrandmasterHeavyCriticalTarget = nil
     lastGrandmasterHeavyCriticalApplyTime = -1
-    refreshLongBladeFundamentals()
-    updateLongBladeAbilities()
+    longBladeStateRefreshTimer = LONG_BLADE_STATE_REFRESH_INTERVAL
+    longBladeStateRefreshDue = false
+    refreshLongBladeStaticState()
 
     if duelistTempoRemaining > 0 then
         duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))
@@ -3610,8 +3755,14 @@ end
 
 local function onUpdate(dt)
     runtimeTime = runtimeTime + (tonumber(dt) or 0)
-    refreshLongBladeFundamentals()
-    updateLongBladeAbilities()
+    longBladeStateRefreshTimer = longBladeStateRefreshTimer + (tonumber(dt) or 0)
+    if longBladeStateRefreshDue
+        or longBladeStateRefreshTimer >= LONG_BLADE_STATE_REFRESH_INTERVAL
+        or hasLongBladeAbilityFailure() then
+        longBladeStateRefreshDue = false
+        longBladeStateRefreshTimer = 0
+        refreshLongBladeStaticState()
+    end
 
     if duelistTempoRemaining > 0 then
         duelistTempoRemaining = math.max(0, duelistTempoRemaining - (tonumber(dt) or 0))
@@ -3623,6 +3774,31 @@ local function onUpdate(dt)
     end
 end
 
+local function shouldUpdateLongBlade(dt)
+    if duelistTempoRemaining > 0
+        or appliedDuelistTempoAgilityBonus ~= 0
+        or longBladeStateRefreshDue
+        or hasLongBladeAbilityFailure() then
+        return true
+    end
+
+    if appliedLongBladeBonus == 0
+        and not duelistsFormAbilityApplied
+        and not greatbladeFormAbilityApplied
+        and not anyLongBladeStatePerkEnabled() then
+        return false
+    end
+
+    longBladeStateRefreshTimer = longBladeStateRefreshTimer + (tonumber(dt) or 0)
+    if longBladeStateRefreshTimer < LONG_BLADE_STATE_REFRESH_INTERVAL then
+        return false
+    end
+
+    longBladeStateRefreshTimer = 0
+    longBladeStateRefreshDue = true
+    return true
+end
+
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryDuelistsTempo = tryApplyDuelistTempo,
@@ -3632,6 +3808,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     },
     engineHandlers = {
         onUpdate = onUpdate,
+        shouldUpdate = shouldUpdateLongBlade,
         onLoad = onLoad,
     },
 }

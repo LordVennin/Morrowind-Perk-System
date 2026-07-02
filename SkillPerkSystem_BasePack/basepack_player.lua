@@ -7026,6 +7026,7 @@ local openPalmStacks = 0
 local openPalmRemaining = 0
 local appliedOpenPalmBonus = 0
 local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
+local DEFAULT_HAND_TO_HAND_STATE_KEY = "false:false:none"
 local lastHandToHandStateKey = nil
 
 local ATTRIBUTES = {
@@ -7455,7 +7456,7 @@ end
 local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
-    local flowingCounterMode = equippedFlowingCounterMode()
+    local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and equippedFlowingCounterMode() or "none"
     local stateKey = tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
         .. tostring(flowingCounterMode)
@@ -7474,20 +7475,58 @@ local function refreshHandToHandState(force)
 end
 
 local function refreshFlowingCounter()
+    if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
+        if flowingCounterAbilityApplied then
+            flowingCounterAbilityApplied = setPlayerAbility(FLOWING_COUNTER_ABILITY_ID, false)
+        end
+        if flowingCounterAppliedAgilityPenalty ~= 0 then
+            applyFlowingCounterAgilityPenalty(0)
+        end
+        return
+    end
+
     local mode = equippedFlowingCounterMode()
     flowingCounterAbilityApplied = setPlayerAbility(FLOWING_COUNTER_ABILITY_ID, mode == "bare")
     applyFlowingCounterAgilityPenalty(mode == "heavy" and FLOWING_COUNTER_HEAVY_AGILITY_PENALTY or 0)
 end
 
+local function hasAppliedCenteredStanceBonus()
+    for _, attributeID in ipairs(ATTRIBUTES) do
+        if math.max(0, math.floor(tonumber(appliedBonuses[attributeID]) or 0)) ~= 0 then
+            return true
+        end
+    end
+    return false
+end
+
 local function refreshCenteredStance()
+    local centeredStanceEnabled = hasEnabledPerk(CENTERED_STANCE_PERK_ID)
+    if not centeredStanceEnabled and not hasAppliedCenteredStanceBonus() then
+        return
+    end
+
     local desiredBonus = 0
-    if hasEnabledPerk(CENTERED_STANCE_PERK_ID) and not hasEquippedWeaponOrShield() then
+    if centeredStanceEnabled and not hasEquippedWeaponOrShield() then
         desiredBonus = CENTERED_STANCE_BONUS
     end
 
     for _, attributeID in ipairs(ATTRIBUTES) do
         applyAttributeBonus(attributeID, desiredBonus)
     end
+end
+
+local function shouldRunHandToHandUpdate()
+    return hasEnabledPerk(CENTERED_STANCE_PERK_ID)
+        or hasAppliedCenteredStanceBonus()
+        or hasEnabledPerk(FLOWING_COUNTER_PERK_ID)
+        or flowingCounterAbilityApplied
+        or flowingCounterAppliedAgilityPenalty ~= 0
+        or hasEnabledPerk(OPEN_PALM_PERK_ID)
+        or openPalmStacks > 0
+        or appliedOpenPalmBonus ~= 0
+        or hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
+        or hasEnabledPerk(BREAKING_FIST_PERK_ID)
+        or (lastHandToHandStateKey ~= nil and lastHandToHandStateKey ~= DEFAULT_HAND_TO_HAND_STATE_KEY)
 end
 
 local function isHandToHandAttackAnimation(groupName, options)
@@ -7519,7 +7558,7 @@ end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
     interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-        if equippedFlowingCounterMode() ~= "heavy" then
+        if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) or equippedFlowingCounterMode() ~= "heavy" then
             return
         end
         if hasEquippedWeaponOrShield() or not isHandToHandAttackAnimation(groupName, options) then
@@ -7537,6 +7576,10 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     },
     engineHandlers = {
         onUpdate = function(dt)
+            if not shouldRunHandToHandUpdate() then
+                return
+            end
+
             refreshCenteredStance()
             refreshFlowingCounter()
             updateOpenPalm(dt)

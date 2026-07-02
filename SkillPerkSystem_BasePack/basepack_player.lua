@@ -1643,6 +1643,10 @@ local function refreshLuckBonus()
     applyLuckBonus(countLuckyCoinsInInventory())
 end
 
+local function shouldUpdateLuckBonus()
+    return luckyFindEnabled() or appliedLuckBonus ~= 0
+end
+
 local function handleToggle(data)
     if type(data) == "table" then
         enabledOverride = data.enable == true
@@ -1661,6 +1665,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = refreshLuckBonus,
+        shouldUpdate = shouldUpdateLuckBonus,
         onLoad = onLoad,
     },
     eventHandlers = {
@@ -1907,6 +1912,10 @@ local function onPlayerToggle(data)
     refreshBurglarsInstinctAbility(false)
 end
 
+local function shouldUpdateBurglarsInstinct()
+    return unseenHandEnabled() or spellAddedByRuntime or removeSpellFailureLogged
+end
+
 local function onLoad()
     enabledOverride = nil
     spellAddedByRuntime = false
@@ -1918,6 +1927,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onUpdate = function()
             refreshBurglarsInstinctAbility(false)
         end,
+        shouldUpdate = shouldUpdateBurglarsInstinct,
         onLoad = onLoad,
     },
     eventHandlers = {
@@ -4095,15 +4105,22 @@ end
 
 local function refreshBowFundamentalsAgilityBonus()
     local desiredBonus = 0
-    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
+    local bowOrCrossbowRecord = getEquippedBowOrCrossbowRecord()
+    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and bowOrCrossbowRecord ~= nil then
         desiredBonus = desiredBonus + BOW_FUNDAMENTALS_AGILITY_BONUS
     end
 
-    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
+    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and bowOrCrossbowRecord ~= nil then
         desiredBonus = desiredBonus + DEADEYE_MASTERY_AGILITY_BONUS
     end
 
     applyBowFundamentalsAgilityBonus(desiredBonus)
+end
+
+local function shouldUpdateBowFundamentals()
+    return hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID)
+        or hasEnabledPerk(DEADEYE_MASTERY_PERK_ID)
+        or appliedBowFundamentalsAgilityBonus ~= 0
 end
 
 local function getEquippedThrownMarksmanRecord()
@@ -4150,6 +4167,12 @@ local function publishSteadyDrawShot(multiplier, expiresAt)
         expiresAt = expiresAt,
         sequence = steadyDrawShotSequence,
     })
+end
+
+local function shouldFrameSteadyDraw()
+    return hasEnabledPerk(STEADY_DRAW_PERK_ID)
+        or steadyDrawHoldSeconds > 0
+        or steadyDrawWasHoldingAttack
 end
 
 local function updateSteadyDraw(dt)
@@ -4261,9 +4284,11 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onUpdate = function()
             refreshBowFundamentalsAgilityBonus()
         end,
+        shouldUpdate = shouldUpdateBowFundamentals,
         onFrame = function(dt)
             updateSteadyDraw(dt)
         end,
+        shouldFrame = shouldFrameSteadyDraw,
         onLoad = function()
             appliedBowFundamentalsAgilityBonus = 0
             steadyDrawHoldSeconds = 0
@@ -6614,6 +6639,10 @@ local function handleUiModeChanged(data)
     end
 end
 
+local function shouldFramePendingRepairUse()
+    return pendingUseRepairFrames > 0 and pendingUseRepairTool ~= nil
+end
+
 local function tryPendingRepairUse()
     if pendingUseRepairFrames <= 0 or pendingUseRepairTool == nil then return end
 
@@ -6654,6 +6683,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onFrame = function()
             tryPendingRepairUse()
         end,
+        shouldFrame = shouldFramePendingRepairUse,
     },
 }
 
@@ -6920,13 +6950,22 @@ local function maybeRefundCondition(previousState, currentState)
     rollAndRefund(currentState, rollAttempts)
 end
 
-local function onUpdate()
-    local currentToolsByKey = snapshotRepairTools()
+local function hasTrackedRepairTools()
+    return next(trackedToolsByKey) ~= nil
+end
 
+local function shouldUpdateCarefulRepairs()
+    return carefulRepairsEnabled() or suppressDropsRemaining > 0 or hasTrackedRepairTools()
+end
+
+local function onUpdate()
     if not carefulRepairsEnabled() then
-        trackedToolsByKey = currentToolsByKey
+        trackedToolsByKey = {}
+        suppressDropsRemaining = 0
         return
     end
+
+    local currentToolsByKey = snapshotRepairTools()
 
     for key, currentState in pairs(currentToolsByKey) do
         maybeRefundCondition(trackedToolsByKey[key], currentState)
@@ -6978,6 +7017,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = onUpdate,
+        shouldUpdate = shouldUpdateCarefulRepairs,
     },
     eventHandlers = {
         [SUPPRESS_EVENT] = handleSuppressRepairToolDrops,
@@ -7637,10 +7677,6 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     },
     engineHandlers = {
         onUpdate = function(dt)
-            if not shouldRunHandToHandUpdate() then
-                return
-            end
-
             refreshHandToHandEquipmentCache(false)
             refreshCenteredStance()
             refreshFlowingCounter()
@@ -7651,6 +7687,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
                 refreshHandToHandState(false)
             end
         end,
+        shouldUpdate = shouldRunHandToHandUpdate,
         onSave = function()
             refreshHandToHandEquipmentCache(true)
             refreshCenteredStance()
@@ -7734,35 +7771,51 @@ end
 ----------------------------------------------------------------------
 local __combinedEngineHandlers = {}
 local __engineHandlerChains = {}
+
+local function predicateNameForHandler(handlerName)
+    if handlerName == "onUpdate" then
+        return "shouldUpdate"
+    elseif handlerName == "onFrame" then
+        return "shouldFrame"
+    end
+    return nil
+end
+
 for _, subsystem in ipairs(__basepack_subsystems) do
     local handlers = subsystem.engineHandlers
     if type(handlers) == "table" then
         for handlerName, handler in pairs(handlers) do
-            if type(handler) == "function" then
+            if handlerName ~= "shouldUpdate" and handlerName ~= "shouldFrame" and type(handler) == "function" then
                 local chain = __engineHandlerChains[handlerName]
                 if chain == nil then
                     chain = {}
                     __engineHandlerChains[handlerName] = chain
                 end
-                chain[#chain + 1] = handler
+                local predicateName = predicateNameForHandler(handlerName)
+                chain[#chain + 1] = {
+                    handler = handler,
+                    shouldRun = predicateName ~= nil and handlers[predicateName] or nil,
+                }
             end
         end
     end
 end
 
 for handlerName, chain in pairs(__engineHandlerChains) do
-    if #chain == 1 then
-        __combinedEngineHandlers[handlerName] = chain[1]
-    elseif #chain > 1 then
+    if #chain == 1 and chain[1].shouldRun == nil then
+        __combinedEngineHandlers[handlerName] = chain[1].handler
+    elseif #chain > 0 then
         __combinedEngineHandlers[handlerName] = function(...)
             local saveData = nil
-            for _, handler in ipairs(chain) do
-                local result = handler(...)
-                if handlerName == "onSave" and result ~= nil then
-                    if saveData == nil then saveData = {} end
-                    if type(result) == "table" then
-                        for key, value in pairs(result) do
-                            saveData[key] = value
+            for _, entry in ipairs(chain) do
+                if type(entry.shouldRun) ~= "function" or entry.shouldRun(...) then
+                    local result = entry.handler(...)
+                    if handlerName == "onSave" and result ~= nil then
+                        if saveData == nil then saveData = {} end
+                        if type(result) == "table" then
+                            for key, value in pairs(result) do
+                                saveData[key] = value
+                            end
                         end
                     end
                 end

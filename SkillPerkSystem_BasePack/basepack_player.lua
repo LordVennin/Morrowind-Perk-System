@@ -1643,6 +1643,10 @@ local function refreshLuckBonus()
     applyLuckBonus(countLuckyCoinsInInventory())
 end
 
+local function shouldUpdateLuckBonus()
+    return luckyFindEnabled() or appliedLuckBonus ~= 0
+end
+
 local function handleToggle(data)
     if type(data) == "table" then
         enabledOverride = data.enable == true
@@ -1661,6 +1665,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = refreshLuckBonus,
+        shouldUpdate = shouldUpdateLuckBonus,
         onLoad = onLoad,
     },
     eventHandlers = {
@@ -1907,6 +1912,10 @@ local function onPlayerToggle(data)
     refreshBurglarsInstinctAbility(false)
 end
 
+local function shouldUpdateBurglarsInstinct()
+    return unseenHandEnabled() or spellAddedByRuntime or removeSpellFailureLogged
+end
+
 local function onLoad()
     enabledOverride = nil
     spellAddedByRuntime = false
@@ -1918,6 +1927,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onUpdate = function()
             refreshBurglarsInstinctAbility(false)
         end,
+        shouldUpdate = shouldUpdateBurglarsInstinct,
         onLoad = onLoad,
     },
     eventHandlers = {
@@ -4095,15 +4105,22 @@ end
 
 local function refreshBowFundamentalsAgilityBonus()
     local desiredBonus = 0
-    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
+    local bowOrCrossbowRecord = getEquippedBowOrCrossbowRecord()
+    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and bowOrCrossbowRecord ~= nil then
         desiredBonus = desiredBonus + BOW_FUNDAMENTALS_AGILITY_BONUS
     end
 
-    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and getEquippedBowOrCrossbowRecord() ~= nil then
+    if hasEnabledPerk(DEADEYE_MASTERY_PERK_ID) and bowOrCrossbowRecord ~= nil then
         desiredBonus = desiredBonus + DEADEYE_MASTERY_AGILITY_BONUS
     end
 
     applyBowFundamentalsAgilityBonus(desiredBonus)
+end
+
+local function shouldUpdateBowFundamentals()
+    return hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID)
+        or hasEnabledPerk(DEADEYE_MASTERY_PERK_ID)
+        or appliedBowFundamentalsAgilityBonus ~= 0
 end
 
 local function getEquippedThrownMarksmanRecord()
@@ -4150,6 +4167,12 @@ local function publishSteadyDrawShot(multiplier, expiresAt)
         expiresAt = expiresAt,
         sequence = steadyDrawShotSequence,
     })
+end
+
+local function shouldFrameSteadyDraw()
+    return hasEnabledPerk(STEADY_DRAW_PERK_ID)
+        or steadyDrawHoldSeconds > 0
+        or steadyDrawWasHoldingAttack
 end
 
 local function updateSteadyDraw(dt)
@@ -4261,9 +4284,11 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onUpdate = function()
             refreshBowFundamentalsAgilityBonus()
         end,
+        shouldUpdate = shouldUpdateBowFundamentals,
         onFrame = function(dt)
             updateSteadyDraw(dt)
         end,
+        shouldFrame = shouldFrameSteadyDraw,
         onLoad = function()
             appliedBowFundamentalsAgilityBonus = 0
             steadyDrawHoldSeconds = 0
@@ -6614,6 +6639,10 @@ local function handleUiModeChanged(data)
     end
 end
 
+local function shouldFramePendingRepairUse()
+    return pendingUseRepairFrames > 0 and pendingUseRepairTool ~= nil
+end
+
 local function tryPendingRepairUse()
     if pendingUseRepairFrames <= 0 or pendingUseRepairTool == nil then return end
 
@@ -6654,6 +6683,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         onFrame = function()
             tryPendingRepairUse()
         end,
+        shouldFrame = shouldFramePendingRepairUse,
     },
 }
 
@@ -6920,13 +6950,22 @@ local function maybeRefundCondition(previousState, currentState)
     rollAndRefund(currentState, rollAttempts)
 end
 
-local function onUpdate()
-    local currentToolsByKey = snapshotRepairTools()
+local function hasTrackedRepairTools()
+    return next(trackedToolsByKey) ~= nil
+end
 
+local function shouldUpdateCarefulRepairs()
+    return carefulRepairsEnabled() or suppressDropsRemaining > 0 or hasTrackedRepairTools()
+end
+
+local function onUpdate()
     if not carefulRepairsEnabled() then
-        trackedToolsByKey = currentToolsByKey
+        trackedToolsByKey = {}
+        suppressDropsRemaining = 0
         return
     end
+
+    local currentToolsByKey = snapshotRepairTools()
 
     for key, currentState in pairs(currentToolsByKey) do
         maybeRefundCondition(trackedToolsByKey[key], currentState)
@@ -6978,6 +7017,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = onUpdate,
+        shouldUpdate = shouldUpdateCarefulRepairs,
     },
     eventHandlers = {
         [SUPPRESS_EVENT] = handleSuppressRepairToolDrops,
@@ -7026,7 +7066,13 @@ local openPalmStacks = 0
 local openPalmRemaining = 0
 local appliedOpenPalmBonus = 0
 local handToHandStateRefreshTimer = HAND_TO_HAND_STATE_REFRESH_INTERVAL
+local DEFAULT_HAND_TO_HAND_STATE_KEY = "false:false:none"
 local lastHandToHandStateKey = nil
+local handToHandEquipmentCache = {
+    key = nil,
+    hasWeaponOrShield = true,
+    flowingCounterMode = "none",
+}
 
 local ATTRIBUTES = {
     "agility",
@@ -7110,8 +7156,7 @@ local function armorTypeEquals(record, typeName)
     return record ~= nil and Armor ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE[typeName]
 end
 
-local function getEquippedGloveRecord(slot)
-    local item = getEquippedItem(slot)
+local function getGloveRecordFromItem(item)
     if item == nil then
         return nil
     end
@@ -7208,13 +7253,64 @@ local function gloveArmorClass(record)
     return "heavy"
 end
 
-local function equippedFlowingCounterMode()
+local function itemCacheKey(item)
+    if item == nil then
+        return ""
+    end
+
+    return tostring(item.recordId or item.id or "")
+end
+
+local function readHandToHandEquipmentSnapshot()
+    local slots = Actor ~= nil and Actor.EQUIPMENT_SLOT or nil
+    if slots == nil then
+        return {
+            key = "equipment-slots-unavailable",
+            carriedRight = nil,
+            carriedLeft = nil,
+            leftGlove = nil,
+            rightGlove = nil,
+        }
+    end
+
+    local carriedRight = getEquippedItem(slots.CarriedRight)
+    local carriedLeft = getEquippedItem(slots.CarriedLeft)
+    local leftGlove = getEquippedItem(slots.LeftGauntlet)
+    local rightGlove = getEquippedItem(slots.RightGauntlet)
+
+    return {
+        key = table.concat({
+            itemCacheKey(carriedRight),
+            itemCacheKey(carriedLeft),
+            itemCacheKey(leftGlove),
+            itemCacheKey(rightGlove),
+            tostring(hasEnabledPerk(FLOWING_COUNTER_PERK_ID)),
+        }, "|"),
+        carriedRight = carriedRight,
+        carriedLeft = carriedLeft,
+        leftGlove = leftGlove,
+        rightGlove = rightGlove,
+    }
+end
+
+local function computeHasEquippedWeaponOrShield(snapshot)
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return true
+    end
+
+    return itemIsWeapon(snapshot.carriedRight)
+        or itemIsShield(snapshot.carriedRight)
+        or itemIsWeapon(snapshot.carriedLeft)
+        or itemIsShield(snapshot.carriedLeft)
+end
+
+local function computeFlowingCounterMode(snapshot)
     if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) or Actor == nil or Actor.EQUIPMENT_SLOT == nil then
         return "none"
     end
 
-    local leftRecord = getEquippedGloveRecord(Actor.EQUIPMENT_SLOT.LeftGauntlet)
-    local rightRecord = getEquippedGloveRecord(Actor.EQUIPMENT_SLOT.RightGauntlet)
+    local leftRecord = getGloveRecordFromItem(snapshot.leftGlove)
+    local rightRecord = getGloveRecordFromItem(snapshot.rightGlove)
     local leftHasGlove = leftRecord ~= nil and (armorTypeEquals(leftRecord, "LGauntlet") or armorTypeEquals(leftRecord, "LBracer"))
     local rightHasGlove = rightRecord ~= nil and (armorTypeEquals(rightRecord, "RGauntlet") or armorTypeEquals(rightRecord, "RBracer"))
 
@@ -7232,6 +7328,27 @@ local function equippedFlowingCounterMode()
     end
 
     return "none"
+end
+
+local function refreshHandToHandEquipmentCache(force)
+    local snapshot = readHandToHandEquipmentSnapshot()
+    if not force and handToHandEquipmentCache.key == snapshot.key then
+        return
+    end
+
+    handToHandEquipmentCache = {
+        key = snapshot.key,
+        hasWeaponOrShield = computeHasEquippedWeaponOrShield(snapshot),
+        flowingCounterMode = computeFlowingCounterMode(snapshot),
+    }
+end
+
+local function cachedHasEquippedWeaponOrShield()
+    return handToHandEquipmentCache.hasWeaponOrShield == true
+end
+
+local function cachedFlowingCounterMode()
+    return type(handToHandEquipmentCache.flowingCounterMode) == "string" and handToHandEquipmentCache.flowingCounterMode or "none"
 end
 
 local function resolveAbilityRecord(abilityId)
@@ -7334,26 +7451,6 @@ local function applyFlowingCounterAgilityPenalty(targetPenalty)
     flowingCounterAppliedAgilityPenalty = desired
 end
 
-local function hasEquippedWeaponOrShield()
-    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
-        return true
-    end
-
-    local slots = {
-        Actor.EQUIPMENT_SLOT.CarriedRight,
-        Actor.EQUIPMENT_SLOT.CarriedLeft,
-    }
-
-    for _, slot in ipairs(slots) do
-        local item = getEquippedItem(slot)
-        if itemIsWeapon(item) or itemIsShield(item) then
-            return true
-        end
-    end
-
-    return false
-end
-
 function resolveAttributeStat(attributeID)
     local accessor = Actor ~= nil
         and Actor.stats ~= nil
@@ -7421,7 +7518,8 @@ local function tryApplyOpenPalm(data)
     if type(data) ~= "table" or data.target == nil then
         return
     end
-    if not hasEnabledPerk(OPEN_PALM_PERK_ID) or hasEquippedWeaponOrShield() then
+    refreshHandToHandEquipmentCache(true)
+    if not hasEnabledPerk(OPEN_PALM_PERK_ID) or cachedHasEquippedWeaponOrShield() then
         clearOpenPalmStacks()
         return
     end
@@ -7439,7 +7537,7 @@ local function updateOpenPalm(dt)
         return
     end
 
-    if not hasEnabledPerk(OPEN_PALM_PERK_ID) or hasEquippedWeaponOrShield() then
+    if not hasEnabledPerk(OPEN_PALM_PERK_ID) or cachedHasEquippedWeaponOrShield() then
         clearOpenPalmStacks()
         return
     end
@@ -7455,7 +7553,7 @@ end
 local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
-    local flowingCounterMode = equippedFlowingCounterMode()
+    local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and cachedFlowingCounterMode() or "none"
     local stateKey = tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
         .. tostring(flowingCounterMode)
@@ -7474,20 +7572,58 @@ local function refreshHandToHandState(force)
 end
 
 local function refreshFlowingCounter()
-    local mode = equippedFlowingCounterMode()
+    if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
+        if flowingCounterAbilityApplied then
+            flowingCounterAbilityApplied = setPlayerAbility(FLOWING_COUNTER_ABILITY_ID, false)
+        end
+        if flowingCounterAppliedAgilityPenalty ~= 0 then
+            applyFlowingCounterAgilityPenalty(0)
+        end
+        return
+    end
+
+    local mode = cachedFlowingCounterMode()
     flowingCounterAbilityApplied = setPlayerAbility(FLOWING_COUNTER_ABILITY_ID, mode == "bare")
     applyFlowingCounterAgilityPenalty(mode == "heavy" and FLOWING_COUNTER_HEAVY_AGILITY_PENALTY or 0)
 end
 
+local function hasAppliedCenteredStanceBonus()
+    for _, attributeID in ipairs(ATTRIBUTES) do
+        if math.max(0, math.floor(tonumber(appliedBonuses[attributeID]) or 0)) ~= 0 then
+            return true
+        end
+    end
+    return false
+end
+
 local function refreshCenteredStance()
+    local centeredStanceEnabled = hasEnabledPerk(CENTERED_STANCE_PERK_ID)
+    if not centeredStanceEnabled and not hasAppliedCenteredStanceBonus() then
+        return
+    end
+
     local desiredBonus = 0
-    if hasEnabledPerk(CENTERED_STANCE_PERK_ID) and not hasEquippedWeaponOrShield() then
+    if centeredStanceEnabled and not cachedHasEquippedWeaponOrShield() then
         desiredBonus = CENTERED_STANCE_BONUS
     end
 
     for _, attributeID in ipairs(ATTRIBUTES) do
         applyAttributeBonus(attributeID, desiredBonus)
     end
+end
+
+local function shouldRunHandToHandUpdate()
+    return hasEnabledPerk(CENTERED_STANCE_PERK_ID)
+        or hasAppliedCenteredStanceBonus()
+        or hasEnabledPerk(FLOWING_COUNTER_PERK_ID)
+        or flowingCounterAbilityApplied
+        or flowingCounterAppliedAgilityPenalty ~= 0
+        or hasEnabledPerk(OPEN_PALM_PERK_ID)
+        or openPalmStacks > 0
+        or appliedOpenPalmBonus ~= 0
+        or hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
+        or hasEnabledPerk(BREAKING_FIST_PERK_ID)
+        or (lastHandToHandStateKey ~= nil and lastHandToHandStateKey ~= DEFAULT_HAND_TO_HAND_STATE_KEY)
 end
 
 local function isHandToHandAttackAnimation(groupName, options)
@@ -7519,10 +7655,14 @@ end
 
 if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
     interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-        if equippedFlowingCounterMode() ~= "heavy" then
+        if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
             return
         end
-        if hasEquippedWeaponOrShield() or not isHandToHandAttackAnimation(groupName, options) then
+        refreshHandToHandEquipmentCache(false)
+        if cachedFlowingCounterMode() ~= "heavy" then
+            return
+        end
+        if cachedHasEquippedWeaponOrShield() or not isHandToHandAttackAnimation(groupName, options) then
             return
         end
 
@@ -7537,6 +7677,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     },
     engineHandlers = {
         onUpdate = function(dt)
+            refreshHandToHandEquipmentCache(false)
             refreshCenteredStance()
             refreshFlowingCounter()
             updateOpenPalm(dt)
@@ -7546,7 +7687,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
                 refreshHandToHandState(false)
             end
         end,
+        shouldUpdate = shouldRunHandToHandUpdate,
         onSave = function()
+            refreshHandToHandEquipmentCache(true)
             refreshCenteredStance()
             refreshFlowingCounter()
             updateOpenPalm(0)
@@ -7558,6 +7701,11 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
                 openPalmStacks = openPalmStacks,
                 openPalmRemaining = openPalmRemaining,
                 openPalmAppliedBonus = appliedOpenPalmBonus,
+                handToHandEquipmentCache = {
+                    key = handToHandEquipmentCache.key,
+                    hasWeaponOrShield = handToHandEquipmentCache.hasWeaponOrShield == true,
+                    flowingCounterMode = cachedFlowingCounterMode(),
+                },
             }
         end,
         onLoad = function(data)
@@ -7571,6 +7719,20 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             openPalmStacks = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmStacks) or 0))
             openPalmRemaining = math.max(0, tonumber(type(data) == "table" and data.openPalmRemaining) or 0)
             appliedOpenPalmBonus = math.max(0, math.floor(tonumber(type(data) == "table" and data.openPalmAppliedBonus) or 0))
+            local savedEquipmentCache = type(data) == "table"
+                and type(data.handToHandEquipmentCache) == "table"
+                and data.handToHandEquipmentCache
+                or nil
+            local savedFlowingCounterMode = type(savedEquipmentCache) == "table"
+                and type(savedEquipmentCache.flowingCounterMode) == "string"
+                and savedEquipmentCache.flowingCounterMode
+                or "none"
+            handToHandEquipmentCache = {
+                key = type(savedEquipmentCache) == "table" and savedEquipmentCache.key or nil,
+                hasWeaponOrShield = type(savedEquipmentCache) == "table" and savedEquipmentCache.hasWeaponOrShield == true,
+                flowingCounterMode = savedFlowingCounterMode,
+            }
+            refreshHandToHandEquipmentCache(true)
             refreshCenteredStance()
             refreshFlowingCounter()
             updateOpenPalm(0)
@@ -7609,35 +7771,51 @@ end
 ----------------------------------------------------------------------
 local __combinedEngineHandlers = {}
 local __engineHandlerChains = {}
+
+local function predicateNameForHandler(handlerName)
+    if handlerName == "onUpdate" then
+        return "shouldUpdate"
+    elseif handlerName == "onFrame" then
+        return "shouldFrame"
+    end
+    return nil
+end
+
 for _, subsystem in ipairs(__basepack_subsystems) do
     local handlers = subsystem.engineHandlers
     if type(handlers) == "table" then
         for handlerName, handler in pairs(handlers) do
-            if type(handler) == "function" then
+            if handlerName ~= "shouldUpdate" and handlerName ~= "shouldFrame" and type(handler) == "function" then
                 local chain = __engineHandlerChains[handlerName]
                 if chain == nil then
                     chain = {}
                     __engineHandlerChains[handlerName] = chain
                 end
-                chain[#chain + 1] = handler
+                local predicateName = predicateNameForHandler(handlerName)
+                chain[#chain + 1] = {
+                    handler = handler,
+                    shouldRun = predicateName ~= nil and handlers[predicateName] or nil,
+                }
             end
         end
     end
 end
 
 for handlerName, chain in pairs(__engineHandlerChains) do
-    if #chain == 1 then
-        __combinedEngineHandlers[handlerName] = chain[1]
-    elseif #chain > 1 then
+    if #chain == 1 and chain[1].shouldRun == nil then
+        __combinedEngineHandlers[handlerName] = chain[1].handler
+    elseif #chain > 0 then
         __combinedEngineHandlers[handlerName] = function(...)
             local saveData = nil
-            for _, handler in ipairs(chain) do
-                local result = handler(...)
-                if handlerName == "onSave" and result ~= nil then
-                    if saveData == nil then saveData = {} end
-                    if type(result) == "table" then
-                        for key, value in pairs(result) do
-                            saveData[key] = value
+            for _, entry in ipairs(chain) do
+                if type(entry.shouldRun) ~= "function" or entry.shouldRun(...) then
+                    local result = entry.handler(...)
+                    if handlerName == "onSave" and result ~= nil then
+                        if saveData == nil then saveData = {} end
+                        if type(result) == "table" then
+                            for key, value in pairs(result) do
+                                saveData[key] = value
+                            end
                         end
                     end
                 end

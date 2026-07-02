@@ -1475,49 +1475,92 @@ local function getEquippedSecurityTool()
     return nil
 end
 
-local function isLikelyToolUseAnimation(groupName, options)
-    if type(groupName) ~= "string" then
-        return false
-    end
-
-    local g = string.lower(groupName)
-    local startKeyRaw = type(options) == "table" and (options.startkey or options.startKey) or nil
-    local stopKeyRaw = type(options) == "table" and (options.stopkey or options.stopKey) or nil
-    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-
-    if string.find(g, "pick", 1, true) then return true end
-    if string.find(g, "probe", 1, true) then return true end
-    if string.find(g, "lock", 1, true) then return true end
-    if string.find(g, "security", 1, true) then return true end
-    if string.find(startKey, "pick", 1, true) then return true end
-    if string.find(startKey, "probe", 1, true) then return true end
-    if string.find(stopKey, "pick", 1, true) then return true end
-    if string.find(stopKey, "probe", 1, true) then return true end
-
-    return false
+local function animationKeyLower(value)
+    return type(value) == "string" and string.lower(value) or ""
 end
 
-I.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-    if not quickPickEnabled() then
-        return
-    end
-
-    if getEquippedSecurityTool() == nil then
-        return
-    end
-
-    if not isLikelyToolUseAnimation(groupName, options) then
-        return
-    end
-
+local function multiplyAnimationSpeed(options, multiplier)
     if type(options) ~= "table" then
         return
     end
 
     local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-    options.speed = currentSpeed * toolSpeedMultiplier()
-end)
+    options.speed = currentSpeed * multiplier
+end
+
+local function classifyBlendedAnimationEvent(groupName, options)
+    local hasOptions = type(options) == "table"
+    local hasGroupName = type(groupName) == "string"
+    local groupLower = animationKeyLower(groupName)
+    local startKeyRaw = hasOptions and (options.startkey or options.startKey) or nil
+    local stopKeyRaw = hasOptions and (options.stopkey or options.stopKey) or nil
+    local startKeyLower = animationKeyLower(startKeyRaw)
+    local stopKeyLower = animationKeyLower(stopKeyRaw)
+    local isAttackGroup = string.find(groupLower, "attack", 1, true) ~= nil
+    local isMaxAttack = string.sub(stopKeyLower, -11) == " max attack"
+    local isHit = string.sub(stopKeyLower, -3) == "hit" and string.sub(stopKeyLower, -7) ~= "min hit"
+    local isChopStart = startKeyLower == "chop start"
+    local isSlashStart = startKeyLower == "slash start"
+    local isThrustStart = startKeyLower == "thrust start"
+    local isChopMaxAttack = stopKeyLower == "chop max attack"
+    local isSlashMaxAttack = stopKeyLower == "slash max attack"
+    local isThrustMaxAttack = stopKeyLower == "thrust max attack"
+
+    return {
+        groupName = groupName,
+        groupLower = groupLower,
+        hasGroupName = hasGroupName,
+        options = options,
+        hasOptions = hasOptions,
+        startKey = startKeyRaw,
+        stopKey = stopKeyRaw,
+        startKeyLower = startKeyLower,
+        stopKeyLower = stopKeyLower,
+        isAttackGroup = isAttackGroup,
+        isMaxAttack = isMaxAttack,
+        isHit = isHit,
+        isWeaponAttackWindup = hasOptions and (isMaxAttack or isAttackGroup),
+        isChopAttackWindup = hasOptions and (isChopStart or isChopMaxAttack),
+        isBluntAttackShape = hasOptions and (
+            isChopStart
+            or isSlashStart
+            or isThrustStart
+            or isChopMaxAttack
+            or isSlashMaxAttack
+            or isThrustMaxAttack
+        ),
+        isHandToHandAttackShape = hasOptions and (
+            (string.sub(startKeyLower, -6) == " start" and string.find(startKeyLower, "attack", 1, true) ~= nil)
+            or isMaxAttack
+            or isHit
+            or isAttackGroup
+        ),
+        isToolUseShape = hasGroupName and (
+            string.find(groupLower, "pick", 1, true) ~= nil
+            or string.find(groupLower, "probe", 1, true) ~= nil
+            or string.find(groupLower, "lock", 1, true) ~= nil
+            or string.find(groupLower, "security", 1, true) ~= nil
+            or string.find(startKeyLower, "pick", 1, true) ~= nil
+            or string.find(startKeyLower, "probe", 1, true) ~= nil
+            or string.find(stopKeyLower, "pick", 1, true) ~= nil
+            or string.find(stopKeyLower, "probe", 1, true) ~= nil
+        ),
+    }
+end
+
+local function handleSecurityToolAnimation(event)
+    if not event.isToolUseShape then
+        return
+    end
+    if not quickPickEnabled() then
+        return
+    end
+    if getEquippedSecurityTool() == nil then
+        return
+    end
+
+    multiplyAnimationSpeed(event.options, toolSpeedMultiplier())
+end
 
 local function handleQuickPickToggle(data)
     if type(data) ~= "table" then
@@ -4092,47 +4135,25 @@ local function refreshFellstarCrownFeather()
     end
 end
 
-local function isAxeAttackWindupAnimation(groupName, options)
-    if type(options) ~= "table" then
-        return false
-    end
-
-    local stopKeyRaw = options.stopkey or options.stopKey
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-    if string.sub(stopKey, -11) == " max attack" then
-        return true
-    end
-
-    if type(groupName) ~= "string" then
-        return false
-    end
-
-    local g = string.lower(groupName)
-    return string.find(g, "attack", 1, true) ~= nil
-end
-
 local function markAxeStateDirty()
     axeStateDirty = true
     axeFeatherDirty = true
 end
 
-interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
+local function handleAxeAnimation(event)
     markAxeStateDirty()
+    if not event.isWeaponAttackWindup then
+        return
+    end
     if not hasEnabledPerk(FELLSTAR_CROWN_PERK_ID) then
         return
     end
-
     if getEquippedAxeRecord() == nil then
         return
     end
 
-    if not isAxeAttackWindupAnimation(groupName, options) then
-        return
-    end
-
-    local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-    options.speed = currentSpeed * FELLSTAR_CROWN_ATTACK_SPEED_MULTIPLIER
-end)
+    multiplyAnimationSpeed(event.options, FELLSTAR_CROWN_ATTACK_SPEED_MULTIPLIER)
+end
 
 local AXE_STATE_PERKS = {
     axe_kindling_grip = true,
@@ -4562,88 +4583,28 @@ local function updateSteadyDraw(dt)
     steadyDrawWasHoldingAttack = holdingAttack
 end
 
-local function isMarksmanBowDrawAnimation(groupName, options)
-    if type(options) ~= "table" then
-        return false
-    end
-
-    local stopKeyRaw = options.stopkey or options.stopKey
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-    if string.sub(stopKey, -11) == " max attack" then
-        return true
-    end
-
-    if type(groupName) ~= "string" then
-        return false
-    end
-
-    local g = string.lower(groupName)
-    return string.find(g, "attack", 1, true) ~= nil
-end
-
-local function isThrownAttackWindupAnimation(groupName, options)
-    if type(options) ~= "table" then
-        return false
-    end
-
-    local stopKeyRaw = options.stopkey or options.stopKey
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-    if string.sub(stopKey, -11) == " max attack" then
-        return true
-    end
-
-    if type(groupName) ~= "string" then
-        return false
-    end
-
-    local g = string.lower(groupName)
-    return string.find(g, "attack", 1, true) ~= nil
-end
-
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then
     addOnHitHandler(applySteadyDrawDamage)
 end
 
-if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
-    interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-        markMarksmanEquipmentDirty(MARKSMAN_EQUIPMENT_SCAN_WINDOW)
-        if hasEnabledPerk(STEADY_DRAW_PERK_ID) then
-            steadyDrawArmedWindowRemaining = math.max(steadyDrawArmedWindowRemaining, MARKSMAN_EQUIPMENT_SCAN_WINDOW)
-        end
+local function handleMarksmanAnimation(event)
+    markMarksmanEquipmentDirty(MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+    if hasEnabledPerk(STEADY_DRAW_PERK_ID) then
+        steadyDrawArmedWindowRemaining = math.max(steadyDrawArmedWindowRemaining, MARKSMAN_EQUIPMENT_SCAN_WINDOW)
+    end
 
-        if not hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) then
-            return
-        end
+    if not event.isWeaponAttackWindup then
+        return
+    end
 
-        if getEquippedBowRecord() == nil then
-            return
-        end
+    if hasEnabledPerk(BOW_FUNDAMENTALS_PERK_ID) and getEquippedBowRecord() ~= nil then
+        multiplyAnimationSpeed(event.options, BOW_FUNDAMENTALS_DRAW_SPEED_MULTIPLIER)
+    end
 
-        if not isMarksmanBowDrawAnimation(groupName, options) then
-            return
-        end
-
-        local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-        options.speed = currentSpeed * BOW_FUNDAMENTALS_DRAW_SPEED_MULTIPLIER
-    end)
-
-    interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-        if not hasEnabledPerk(QUICK_CAST_PERK_ID) then
-            return
-        end
-
-        if getEquippedThrownMarksmanRecord() == nil then
-            return
-        end
-
-        if not isThrownAttackWindupAnimation(groupName, options) then
-            return
-        end
-
-        local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-        options.speed = currentSpeed * QUICK_CAST_ATTACK_SPEED_MULTIPLIER
-    end)
+    if hasEnabledPerk(QUICK_CAST_PERK_ID) and getEquippedThrownMarksmanRecord() ~= nil then
+        multiplyAnimationSpeed(event.options, QUICK_CAST_ATTACK_SPEED_MULTIPLIER)
+    end
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
@@ -4865,54 +4826,7 @@ local function isAttackReleaseTextKey(key)
         or (normalized:find("hit$") ~= nil and normalized:find("min hit$") == nil)
 end
 
-local function isChopAttackWindupAnimation(options)
-    if type(options) ~= "table" then
-        return false
-    end
-
-    local startKeyRaw = options.startkey or options.startKey
-    local stopKeyRaw = options.stopkey or options.stopKey
-    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-
-    if startKey == "chop start" or stopKey == "chop max attack" then
-        return true
-    end
-
-    return false
-end
-
-local function isBluntAttackAnimation(options)
-    if type(options) ~= "table" then
-        return false
-    end
-
-    local startKeyRaw = options.startkey or options.startKey
-    local stopKeyRaw = options.stopkey or options.stopKey
-    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-
-    return startKey == "chop start"
-        or startKey == "slash start"
-        or startKey == "thrust start"
-        or stopKey == "chop max attack"
-        or stopKey == "slash max attack"
-        or stopKey == "thrust max attack"
-end
-
-local function armGuardedStaminaRefund(_, options)
-    if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) then
-        guardedStaminaAttackState = nil
-        return
-    end
-    if getEquippedBluntWeaponRecord() == nil then
-        guardedStaminaAttackState = nil
-        return
-    end
-    if not isBluntAttackAnimation(options) then
-        return
-    end
-
+local function armGuardedStaminaRefund(event)
     local current = getCurrentFatigue()
     if current == nil then
         guardedStaminaAttackState = nil
@@ -4922,45 +4836,51 @@ local function armGuardedStaminaRefund(_, options)
     guardedStaminaAttackState = {
         elapsed = 0,
         lastFatigue = current,
-        releaseSeen = isAttackReleaseTextKey(options.stopkey or options.stopKey),
+        releaseSeen = isAttackReleaseTextKey(event.stopKey),
     }
 end
 
-local function slowStaggeringBlowChopAttack(_, options)
-    if not hasEnabledPerk(STAGGERING_BLOW_PERK_ID) then
+local function clearInvalidGuardedStaminaState(bluntWeapon)
+    if guardedStaminaAttackState == nil then
         return
     end
-    if getEquippedBluntWeaponRecord() == nil then
-        return
+    if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or bluntWeapon == nil then
+        guardedStaminaAttackState = nil
     end
-    if not isChopAttackWindupAnimation(options) then
-        return
-    end
-
-    local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-    options.speed = currentSpeed * STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER
 end
 
-if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
-    interfaces.AnimationController.addPlayBlendedAnimationHandler(armGuardedStaminaRefund)
-    interfaces.AnimationController.addPlayBlendedAnimationHandler(slowStaggeringBlowChopAttack)
+local function handleBluntAnimation(event)
+    local needsBluntWeapon = event.isBluntAttackShape or event.isChopAttackWindup
+    local bluntWeapon = nil
+
+    if guardedStaminaAttackState ~= nil or needsBluntWeapon then
+        bluntWeapon = getEquippedBluntWeaponRecord()
+    end
+
+    clearInvalidGuardedStaminaState(bluntWeapon)
+
+    if event.isBluntAttackShape and hasEnabledPerk(GUARDED_STAMINA_PERK_ID) and bluntWeapon ~= nil then
+        armGuardedStaminaRefund(event)
+    end
+
+    if event.isChopAttackWindup and hasEnabledPerk(STAGGERING_BLOW_PERK_ID) and bluntWeapon ~= nil then
+        multiplyAnimationSpeed(event.options, STAGGERING_BLOW_CHOP_ATTACK_SPEED_MULTIPLIER)
+    end
 end
 
-if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addTextKeyHandler) == "function" then
-    interfaces.AnimationController.addTextKeyHandler("", function(_, key)
-        if guardedStaminaAttackState == nil then
-            return
-        end
-        if not isAttackReleaseTextKey(key) then
-            return
-        end
-        if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or getEquippedBluntWeaponRecord() == nil then
-            guardedStaminaAttackState = nil
-            return
-        end
+local function dispatchBasepackAnimationTextKey(_, key)
+    if guardedStaminaAttackState == nil then
+        return
+    end
+    if not isAttackReleaseTextKey(key) then
+        return
+    end
+    if not hasEnabledPerk(GUARDED_STAMINA_PERK_ID) or getEquippedBluntWeaponRecord() == nil then
+        guardedStaminaAttackState = nil
+        return
+    end
 
-        guardedStaminaAttackState.releaseSeen = true
-    end)
+    guardedStaminaAttackState.releaseSeen = true
 end
 
 local function processGuardedStaminaRefund(dt)
@@ -8121,33 +8041,6 @@ local function shouldRunHandToHandUpdate(dt)
     return true
 end
 
-local function isHandToHandAttackAnimation(groupName, options)
-    if type(options) ~= "table" then
-        return false
-    end
-
-    local startKeyRaw = options.startkey or options.startKey
-    local stopKeyRaw = options.stopkey or options.stopKey
-    local startKey = type(startKeyRaw) == "string" and string.lower(startKeyRaw) or ""
-    local stopKey = type(stopKeyRaw) == "string" and string.lower(stopKeyRaw) or ""
-    if string.sub(startKey, -6) == " start" and string.find(startKey, "attack", 1, true) ~= nil then
-        return true
-    end
-    if string.sub(stopKey, -11) == " max attack" then
-        return true
-    end
-    if string.sub(stopKey, -3) == "hit" and string.sub(stopKey, -7) ~= "min hit" then
-        return true
-    end
-
-    if type(groupName) ~= "string" then
-        return false
-    end
-
-    local lowered = string.lower(groupName)
-    return string.find(lowered, "attack", 1, true) ~= nil
-end
-
 local function getHandToHandAttackTarget(attack)
     if type(attack) ~= "table" then
         return nil
@@ -8189,23 +8082,42 @@ if type(addOnHitHandler) == "function" then
     addOnHitHandler(onHandToHandHit)
 end
 
-if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
-    interfaces.AnimationController.addPlayBlendedAnimationHandler(function(groupName, options)
-        markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
-        if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
-            return
-        end
-        refreshHandToHandEquipmentCache(false)
-        if cachedFlowingCounterMode() ~= "heavy" then
-            return
-        end
-        if cachedHasEquippedWeaponOrShield() or not isHandToHandAttackAnimation(groupName, options) then
-            return
-        end
+local function handleHandToHandAnimation(event)
+    markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW)
+    if not event.isHandToHandAttackShape then
+        return
+    end
+    if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
+        return
+    end
 
-        local currentSpeed = type(options.speed) == "number" and options.speed or 1.0
-        options.speed = currentSpeed * FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER
-    end)
+    refreshHandToHandEquipmentCache(false)
+    if cachedFlowingCounterMode() ~= "heavy" then
+        return
+    end
+    if cachedHasEquippedWeaponOrShield() then
+        return
+    end
+
+    multiplyAnimationSpeed(event.options, FLOWING_COUNTER_HEAVY_ATTACK_SPEED_MULTIPLIER)
+end
+
+local function dispatchBasepackBlendedAnimation(groupName, options)
+    local event = classifyBlendedAnimationEvent(groupName, options)
+
+    handleSecurityToolAnimation(event)
+    handleAxeAnimation(event)
+    handleMarksmanAnimation(event)
+    handleBluntAnimation(event)
+    handleHandToHandAnimation(event)
+end
+
+if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addPlayBlendedAnimationHandler) == "function" then
+    interfaces.AnimationController.addPlayBlendedAnimationHandler(dispatchBasepackBlendedAnimation)
+end
+
+if interfaces.AnimationController ~= nil and type(interfaces.AnimationController.addTextKeyHandler) == "function" then
+    interfaces.AnimationController.addTextKeyHandler("", dispatchBasepackAnimationTextKey)
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {

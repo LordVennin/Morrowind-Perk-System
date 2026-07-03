@@ -916,6 +916,10 @@ local function nowTimestamp()
     return core.getSimulationTime()
 end
 
+local function getActorObject()
+    return pself.object or pself
+end
+
 local function classifySecurityTool(item)
     if item == nil then
         return nil
@@ -1091,14 +1095,19 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local stat = accessor(pself)
-    if stat == nil or type(stat.modifier) ~= "number" then
+    local okStat, stat = pcall(accessor, getActorObject())
+    if not okStat or stat == nil or type(stat.modifier) ~= "number" then
         return
     end
 
     -- Apply stack bonus via non-base modifier channel so Security base is never mutated.
     local newModifier = stat.modifier - currentApplied + desiredApplied
-    stat.modifier = newModifier
+    local okWrite = pcall(function()
+        stat.modifier = newModifier
+    end)
+    if not okWrite then
+        return
+    end
     appliedSkillBonus = desiredApplied
 
     log(string.format(
@@ -7238,11 +7247,16 @@ local function objectKey(item)
         return nil
     end
 
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        return "record:" .. recordId
+    end
+
     local okId, id = pcall(function()
         return item.id
     end)
     if okId and id ~= nil then
-        return tostring(id)
+        return "id:" .. tostring(id)
     end
 
     return tostring(item)

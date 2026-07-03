@@ -391,7 +391,11 @@ local function applyApprenticeHammerOverrepair(data)
         return
     end
     if not isAtNormalMaxCondition(currentCondition, maxCondition) then
-        overrepairFailure(player, "target_not_at_normal_max", "That item is no longer eligible.", recordId)
+        if currentCondition > maxCondition then
+            overrepairFailure(player, "target_already_overrepaired", "That item is already over-repaired.", recordId)
+        else
+            overrepairFailure(player, "target_not_at_normal_max", "That item is no longer eligible.", recordId)
+        end
         return
     end
 

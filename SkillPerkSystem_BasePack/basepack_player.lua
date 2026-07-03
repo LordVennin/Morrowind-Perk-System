@@ -6261,10 +6261,15 @@ local function openOverRepairMenu(repairToolItem)
                 end
 
                 local targetItem = nil
-                local entryItemEligible = getOverrepairEligibility(entry.item)
+                local entryItemEligible, entryItemReason = getOverrepairEligibility(entry.item)
                 if entryItemEligible then
                     targetItem = entry.item
                 else
+                    if entryItemReason == "already_overrepaired" then
+                        logDebug("overrepair failed: target already over-repaired for " .. tostring(entry.recordId))
+                        showMessage(string.format("%s is already over-repaired.", tostring(entry.name or "That item")))
+                        return
+                    end
                     targetItem = findEligibleItemByRecordId(entry.recordId)
                 end
                 if targetItem == nil then
@@ -7036,6 +7041,10 @@ local function onOverrepairResult(data)
     end
 
     if data.success then
+        if type(data.repairToolCondition) == "number" then
+            __basepack_repair_tool_state.lastCondition = data.repairToolCondition
+            __basepack_repair_tool_state.source = "apprentice_hammer_overrepair_result"
+        end
         logDebug("overrepair success for " .. tostring(data.recordId) .. " -> " .. tostring(data.targetCondition))
         showMessage(string.format("%s is now at %d condition.", tostring(data.name or "Item"), tonumber(data.targetCondition) or 0))
     else
@@ -7611,6 +7620,15 @@ local function handleSuppressRepairToolDrops(data)
 
     local amount = math.floor(tonumber(data.amount) or 0)
     if amount <= 0 then
+        return
+    end
+
+    if data.source == "apprentice_hammer_overrepair" then
+        trackedToolsByKey = {}
+        repairToolsDirty = false
+        repairToolScanRemaining = 0
+        repairToolScanTimer = 0
+        log(string.format("skipping overrepair tool-drop scan amount=%d", amount))
         return
     end
 

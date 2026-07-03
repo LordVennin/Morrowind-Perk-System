@@ -116,15 +116,61 @@ local modules = {
     },
 }
 
+
+local TUMBLER_SENSE_TOGGLE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Toggle"
+
+local function sendPlayerEventOrGlobal(context, eventName, payload)
+    local player = type(context) == "table" and context.player or nil
+    if player ~= nil and type(player.sendEvent) == "function" then
+        player:sendEvent(eventName, payload)
+        return
+    end
+
+    core.sendGlobalEvent(eventName, payload)
+end
+
+local function tumblerSensePayload(enable, bonusPerFailedAttempt, maxStacks)
+    return {
+        enable = enable == true,
+        bonusPerFailedAttempt = bonusPerFailedAttempt or 1,
+        maxStacks = maxStacks or 5,
+        initialStacks = 0,
+        sharedDecaySeconds = 10,
+    }
+end
+
+local tumblerSenseEffect = {
+    id = "security_tumbler_sense_effect",
+    name = "Tumbler Sense",
+    description = "Starts at 0 stacks. Failed lockpick attempts grant +1 Security per stack (max 5) with a shared 10s decay timer.",
+    onAcquire = function(context)
+        sendPlayerEventOrGlobal(context, TUMBLER_SENSE_TOGGLE_EVENT, tumblerSensePayload(true, 1, 5))
+    end,
+    onRemove = function(context)
+        sendPlayerEventOrGlobal(context, TUMBLER_SENSE_TOGGLE_EVENT, tumblerSensePayload(false, 1, 5))
+    end,
+}
+
+local perfectPressureEffect = {
+    id = "security_perfect_pressure_effect",
+    name = "Perfect Pressure",
+    description = "Tumbler Sense now grants +2 Security per failed attempt and can stack up to +10 Security.",
+    onAcquire = function(context)
+        sendPlayerEventOrGlobal(context, TUMBLER_SENSE_TOGGLE_EVENT, tumblerSensePayload(true, 2, 10))
+    end,
+    onRemove = function(context)
+        sendPlayerEventOrGlobal(context, TUMBLER_SENSE_TOGGLE_EVENT, tumblerSensePayload(true, 1, 5))
+    end,
+}
+
 local effectModules = {
     {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect",
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.steady_hands_effect"),
     },
-    -- Keep Tumbler Sense registration in the same safe effect flow as Steady Hands.
     {
-        source = "scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect",
-        data = require("scripts.SkillPerkSystem_BasePack.perks.security.tumbler_sense_effect"),
+        source = "scripts.SkillPerkSystem_BasePack.register:tumbler_sense_effect",
+        data = tumblerSenseEffect,
     },
     {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.quick_pick_effect",
@@ -143,8 +189,8 @@ local effectModules = {
         data = require("scripts.SkillPerkSystem_BasePack.perks.security.fortunes_habit_effect"),
     },
     {
-        source = "scripts.SkillPerkSystem_BasePack.perks.security.perfect_pressure_effect",
-        data = require("scripts.SkillPerkSystem_BasePack.perks.security.perfect_pressure_effect"),
+        source = "scripts.SkillPerkSystem_BasePack.register:perfect_pressure_effect",
+        data = perfectPressureEffect,
     },
     {
         source = "scripts.SkillPerkSystem_BasePack.perks.security.unseen_hand_effect",

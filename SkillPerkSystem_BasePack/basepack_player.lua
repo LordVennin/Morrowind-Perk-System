@@ -874,8 +874,10 @@ local trackedToolState = nil
 local appliedSkillBonus = 0
 local TOOL_TRACKING_SCAN_WINDOW = 1.0
 local TOOL_TRACKING_SCAN_INTERVAL = 0.2
+local TOOL_EQUIP_POLL_INTERVAL = 0.2
 local toolTrackingScanRemaining = 0
 local toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
+local toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
 
 local EQUIPMENT_SLOT = (types.Actor ~= nil and types.Actor.EQUIPMENT_SLOT) or {}
 local TRACKED_SLOTS = {
@@ -1192,6 +1194,7 @@ local function handleToggle(data)
     if enabled then
         toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
         toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
+        toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
         if (tonumber(appliedSkillBonus) or 0) > 0 then
             applySecuritySkillBonus(0)
         end
@@ -1215,6 +1218,7 @@ local function handleToggle(data)
         clearStacks("disabled")
         trackedToolState = nil
         toolTrackingScanRemaining = 0
+        toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
     end
 
     log(string.format(
@@ -1276,6 +1280,7 @@ local function handleFailure(data)
     local _, bonus = currentBonus()
     toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
     toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
+    toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
     log(string.format(
         "[SkillPerkSystem_BasePack][TumblerSense] stack gain source=%s normalizedSource=%s mode=%s accepted=%s stacks=%d->%d bonus=%.2f",
         tostring(rawSource),
@@ -1346,16 +1351,29 @@ local function shouldUpdate(dt)
         return false
     end
 
-    toolTrackingScanRemaining = math.max(0, toolTrackingScanRemaining - (tonumber(dt) or 0))
-    if trackedToolState ~= nil and toolTrackingScanRemaining <= 0 then
-        trackedToolState = nil
-    end
+    local deltaTime = tonumber(dt) or 0
+    toolTrackingScanRemaining = math.max(0, toolTrackingScanRemaining - deltaTime)
 
     if toolTrackingScanRemaining <= 0 then
-        return false
+        toolEquipPollTimer = toolEquipPollTimer + deltaTime
+        if toolEquipPollTimer < TOOL_EQUIP_POLL_INTERVAL then
+            return false
+        end
+
+        toolEquipPollTimer = 0
+        if findEquippedSecurityTool() == nil then
+            trackedToolState = nil
+            return false
+        end
+
+        -- Keep Tumbler Sense's consolidated fallback active while a pick/probe
+        -- is equipped, so vanilla or non-bridged lockpick drains still grant stacks.
+        toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+        toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
+        toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
     end
 
-    toolTrackingScanTimer = toolTrackingScanTimer + (tonumber(dt) or 0)
+    toolTrackingScanTimer = toolTrackingScanTimer + deltaTime
     if toolTrackingScanTimer < TOOL_TRACKING_SCAN_INTERVAL then
         return false
     end
@@ -7411,6 +7429,10 @@ local function maybeRefundMissingTools(previousToolsByKey, currentToolsByKey)
     end
 end
 
+local function shouldFrameCarefulRepairs()
+    return repairMenuActive or repairToolsDirty
+end
+
 local function onUpdate()
     if not carefulRepairsEnabled() then
         trackedToolsByKey = {}
@@ -7502,6 +7524,8 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = onUpdate,
         shouldUpdate = shouldUpdateCarefulRepairs,
+        onFrame = onUpdate,
+        shouldFrame = shouldFrameCarefulRepairs,
         onLoad = function(data)
             suppressDropsRemaining = math.max(0, math.floor(tonumber(type(data) == "table" and data.suppressDropsRemaining) or 0))
             trackedToolsByKey = {}

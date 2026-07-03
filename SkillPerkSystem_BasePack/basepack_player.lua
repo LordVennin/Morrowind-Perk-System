@@ -1099,7 +1099,7 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local okStat, stat = pcall(accessor, getActorObject())
+    local okStat, stat = pcall(accessor, pself)
     if not okStat or stat == nil or type(stat.modifier) ~= "number" then
         return
     end
@@ -7295,6 +7295,11 @@ local function objectKey(item)
         return "id:" .. tostring(id)
     end
 
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        return "record:" .. recordId .. ":" .. tostring(item)
+    end
+
     return tostring(item)
 end
 
@@ -7333,12 +7338,23 @@ end
 local function resolveSharedActiveRepairTool()
     local item = __basepack_repair_tool_state.item
     if item ~= nil and types.Repair.objectIsInstance(item) then
-        return item
+        local condition = repairToolCondition(item)
+        if type(condition) == "number" then
+            return item
+        end
     end
 
     item = findRepairToolByRecordId(__basepack_repair_tool_state.recordId)
+    if item == nil and repairMenuActive then
+        local repairTools = getRepairTools()
+        item = repairTools[1]
+    end
+
     if item ~= nil then
         __basepack_repair_tool_state.item = item
+        if type(__basepack_repair_tool_state.lastCondition) ~= "number" then
+            __basepack_repair_tool_state.lastCondition = repairToolCondition(item)
+        end
         return item
     end
 

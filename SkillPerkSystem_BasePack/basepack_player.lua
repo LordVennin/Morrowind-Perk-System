@@ -547,14 +547,14 @@ local function handleToolDrainEvent(data)
         return
     end
 
-    local item = data.item
+    local item, slot = resolveToolFromEventData(data)
     local toolType = classifyTool(item)
     if toolType == nil then
         return
     end
 
     local toolState = {
-        slot = data.slot,
+        slot = slot or data.slot,
         slotName = data.slotName,
         item = item,
         toolType = toolType,
@@ -7098,6 +7098,7 @@ local NO_CONSUME_CHANCE = 0.15
 local SUPPRESS_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_SuppressRepairToolDrops"
 local MODIFY_REPAIR_TOOL_CONDITION_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_ModifyRepairToolCondition"
 local REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_CarefulRepairs_RefundResult"
+local REPAIR_TOOL_USE_EVENT = "SkillPerkSystem_RecordRepairTool"
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local CAREFUL_REPAIRS_PERK_ID = "armorer_careful_repairs"
 local MAX_CONDITION_ROLLS_PER_UPDATE = 8
@@ -7371,16 +7372,18 @@ local function shouldUpdateCarefulRepairs(dt)
         return true
     end
 
-    if repairMenuActive or (hasTrackedRepairTools() and repairToolScanRemaining > 0) then
+    if repairMenuActive then
+        repairToolScanRemaining = math.max(repairToolScanRemaining, REPAIR_TOOL_SCAN_WINDOW)
+        repairToolScanTimer = 0
+        return true
+    end
+
+    if hasTrackedRepairTools() and repairToolScanRemaining > 0 then
         local deltaTime = tonumber(dt) or 0
-        if repairMenuActive then
-            repairToolScanRemaining = math.max(repairToolScanRemaining, REPAIR_TOOL_SCAN_INTERVAL)
-        else
-            repairToolScanRemaining = math.max(0, repairToolScanRemaining - deltaTime)
-            if repairToolScanRemaining <= 0 then
-                trackedToolsByKey = {}
-                return false
-            end
+        repairToolScanRemaining = math.max(0, repairToolScanRemaining - deltaTime)
+        if repairToolScanRemaining <= 0 then
+            trackedToolsByKey = {}
+            return false
         end
 
         repairToolScanTimer = repairToolScanTimer + deltaTime
@@ -7393,6 +7396,19 @@ local function shouldUpdateCarefulRepairs(dt)
     end
 
     return false
+end
+
+local function maybeRefundMissingTools(previousToolsByKey, currentToolsByKey)
+    for key, previousState in pairs(previousToolsByKey) do
+        if currentToolsByKey[key] == nil and type(previousState.condition) == "number" and previousState.condition <= 1 then
+            if suppressDropsRemaining > 0 then
+                suppressDropsRemaining = math.max(0, suppressDropsRemaining - 1)
+                log(string.format("suppressed disappeared repair tool drop remaining=%d recordId=%s", suppressDropsRemaining, tostring(previousState.recordId)))
+            else
+                rollAndRefund(previousState, 1)
+            end
+        end
+    end
 end
 
 local function onUpdate()
@@ -7408,6 +7424,7 @@ local function onUpdate()
     for key, currentState in pairs(currentToolsByKey) do
         maybeRefundCondition(trackedToolsByKey[key], currentState)
     end
+    maybeRefundMissingTools(trackedToolsByKey, currentToolsByKey)
 
     trackedToolsByKey = currentToolsByKey
 end
@@ -7426,6 +7443,20 @@ local function handleSuppressRepairToolDrops(data)
     trackedToolsByKey = snapshotRepairTools()
     openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
     log(string.format("suppressing next repair tool drops amount=%d total=%d", amount, suppressDropsRemaining))
+end
+
+local function handleRepairToolUse(data)
+    if type(data) ~= "table" or data.item == nil then
+        return
+    end
+
+    if not carefulRepairsEnabled() then
+        return
+    end
+
+    trackedToolsByKey = snapshotRepairTools()
+    openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
+    log(string.format("repair tool use captured recordId=%s", tostring(data.recordId or data.item.recordId)))
 end
 
 local function handleUiModeChanged(data)
@@ -7486,6 +7517,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     },
     eventHandlers = {
         UiModeChanged = handleUiModeChanged,
+        [REPAIR_TOOL_USE_EVENT] = handleRepairToolUse,
         [SUPPRESS_EVENT] = handleSuppressRepairToolDrops,
         [REFUND_RESULT_EVENT] = handleRefundResult,
     },

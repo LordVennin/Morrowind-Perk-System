@@ -2,6 +2,12 @@
 -- Supersedes the individual *_runtime.lua PLAYER scripts; keep register.lua separate.
 
 local __basepack_subsystems = {}
+local __basepack_repair_tool_state = {
+    item = nil,
+    recordId = nil,
+    lastCondition = nil,
+    source = nil,
+}
 
 ----------------------------------------------------------------------
 -- steady hands logic (from steady_hands_runtime.lua)
@@ -1040,10 +1046,6 @@ local function withLastComparableCondition(previousState, currentState)
 end
 
 local function tumblerSenseEnabled()
-    if effectsSection:get(ENABLED_KEY) ~= true then
-        return false
-    end
-
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
     if playerApi == nil then
         return false
@@ -5581,6 +5583,18 @@ local function getItemCondition(item)
     return nil, itemData
 end
 
+local function setSharedActiveRepairTool(item, source)
+    if item == nil or not types.Repair.objectIsInstance(item) then
+        return
+    end
+
+    local condition = getItemCondition(item)
+    __basepack_repair_tool_state.item = item
+    __basepack_repair_tool_state.recordId = item.recordId
+    __basepack_repair_tool_state.lastCondition = condition
+    __basepack_repair_tool_state.source = source
+end
+
 local function getDisplayName(item)
     if item == nil then return "Unknown Item" end
 
@@ -6112,6 +6126,7 @@ local function requestBaseRepairUi(repairToolItem)
 
     lastRepairTool = repairToolItem
     lastRepairToolRecordId = repairToolItem.recordId
+    setSharedActiveRepairTool(repairToolItem, "requestBaseRepairUi")
     logDebug("requestBaseRepairUi using " .. tostring(lastRepairToolRecordId))
     suppressNextRepairIntercept = true
     pendingUseRepairTool = repairToolItem
@@ -6829,6 +6844,7 @@ local function openRepairMenu()
     if repairToolItem ~= nil then
         lastRepairTool = repairToolItem
         lastRepairToolRecordId = repairToolItem.recordId
+        setSharedActiveRepairTool(repairToolItem, "openRepairMenu")
         logDebug("openRepairMenu captured " .. tostring(lastRepairToolRecordId))
     else
         logDebug("openRepairMenu captured nil repair tool")
@@ -6913,6 +6929,7 @@ local function onRecordRepairTool(data)
 
     lastRepairTool = data.item
     lastRepairToolRecordId = data.recordId or data.item.recordId
+    setSharedActiveRepairTool(data.item, "recordRepairTool")
     logDebug("recorded repair tool " .. tostring(lastRepairToolRecordId))
 end
 
@@ -7299,6 +7316,35 @@ local function snapshotRepairTools()
     return out
 end
 
+local function findRepairToolByRecordId(recordId)
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    for _, item in ipairs(getRepairTools()) do
+        if item ~= nil and item.recordId == recordId and types.Repair.objectIsInstance(item) then
+            return item
+        end
+    end
+
+    return nil
+end
+
+local function resolveSharedActiveRepairTool()
+    local item = __basepack_repair_tool_state.item
+    if item ~= nil and types.Repair.objectIsInstance(item) then
+        return item
+    end
+
+    item = findRepairToolByRecordId(__basepack_repair_tool_state.recordId)
+    if item ~= nil then
+        __basepack_repair_tool_state.item = item
+        return item
+    end
+
+    return nil
+end
+
 local function requestRefund(toolState, amount)
     if toolState == nil or toolState.item == nil then
         return false
@@ -7429,6 +7475,41 @@ local function maybeRefundMissingTools(previousToolsByKey, currentToolsByKey)
     end
 end
 
+local function compareSharedActiveRepairTool()
+    local item = resolveSharedActiveRepairTool()
+    if item == nil then
+        __basepack_repair_tool_state.lastCondition = nil
+        return nil, nil
+    end
+
+    local condition = repairToolCondition(item)
+    local key = objectKey(item)
+    local currentState = {
+        item = item,
+        recordId = item.recordId,
+        condition = condition,
+    }
+
+    local previousCondition = __basepack_repair_tool_state.lastCondition
+    if type(condition) ~= "number" then
+        return key, currentState
+    end
+
+    if type(previousCondition) == "number" and condition < previousCondition then
+        local delta = math.floor(previousCondition - condition)
+        if delta < 1 then
+            delta = 1
+        end
+        local rollAttempts = math.min(delta, MAX_CONDITION_ROLLS_PER_UPDATE)
+        rollAndRefund(currentState, rollAttempts)
+    end
+
+    __basepack_repair_tool_state.item = item
+    __basepack_repair_tool_state.recordId = item.recordId
+    __basepack_repair_tool_state.lastCondition = condition
+    return key, currentState
+end
+
 local function shouldFrameCarefulRepairs()
     return repairMenuActive or repairToolsDirty
 end
@@ -7441,10 +7522,16 @@ local function onUpdate()
     end
 
     repairToolsDirty = false
+    local activeKey, activeState = compareSharedActiveRepairTool()
     local currentToolsByKey = snapshotRepairTools()
+    if activeKey ~= nil and activeState ~= nil then
+        currentToolsByKey[activeKey] = activeState
+    end
 
     for key, currentState in pairs(currentToolsByKey) do
-        maybeRefundCondition(trackedToolsByKey[key], currentState)
+        if key ~= activeKey then
+            maybeRefundCondition(trackedToolsByKey[key], currentState)
+        end
     end
     maybeRefundMissingTools(trackedToolsByKey, currentToolsByKey)
 
@@ -7476,6 +7563,10 @@ local function handleRepairToolUse(data)
         return
     end
 
+    __basepack_repair_tool_state.item = data.item
+    __basepack_repair_tool_state.recordId = data.recordId or data.item.recordId
+    __basepack_repair_tool_state.lastCondition = repairToolCondition(data.item)
+    __basepack_repair_tool_state.source = "recordRepairTool"
     trackedToolsByKey = snapshotRepairTools()
     openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
     log(string.format("repair tool use captured recordId=%s", tostring(data.recordId or data.item.recordId)))

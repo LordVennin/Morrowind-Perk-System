@@ -34,8 +34,10 @@ local conditionSourceDebugFramesRemaining = 60
 local slotLabel
 local TOOL_TRACKING_SCAN_WINDOW = 1.0
 local TOOL_TRACKING_SCAN_INTERVAL = 0.2
+local TOOL_EQUIP_POLL_INTERVAL = 0.2
 local toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
 local toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
+local toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
 -- Fallback condition tracking can miss intermediate onUpdate frames. When that
 -- happens we treat each lost condition point as one consumed-use attempt, but
 -- cap rolls per update to avoid runaway refunds after large desyncs.
@@ -386,6 +388,7 @@ local function applyToolConditionRefund(toolState, refundCount)
         slot = toolState.slot,
         amount = refundCount,
     })
+    return true
 end
 
 local function resolveToolFromEventData(data)
@@ -725,16 +728,29 @@ local function shouldUpdate(dt)
         return false
     end
 
-    toolTrackingScanRemaining = math.max(0, toolTrackingScanRemaining - (tonumber(dt) or 0))
-    if trackedToolState ~= nil and toolTrackingScanRemaining <= 0 then
-        trackedToolState = nil
-    end
+    local deltaTime = tonumber(dt) or 0
+    toolTrackingScanRemaining = math.max(0, toolTrackingScanRemaining - deltaTime)
 
     if toolTrackingScanRemaining <= 0 then
-        return false
+        toolEquipPollTimer = toolEquipPollTimer + deltaTime
+        if toolEquipPollTimer < TOOL_EQUIP_POLL_INTERVAL then
+            return false
+        end
+
+        toolEquipPollTimer = 0
+        if findEquippedSecurityTool() == nil then
+            trackedToolState = nil
+            return false
+        end
+
+        -- A security tool is currently equipped, so keep the condition
+        -- comparison fallback alive while the pick/probe can actually lose uses.
+        toolTrackingScanRemaining = TOOL_TRACKING_SCAN_WINDOW
+        toolTrackingScanTimer = TOOL_TRACKING_SCAN_INTERVAL
+        toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
     end
 
-    toolTrackingScanTimer = toolTrackingScanTimer + (tonumber(dt) or 0)
+    toolTrackingScanTimer = toolTrackingScanTimer + deltaTime
     if toolTrackingScanTimer < TOOL_TRACKING_SCAN_INTERVAL then
         return false
     end
@@ -778,6 +794,7 @@ local function handleSteadyHandsToggle(data)
         effectsSection:set(NO_CONSUME_CHANCE_KEY, 0.0)
         trackedToolState = nil
         toolTrackingScanRemaining = 0
+        toolEquipPollTimer = TOOL_EQUIP_POLL_INTERVAL
     end
 
     log(string.format("[SkillPerkSystem_BasePack] Steady Hands %s (chance=%.2f)", enabled and "enabled" or "disabled", effectsSection:get(NO_CONSUME_CHANCE_KEY) or 0.0))
@@ -897,6 +914,10 @@ end
 
 local function nowTimestamp()
     return core.getSimulationTime()
+end
+
+local function getActorObject()
+    return pself.object or pself
 end
 
 local function classifySecurityTool(item)
@@ -1074,14 +1095,19 @@ local function applySecuritySkillBonus(targetBonus)
         return
     end
 
-    local stat = accessor(pself)
-    if stat == nil or type(stat.modifier) ~= "number" then
+    local okStat, stat = pcall(accessor, getActorObject())
+    if not okStat or stat == nil or type(stat.modifier) ~= "number" then
         return
     end
 
     -- Apply stack bonus via non-base modifier channel so Security base is never mutated.
     local newModifier = stat.modifier - currentApplied + desiredApplied
-    stat.modifier = newModifier
+    local okWrite = pcall(function()
+        stat.modifier = newModifier
+    end)
+    if not okWrite then
+        return
+    end
     appliedSkillBonus = desiredApplied
 
     log(string.format(
@@ -7082,6 +7108,7 @@ local suppressDropsRemaining = 0
 local repairToolScanRemaining = 0
 local repairToolScanTimer = 0
 local repairToolsDirty = false
+local repairMenuActive = false
 local REPAIR_TOOL_SCAN_WINDOW = 2.0
 local REPAIR_TOOL_SCAN_INTERVAL = 0.25
 
@@ -7220,11 +7247,16 @@ local function objectKey(item)
         return nil
     end
 
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        return "record:" .. recordId
+    end
+
     local okId, id = pcall(function()
         return item.id
     end)
     if okId and id ~= nil then
-        return tostring(id)
+        return "id:" .. tostring(id)
     end
 
     return tostring(item)
@@ -7339,14 +7371,19 @@ local function shouldUpdateCarefulRepairs(dt)
         return true
     end
 
-    if hasTrackedRepairTools() and repairToolScanRemaining > 0 then
-        repairToolScanRemaining = math.max(0, repairToolScanRemaining - (tonumber(dt) or 0))
-        if repairToolScanRemaining <= 0 then
-            trackedToolsByKey = {}
-            return false
+    if repairMenuActive or (hasTrackedRepairTools() and repairToolScanRemaining > 0) then
+        local deltaTime = tonumber(dt) or 0
+        if repairMenuActive then
+            repairToolScanRemaining = math.max(repairToolScanRemaining, REPAIR_TOOL_SCAN_INTERVAL)
+        else
+            repairToolScanRemaining = math.max(0, repairToolScanRemaining - deltaTime)
+            if repairToolScanRemaining <= 0 then
+                trackedToolsByKey = {}
+                return false
+            end
         end
 
-        repairToolScanTimer = repairToolScanTimer + (tonumber(dt) or 0)
+        repairToolScanTimer = repairToolScanTimer + deltaTime
         if repairToolScanTimer < REPAIR_TOOL_SCAN_INTERVAL then
             return false
         end
@@ -7389,6 +7426,19 @@ local function handleSuppressRepairToolDrops(data)
     trackedToolsByKey = snapshotRepairTools()
     openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
     log(string.format("suppressing next repair tool drops amount=%d total=%d", amount, suppressDropsRemaining))
+end
+
+local function handleUiModeChanged(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    repairMenuActive = data.newMode == "Repair"
+    if repairMenuActive then
+        openRepairToolScanWindow(REPAIR_TOOL_SCAN_WINDOW)
+    elseif data.newMode == nil or data.newMode == "MainMenu" then
+        repairToolScanRemaining = math.min(repairToolScanRemaining, REPAIR_TOOL_SCAN_WINDOW)
+    end
 end
 
 local function handleRefundResult(data)
@@ -7435,6 +7485,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         end,
     },
     eventHandlers = {
+        UiModeChanged = handleUiModeChanged,
         [SUPPRESS_EVENT] = handleSuppressRepairToolDrops,
         [REFUND_RESULT_EVENT] = handleRefundResult,
     },

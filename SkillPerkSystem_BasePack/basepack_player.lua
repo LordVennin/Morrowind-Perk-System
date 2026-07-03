@@ -8629,7 +8629,39 @@ for _, subsystem in ipairs(__basepack_subsystems) do
     end
 end
 
+local INACTIVE_UPDATE_PREDICATE_INTERVAL = 0.10
 local INACTIVE_FRAME_PREDICATE_INTERVAL = 0.10
+
+local function makeCombinedOnUpdate(chain)
+    local inactivePredicateTimer = INACTIVE_UPDATE_PREDICATE_INTERVAL
+
+    return function(dt)
+        local deltaTime = tonumber(dt) or 0
+        inactivePredicateTimer = inactivePredicateTimer + deltaTime
+
+        local scanInactivePredicates = inactivePredicateTimer >= INACTIVE_UPDATE_PREDICATE_INTERVAL
+        if scanInactivePredicates then
+            inactivePredicateTimer = 0
+        end
+
+        for index = 1, #chain do
+            local entry = chain[index]
+            local shouldRun = entry.shouldRun
+            if type(shouldRun) ~= "function" then
+                entry.handler(dt)
+            elseif entry.updateActive then
+                if shouldRun(dt) then
+                    entry.handler(dt)
+                else
+                    entry.updateActive = false
+                end
+            elseif scanInactivePredicates and shouldRun(dt) then
+                entry.updateActive = true
+                entry.handler(dt)
+            end
+        end
+    end
+end
 
 local function makeCombinedOnFrame(chain)
     local inactivePredicateTimer = INACTIVE_FRAME_PREDICATE_INTERVAL
@@ -8665,6 +8697,12 @@ end
 for handlerName, chain in pairs(__engineHandlerChains) do
     if #chain == 1 and chain[1].shouldRun == nil then
         __combinedEngineHandlers[handlerName] = chain[1].handler
+    elseif handlerName == "onUpdate" and #chain > 0 then
+        -- OpenMW can call PLAYER onUpdate frequently. Most basepack update
+        -- predicates are dormant in normal play, so dormant predicates are
+        -- polled at a short interval; once active, they are checked and
+        -- dispatched every update until they report idle again.
+        __combinedEngineHandlers[handlerName] = makeCombinedOnUpdate(chain)
     elseif handlerName == "onFrame" and #chain > 0 then
         -- OpenMW calls PLAYER onFrame every rendered frame. Most basepack frame
         -- handlers are dormant fallback windows, so avoid re-running every idle

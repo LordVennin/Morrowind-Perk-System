@@ -6132,7 +6132,6 @@ local function requestBaseRepairUi(repairToolItem)
     pendingUseRepairTool = repairToolItem
     pendingUseRepairFrames = 1
     closeAllMenus()
-    setInterfaceMode()
 end
 
 local function collectOverrepairCandidates()

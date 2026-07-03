@@ -8567,9 +8567,10 @@ local function makeCombinedOnFrame(chain)
 
     return function(dt)
         local deltaTime = tonumber(dt) or 0
+        local pausedFrame = deltaTime <= 0
         inactivePredicateTimer = inactivePredicateTimer + deltaTime
-        local scanInactivePredicates = inactivePredicateTimer >= INACTIVE_FRAME_PREDICATE_INTERVAL
-        if scanInactivePredicates then
+        local scanInactivePredicates = pausedFrame or inactivePredicateTimer >= INACTIVE_FRAME_PREDICATE_INTERVAL
+        if scanInactivePredicates and not pausedFrame then
             inactivePredicateTimer = 0
         end
 

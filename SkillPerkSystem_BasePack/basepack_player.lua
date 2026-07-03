@@ -7283,6 +7283,11 @@ local function objectKey(item)
         return nil
     end
 
+    local recordId = item.recordId
+    if type(recordId) == "string" and recordId ~= "" then
+        return "record:" .. recordId
+    end
+
     local okId, id = pcall(function()
         return item.id
     end)

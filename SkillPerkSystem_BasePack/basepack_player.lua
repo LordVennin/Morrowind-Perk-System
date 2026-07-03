@@ -8560,13 +8560,52 @@ for _, subsystem in ipairs(__basepack_subsystems) do
     end
 end
 
+local INACTIVE_FRAME_PREDICATE_INTERVAL = 0.10
+
+local function makeCombinedOnFrame(chain)
+    local inactivePredicateTimer = INACTIVE_FRAME_PREDICATE_INTERVAL
+
+    return function(dt)
+        local deltaTime = tonumber(dt) or 0
+        inactivePredicateTimer = inactivePredicateTimer + deltaTime
+        local scanInactivePredicates = inactivePredicateTimer >= INACTIVE_FRAME_PREDICATE_INTERVAL
+        if scanInactivePredicates then
+            inactivePredicateTimer = 0
+        end
+
+        for index = 1, #chain do
+            local entry = chain[index]
+            local shouldRun = entry.shouldRun
+            if type(shouldRun) ~= "function" then
+                entry.handler(dt)
+            elseif entry.frameActive then
+                if shouldRun(dt) then
+                    entry.handler(dt)
+                else
+                    entry.frameActive = false
+                end
+            elseif scanInactivePredicates and shouldRun(dt) then
+                entry.frameActive = true
+                entry.handler(dt)
+            end
+        end
+    end
+end
+
 for handlerName, chain in pairs(__engineHandlerChains) do
     if #chain == 1 and chain[1].shouldRun == nil then
         __combinedEngineHandlers[handlerName] = chain[1].handler
+    elseif handlerName == "onFrame" and #chain > 0 then
+        -- OpenMW calls PLAYER onFrame every rendered frame. Most basepack frame
+        -- handlers are dormant fallback windows, so avoid re-running every idle
+        -- predicate every frame; once a predicate becomes active it is checked and
+        -- dispatched every frame until it reports idle again.
+        __combinedEngineHandlers[handlerName] = makeCombinedOnFrame(chain)
     elseif #chain > 0 then
         __combinedEngineHandlers[handlerName] = function(...)
             local saveData = nil
-            for _, entry in ipairs(chain) do
+            for index = 1, #chain do
+                local entry = chain[index]
                 if type(entry.shouldRun) ~= "function" or entry.shouldRun(...) then
                     local result = entry.handler(...)
                     if handlerName == "onSave" and result ~= nil then

@@ -5403,6 +5403,8 @@ local pendingUseRepairTool = nil
 local pendingUseRepairFrames = 0
 local lastRepairTool = nil
 local lastRepairToolRecordId = nil
+local lastOverrepairedTargetRecordId = nil
+local lastOverrepairedTargetName = nil
 
 local temperStorage = storage.playerSection(TEMPER_STORAGE_SECTION_ID)
 local temperedWeaponCache = {}
@@ -6026,6 +6028,48 @@ local function findRepairToolByRecordId(recordId)
     return nil
 end
 
+local function findRepairableItemByRecordId(recordId)
+    if type(recordId) ~= "string" or recordId == "" then
+        return nil
+    end
+
+    local inventory = getPlayerInventory()
+    if inventory ~= nil and type(inventory.find) == "function" then
+        local okFind, item = pcall(function()
+            return inventory:find(recordId)
+        end)
+        if okFind and isRepairableEquipmentItem(item) then
+            return item
+        end
+    end
+
+    if type(types.Actor.getEquipment) == "function" then
+        for _, slot in pairs(types.Actor.EQUIPMENT_SLOT or {}) do
+            local okItem, item = pcall(types.Actor.getEquipment, getActorObject(), slot)
+            if okItem and item ~= nil and item.recordId == recordId and isRepairableEquipmentItem(item) then
+                return item
+            end
+        end
+    end
+
+    return nil
+end
+
+local function getCachedOverrepairedItemStatus()
+    local item = findRepairableItemByRecordId(lastOverrepairedTargetRecordId)
+    if item == nil then
+        return false
+    end
+
+    local currentCondition = getItemCondition(item)
+    local maxCondition = getMaxCondition(item)
+    if type(currentCondition) == "number" and type(maxCondition) == "number" and currentCondition > maxCondition then
+        return true, item, currentCondition, maxCondition
+    end
+
+    return false, item, currentCondition, maxCondition
+end
+
 local function getActiveRepairTool()
     if lastRepairTool ~= nil then
         return lastRepairTool
@@ -6217,6 +6261,14 @@ end
 
 local function openOverRepairMenu(repairToolItem)
     closeSubMenu()
+
+    local alreadyOverrepaired, overrepairedItem = getCachedOverrepairedItemStatus()
+    if alreadyOverrepaired then
+        local name = lastOverrepairedTargetName or getDisplayName(overrepairedItem)
+        logDebug("overrepair skipped full scan; cached target is already over max for " .. tostring(lastOverrepairedTargetRecordId))
+        showMessage(string.format("%s is already over-repaired.", tostring(name or "That item")))
+        return
+    end
 
     local candidates = collectOverrepairCandidates()
     local contentLayouts = {
@@ -7036,6 +7088,12 @@ local function onOverrepairResult(data)
     end
 
     if data.success then
+        lastOverrepairedTargetRecordId = data.recordId
+        lastOverrepairedTargetName = data.name
+        if type(data.repairToolCondition) == "number" then
+            __basepack_repair_tool_state.lastCondition = data.repairToolCondition
+            __basepack_repair_tool_state.source = "apprentice_hammer_overrepair_result"
+        end
         logDebug("overrepair success for " .. tostring(data.recordId) .. " -> " .. tostring(data.targetCondition))
         showMessage(string.format("%s is now at %d condition.", tostring(data.name or "Item"), tonumber(data.targetCondition) or 0))
     else
@@ -7611,6 +7669,15 @@ local function handleSuppressRepairToolDrops(data)
 
     local amount = math.floor(tonumber(data.amount) or 0)
     if amount <= 0 then
+        return
+    end
+
+    if data.source == "apprentice_hammer_overrepair" then
+        trackedToolsByKey = {}
+        repairToolsDirty = false
+        repairToolScanRemaining = 0
+        repairToolScanTimer = 0
+        log(string.format("skipping overrepair tool-drop scan amount=%d", amount))
         return
     end
 

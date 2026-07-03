@@ -6313,10 +6313,15 @@ local function openOverRepairMenu(repairToolItem)
                 end
 
                 local targetItem = nil
-                local entryItemEligible = getOverrepairEligibility(entry.item)
+                local entryItemEligible, entryItemReason = getOverrepairEligibility(entry.item)
                 if entryItemEligible then
                     targetItem = entry.item
                 else
+                    if entryItemReason == "already_overrepaired" then
+                        logDebug("overrepair failed: target already over-repaired for " .. tostring(entry.recordId))
+                        showMessage(string.format("%s is already over-repaired.", tostring(entry.name or "That item")))
+                        return
+                    end
                     targetItem = findEligibleItemByRecordId(entry.recordId)
                 end
                 if targetItem == nil then
@@ -7088,8 +7093,6 @@ local function onOverrepairResult(data)
     end
 
     if data.success then
-        lastOverrepairedTargetRecordId = data.recordId
-        lastOverrepairedTargetName = data.name
         if type(data.repairToolCondition) == "number" then
             __basepack_repair_tool_state.lastCondition = data.repairToolCondition
             __basepack_repair_tool_state.source = "apprentice_hammer_overrepair_result"

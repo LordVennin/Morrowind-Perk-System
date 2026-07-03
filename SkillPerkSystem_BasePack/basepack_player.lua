@@ -7321,18 +7321,51 @@ local function snapshotRepairTools()
     return out
 end
 
-local function findRepairToolByRecordId(recordId)
+local function findRepairToolByRecordId(recordId, excludeItem)
     if type(recordId) ~= "string" or recordId == "" then
         return nil
     end
 
+    local fallback = nil
     for _, item in ipairs(getRepairTools()) do
-        if item ~= nil and item.recordId == recordId and types.Repair.objectIsInstance(item) then
-            return item
+        if item ~= nil and item ~= excludeItem and item.recordId == recordId and types.Repair.objectIsInstance(item) then
+            local condition = repairToolCondition(item)
+            if type(condition) == "number" and condition > 0 then
+                return item
+            end
+            fallback = fallback or item
         end
     end
 
-    return nil
+    return fallback
+end
+
+local function findAnyUsableRepairTool(excludeItem)
+    local fallback = nil
+    for _, item in ipairs(getRepairTools()) do
+        if item ~= nil and item ~= excludeItem and types.Repair.objectIsInstance(item) then
+            local condition = repairToolCondition(item)
+            if type(condition) == "number" and condition > 0 then
+                return item
+            end
+            fallback = fallback or item
+        end
+    end
+    return fallback
+end
+
+local function switchSharedActiveRepairTool(item, source, resetCondition)
+    if item == nil or not types.Repair.objectIsInstance(item) then
+        return nil
+    end
+
+    __basepack_repair_tool_state.item = item
+    __basepack_repair_tool_state.recordId = item.recordId
+    if resetCondition ~= false then
+        __basepack_repair_tool_state.lastCondition = repairToolCondition(item)
+    end
+    __basepack_repair_tool_state.source = source
+    return item
 end
 
 local function resolveSharedActiveRepairTool()
@@ -7340,25 +7373,30 @@ local function resolveSharedActiveRepairTool()
     if item ~= nil and types.Repair.objectIsInstance(item) then
         local condition = repairToolCondition(item)
         if type(condition) == "number" then
-            return item
+            if condition > 0 or __basepack_repair_tool_state.lastCondition ~= condition then
+                return item
+            end
+
+            if not repairMenuActive then
+                return item
+            end
+        end
+
+        if repairMenuActive then
+            local replacement = findRepairToolByRecordId(__basepack_repair_tool_state.recordId, item)
+                or findAnyUsableRepairTool(item)
+            if replacement ~= nil then
+                return switchSharedActiveRepairTool(replacement, "repairMenuRollover")
+            end
         end
     end
 
     item = findRepairToolByRecordId(__basepack_repair_tool_state.recordId)
     if item == nil and repairMenuActive then
-        local repairTools = getRepairTools()
-        item = repairTools[1]
+        item = findAnyUsableRepairTool(nil)
     end
 
-    if item ~= nil then
-        __basepack_repair_tool_state.item = item
-        if type(__basepack_repair_tool_state.lastCondition) ~= "number" then
-            __basepack_repair_tool_state.lastCondition = repairToolCondition(item)
-        end
-        return item
-    end
-
-    return nil
+    return switchSharedActiveRepairTool(item, "repairToolResolve")
 end
 
 local function requestRefund(toolState, amount)
@@ -7518,6 +7556,19 @@ local function compareSharedActiveRepairTool()
         end
         local rollAttempts = math.min(delta, MAX_CONDITION_ROLLS_PER_UPDATE)
         rollAndRefund(currentState, rollAttempts)
+
+        if condition <= 0 and repairMenuActive then
+            local replacement = findRepairToolByRecordId(item.recordId, item) or findAnyUsableRepairTool(item)
+            if replacement ~= nil then
+                local replacementCondition = repairToolCondition(replacement)
+                switchSharedActiveRepairTool(replacement, "repairToolConsumed")
+                return objectKey(replacement), {
+                    item = replacement,
+                    recordId = replacement.recordId,
+                    condition = replacementCondition,
+                }
+            end
+        end
     end
 
     __basepack_repair_tool_state.item = item

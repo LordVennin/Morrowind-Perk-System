@@ -201,6 +201,7 @@ local TEMPERED_WEAPONS_KEY = "temperedWeapons"
 local REFITTED_ARMOR_KEY = "refittedArmor"
 local DRAIN_LOCKPICK_EVENT = "DrainLockpick"
 local TUMBLER_SENSE_FAILURE_EVENT = "SkillPerkSystem_BasePack_TumblerSense_Failure"
+local STEADY_HANDS_TOOL_DRAIN_EVENT = "SkillPerkSystem_BasePack_SteadyHands_ToolDrain"
 local TUMBLER_SENSE_FAILURE_SOURCE = "drain_lockpick_event"
 
 local temperStorage = storage.globalSection(TEMPER_STORAGE_SECTION_ID)
@@ -1775,12 +1776,12 @@ local function normalizeFailureProbe(data)
     return false
 end
 
-local function forwardTumblerSenseFailure(data)
+local function forwardSecurityToolDrain(data)
     if type(data) ~= "table" then
         return
     end
 
-    local player = data.player
+    local player = data.player or data.actor
     if player == nil or type(player.sendEvent) ~= "function" then
         return
     end
@@ -1790,9 +1791,14 @@ local function forwardTumblerSenseFailure(data)
         source = TUMBLER_SENSE_FAILURE_SOURCE,
         probe = probe,
     })
+    player:sendEvent(STEADY_HANDS_TOOL_DRAIN_EVENT, {
+        item = data.item or data.object or data.tool,
+        slot = data.slot,
+        slotName = data.slotName,
+    })
 
     print(string.format(
-        "[SkillPerkSystem_BasePack][TumblerSenseBridge] forwarded failure source=%s mode=%s",
+        "[SkillPerkSystem_BasePack][SecurityToolBridge] forwarded drain source=%s mode=%s",
         TUMBLER_SENSE_FAILURE_SOURCE,
         probe and "probe" or "lockpick"
     ))
@@ -1810,7 +1816,7 @@ subsystems.security_global = {
         [WEAPON_TEMPER_REQUEST_EVENT] = applyWeaponTemper,
         [ARMOR_REFIT_REQUEST_EVENT] = applyArmorRefit,
         [MASTERWORK_REQUEST_EVENT] = applyMasterwork,
-        [DRAIN_LOCKPICK_EVENT] = forwardTumblerSenseFailure,
+        [DRAIN_LOCKPICK_EVENT] = forwardSecurityToolDrain,
     },
 }
 

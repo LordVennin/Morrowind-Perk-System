@@ -7090,6 +7090,10 @@ local function onOverrepairResult(data)
     if data.success then
         lastOverrepairedTargetRecordId = data.recordId
         lastOverrepairedTargetName = data.name
+        if type(data.repairToolCondition) == "number" then
+            __basepack_repair_tool_state.lastCondition = data.repairToolCondition
+            __basepack_repair_tool_state.source = "apprentice_hammer_overrepair_result"
+        end
         logDebug("overrepair success for " .. tostring(data.recordId) .. " -> " .. tostring(data.targetCondition))
         showMessage(string.format("%s is now at %d condition.", tostring(data.name or "Item"), tonumber(data.targetCondition) or 0))
     else
@@ -7665,6 +7669,15 @@ local function handleSuppressRepairToolDrops(data)
 
     local amount = math.floor(tonumber(data.amount) or 0)
     if amount <= 0 then
+        return
+    end
+
+    if data.source == "apprentice_hammer_overrepair" then
+        trackedToolsByKey = {}
+        repairToolsDirty = false
+        repairToolScanRemaining = 0
+        repairToolScanTimer = 0
+        log(string.format("skipping overrepair tool-drop scan amount=%d", amount))
         return
     end
 

@@ -1715,6 +1715,13 @@ local ironKnucklesEnabled = false
 local breakingFistEnabled = false
 local flowingCounterMode = "none"
 local emptyBodyMasteryEnabled = false
+local EMPTY_BODY_DEBUG = false
+
+local function logEmptyBodyDebug(message)
+    if EMPTY_BODY_DEBUG then
+        print("[SkillPerkSystem_BasePack][EmptyBody][Target][debug] " .. tostring(message))
+    end
+end
 
 local function setState(data)
     if type(data) ~= "table" then
@@ -1795,7 +1802,10 @@ local function isPlayerHandToHandHit(attack)
 end
 
 local function onHit(attack)
-    if not ironKnucklesEnabled and not breakingFistEnabled and flowingCounterMode == "none" and not emptyBodyMasteryEnabled then
+    if not ironKnucklesEnabled
+        and not breakingFistEnabled
+        and flowingCounterMode == "none"
+        and not emptyBodyMasteryEnabled then
         return
     end
     if not isPlayerHandToHandHit(attack) then
@@ -1803,6 +1813,7 @@ local function onHit(attack)
     end
 
     if emptyBodyMasteryEnabled then
+        logEmptyBodyDebug("sending request attackType=" .. tostring(attack.type))
         attack.attacker:sendEvent("SkillPerkSystem_TryEmptyBodyMastery", {
             target = selfObj,
             attackType = attack.type,

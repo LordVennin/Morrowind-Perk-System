@@ -7830,6 +7830,13 @@ local handToHandEquipmentCache = {
     flowingCounterMode = "none",
 }
 local lastEmptyBodyAttackShape = nil
+local EMPTY_BODY_DEBUG = false
+
+local function logEmptyBodyDebug(message)
+    if EMPTY_BODY_DEBUG then
+        print("[SkillPerkSystem_BasePack][EmptyBody][Player][debug] " .. tostring(message))
+    end
+end
 
 local ATTRIBUTES = {
     "agility",
@@ -8419,14 +8426,6 @@ local function shouldRunHandToHandUpdate(dt)
     return true
 end
 
-local function getHandToHandAttackTarget(attack)
-    if type(attack) ~= "table" then
-        return nil
-    end
-
-    return attack.target or attack.victim or attack.defender or attack.hitObject or attack.object
-end
-
 local function resolveAttackShapeFromText(value)
     if type(value) ~= "string" then
         return nil
@@ -8508,18 +8507,21 @@ local function getEnchantedGloveForAttackShape(shape)
     end
 
     if slot == nil then
+        logEmptyBodyDebug("no glove slot for shape=" .. tostring(shape))
         return nil, nil, nil
     end
 
     local glove = getEquippedItem(slot)
     local record = getGloveRecordFromItem(glove)
     if record == nil then
+        logEmptyBodyDebug("no glove/bracer equipped for hand=" .. tostring(hand))
         return nil, nil, nil
     end
 
     local expectedGauntletType = hand == "right" and "RGauntlet" or "LGauntlet"
     local expectedBracerType = hand == "right" and "RBracer" or "LBracer"
     if not armorTypeEquals(record, expectedGauntletType) and not armorTypeEquals(record, expectedBracerType) then
+        logEmptyBodyDebug("equipped item is not matching glove/bracer for hand=" .. tostring(hand))
         return nil, nil, nil
     end
 
@@ -8528,21 +8530,30 @@ local function getEnchantedGloveForAttackShape(shape)
         enchantmentId = enchantmentId.id
     end
     if type(enchantmentId) ~= "string" or enchantmentId == "" then
+        logEmptyBodyDebug("matching glove/bracer has no enchantment for hand=" .. tostring(hand))
         return nil, nil, nil
     end
 
+    logEmptyBodyDebug("resolved hand=" .. tostring(hand) .. " enchantmentId=" .. tostring(enchantmentId))
     return glove, enchantmentId, hand
 end
 
 local function tryApplyEmptyBodyMastery(attack, target)
     if target == nil or not hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID) then
-        return
+        logEmptyBodyDebug("skipped missing target or disabled perk")
+        return false
     end
 
     local shape = resolveHandToHandAttackShape(attack)
+    if shape == nil then
+        logEmptyBodyDebug("skipped unresolved attack shape")
+        return false
+    end
+    logEmptyBodyDebug("resolved attackShape=" .. tostring(shape))
+
     local glove, enchantmentId, hand = getEnchantedGloveForAttackShape(shape)
     if glove == nil then
-        return
+        return false
     end
 
     core.sendGlobalEvent("SkillPerkSystem_ApplyEmptyBodyGloveEnchant", {
@@ -8553,42 +8564,18 @@ local function tryApplyEmptyBodyMastery(attack, target)
         hand = hand,
         attackShape = shape,
     })
-end
 
-local function isSuccessfulPlayerHandToHandHit(attack)
-    if type(attack) ~= "table" or attack.successful ~= true then
-        return false
-    end
-    if attack.attacker ~= pself or attack.weapon ~= nil then
-        return false
-    end
-
-    local meleeType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
-    if meleeType ~= nil and attack.sourceType ~= meleeType then
-        return false
-    end
-
+    logEmptyBodyDebug("sent global enchant event hand=" .. tostring(hand))
     return true
-end
-
-local function onHandToHandHit(attack)
-    if not isSuccessfulPlayerHandToHandHit(attack) then
-        return
-    end
-
-    local target = getHandToHandAttackTarget(attack)
-
-    tryApplyOpenPalm({
-        target = target,
-    })
-    tryApplyEmptyBodyMastery(attack, target)
-    lastEmptyBodyAttackShape = nil
 end
 
 local function handleTryEmptyBodyMastery(data)
     if type(data) ~= "table" then
+        return
+    end
+    if data.target == nil then
+        logEmptyBodyDebug("target-side request missing target")
+        lastEmptyBodyAttackShape = nil
         return
     end
 
@@ -8606,11 +8593,6 @@ local function handleTryEmptyBodyMastery(data)
         stopKey = data.stopKey,
     }, data.target)
     lastEmptyBodyAttackShape = nil
-end
-
-local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
-if type(addOnHitHandler) == "function" then
-    addOnHitHandler(onHandToHandHit)
 end
 
 local function handleHandToHandAnimation(event)

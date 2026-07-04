@@ -2877,6 +2877,13 @@ local Actor = types.Actor
 
 local REACTIVE_DEFAULT_VFX_MODEL = "meshes\\e\\magic_hit_myst.nif"
 local REACTIVE_DEFAULT_SOUND_FILE = "Sound\\Fx\\magic\\mystH.wav"
+local EMPTY_BODY_DEBUG = false
+
+local function logEmptyBodyDebug(message)
+    if EMPTY_BODY_DEBUG then
+        print("[SkillPerkSystem_BasePack][EmptyBody][Global][debug] " .. tostring(message))
+    end
+end
 
 local PRESENTATION_BY_EFFECT_ID = {
     -- Destruction / elemental damage
@@ -3454,26 +3461,31 @@ local function onApplyEmptyBodyGloveEnchant(e)
     local enchantmentId = e.enchantmentId
 
     if attacker == nil or target == nil or glove == nil or type(enchantmentId) ~= "string" or enchantmentId == "" then
+        logEmptyBodyDebug("skipped invalid payload")
         return
     end
 
     local sourceItemId = glove.recordId
     if type(sourceItemId) ~= "string" or sourceItemId == "" then
+        logEmptyBodyDebug("skipped glove without source item id")
         return
     end
 
     local enchantment = getEnchantmentRecord(enchantmentId)
     if enchantment == nil then
+        logEmptyBodyDebug("skipped missing enchantment record id=" .. tostring(enchantmentId))
         return
     end
 
     local constantEffectType = core.magic and core.magic.ENCHANTMENT_TYPE and core.magic.ENCHANTMENT_TYPE.ConstantEffect or nil
     if constantEffectType ~= nil and enchantment.type == constantEffectType then
+        logEmptyBodyDebug("rejected constant effect enchantment id=" .. tostring(enchantmentId))
         return
     end
 
     local itemData = Item and type(Item.itemData) == "function" and Item.itemData(glove) or nil
     if itemData == nil then
+        logEmptyBodyDebug("skipped missing itemData")
         return
     end
 
@@ -3485,19 +3497,23 @@ local function onApplyEmptyBodyGloveEnchant(e)
     end
 
     if currentCharge == nil then
+        logEmptyBodyDebug("skipped missing enchantment charge")
         return
     end
     if enchantCost > 0 and currentCharge < enchantCost then
+        logEmptyBodyDebug("skipped insufficient charge current=" .. tostring(currentCharge) .. " cost=" .. tostring(enchantCost))
         return
     end
 
     local _, targetIndexes = splitEffectIndexes(enchantment)
     if #targetIndexes == 0 then
+        logEmptyBodyDebug("rejected no touch/target effects id=" .. tostring(enchantmentId))
         return
     end
 
     local applied = addEffectsToTarget(target, sourceItemId, targetIndexes, attacker, glove)
     if not applied then
+        logEmptyBodyDebug("target effect application failed id=" .. tostring(enchantmentId))
         return
     end
 
@@ -3506,6 +3522,7 @@ local function onApplyEmptyBodyGloveEnchant(e)
     if enchantCost > 0 then
         itemData.enchantmentCharge = math.max(0, currentCharge - enchantCost)
     end
+    logEmptyBodyDebug("applied target indexes=" .. tostring(#targetIndexes) .. " cost=" .. tostring(enchantCost))
 end
 
 subsystems.block_reactive = {
@@ -3866,6 +3883,7 @@ local eventHandlers = {
 local engineOrder = {
     "security_global",
     "shared_target_watcher",
+    "handtohand",
     "treasure_sense",
     "lucky_find",
     "unseen_hand",

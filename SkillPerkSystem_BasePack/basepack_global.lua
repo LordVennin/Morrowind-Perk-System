@@ -2516,6 +2516,7 @@ local handToHandState = {
     ironKnucklesEnabled = false,
     breakingFistEnabled = false,
     flowingCounterMode = "none",
+    emptyBodyMasteryEnabled = false,
 }
 
 local function shouldAttachWatcher(actor)
@@ -2550,6 +2551,7 @@ local function handToHandTargetStateActive()
     return handToHandState.ironKnucklesEnabled
         or handToHandState.breakingFistEnabled
         or handToHandState.flowingCounterMode ~= "none"
+        or handToHandState.emptyBodyMasteryEnabled
 end
 
 local function refreshWatchers()
@@ -2566,6 +2568,7 @@ local function onHandToHandState(data)
         ironKnucklesEnabled = data.ironKnucklesEnabled == true,
         breakingFistEnabled = data.breakingFistEnabled == true,
         flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",
+        emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true,
     }
     refreshWatchers()
 end
@@ -3440,9 +3443,75 @@ local function onApplyReactiveShieldEnchant(e)
     end
 end
 
+local function onApplyEmptyBodyGloveEnchant(e)
+    if type(e) ~= "table" then
+        return
+    end
+
+    local attacker = e.attacker
+    local target = e.target
+    local glove = e.glove
+    local enchantmentId = e.enchantmentId
+
+    if attacker == nil or target == nil or glove == nil or type(enchantmentId) ~= "string" or enchantmentId == "" then
+        return
+    end
+
+    local sourceItemId = glove.recordId
+    if type(sourceItemId) ~= "string" or sourceItemId == "" then
+        return
+    end
+
+    local enchantment = getEnchantmentRecord(enchantmentId)
+    if enchantment == nil then
+        return
+    end
+
+    local constantEffectType = core.magic and core.magic.ENCHANTMENT_TYPE and core.magic.ENCHANTMENT_TYPE.ConstantEffect or nil
+    if constantEffectType ~= nil and enchantment.type == constantEffectType then
+        return
+    end
+
+    local itemData = Item and type(Item.itemData) == "function" and Item.itemData(glove) or nil
+    if itemData == nil then
+        return
+    end
+
+    local enchantCost = tonumber(enchantment.cost or enchantment.enchantmentCost or enchantment.castCost) or 0
+    local maxCharge = tonumber(enchantment.charge or enchantment.maxCharge or enchantment.enchantmentCharge)
+    local currentCharge = tonumber(itemData.enchantmentCharge)
+    if currentCharge == nil and type(maxCharge) == "number" then
+        currentCharge = maxCharge
+    end
+
+    if currentCharge == nil then
+        return
+    end
+    if enchantCost > 0 and currentCharge < enchantCost then
+        return
+    end
+
+    local _, targetIndexes = splitEffectIndexes(enchantment)
+    if #targetIndexes == 0 then
+        return
+    end
+
+    local applied = addEffectsToTarget(target, sourceItemId, targetIndexes, attacker, glove)
+    if not applied then
+        return
+    end
+
+    applyPresentation(target, getPresentationForEnchantment(enchantment), "empty_body_" .. tostring(e.hand or "glove"))
+
+    if enchantCost > 0 then
+        itemData.enchantmentCharge = math.max(0, currentCharge - enchantCost)
+    end
+end
+
 subsystems.block_reactive = {
     eventHandlers = {
         SkillPerkSystem_ApplyReactiveShieldEnchant = onApplyReactiveShieldEnchant,
+        SkillPerkSystem_ApplyEmptyBodyGloveEnchant = onApplyEmptyBodyGloveEnchant,
     },
 }
 
@@ -3785,6 +3854,7 @@ local eventHandlers = {
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
     SkillPerkSystem_ApplyHeavyHitterShieldDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyHeavyHitterShieldDamage", data) end,
     SkillPerkSystem_ApplyReactiveShieldEnchant = function(data) dispatchEvent("block_reactive", "SkillPerkSystem_ApplyReactiveShieldEnchant", data) end,
+    SkillPerkSystem_ApplyEmptyBodyGloveEnchant = function(data) dispatchEvent("block_reactive", "SkillPerkSystem_ApplyEmptyBodyGloveEnchant", data) end,
     SkillPerkSystem_ApplyBulwarkOfLight = function(data) dispatchEvent("block_bulwark", "SkillPerkSystem_ApplyBulwarkOfLight", data) end,
     SkillPerkSystem_PrimeAegisRite = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_PrimeAegisRite", data) end,
     SkillPerkSystem_ApplyAegisRiteEffect = function(data) dispatchEvent("block_aegis_rite", "SkillPerkSystem_ApplyAegisRiteEffect", data) end,

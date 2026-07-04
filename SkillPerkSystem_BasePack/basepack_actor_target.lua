@@ -1693,6 +1693,7 @@ end
 -- 7b. hand-to-hand target damage modifiers
 do
 local interfaces = require("openmw.interfaces")
+local selfObj = require("openmw.self")
 local types = require("openmw.types")
 
 local Actor = types.Actor
@@ -1713,6 +1714,7 @@ local playerId = nil
 local ironKnucklesEnabled = false
 local breakingFistEnabled = false
 local flowingCounterMode = "none"
+local emptyBodyMasteryEnabled = false
 
 local function setState(data)
     if type(data) ~= "table" then
@@ -1723,6 +1725,7 @@ local function setState(data)
     ironKnucklesEnabled = data.ironKnucklesEnabled == true
     breakingFistEnabled = data.breakingFistEnabled == true
     flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
+    emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true
 end
 
 local function getEquippedItem(actor, slot)
@@ -1792,11 +1795,18 @@ local function isPlayerHandToHandHit(attack)
 end
 
 local function onHit(attack)
-    if not ironKnucklesEnabled and not breakingFistEnabled and flowingCounterMode == "none" then
+    if not ironKnucklesEnabled and not breakingFistEnabled and flowingCounterMode == "none" and not emptyBodyMasteryEnabled then
         return
     end
     if not isPlayerHandToHandHit(attack) then
         return
+    end
+
+    if emptyBodyMasteryEnabled then
+        attack.attacker:sendEvent("SkillPerkSystem_TryEmptyBodyMastery", {
+            target = selfObj,
+            attackType = attack.type,
+        })
     end
 
     if ironKnucklesEnabled then
@@ -1832,7 +1842,7 @@ handToHand.eventHandlers = {
     SkillPerkSystem_HandToHandRefresh = setState,
 }
 handToHand.hasActiveState = function()
-    return ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none"
+    return ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none" or emptyBodyMasteryEnabled
 end
 
 handToHand.engineHandlers = {
@@ -1852,6 +1862,7 @@ handToHand.engineHandlers = {
             ironKnucklesEnabled = ironKnucklesEnabled,
             breakingFistEnabled = breakingFistEnabled,
             flowingCounterMode = flowingCounterMode,
+            emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
         }
     end,
 }

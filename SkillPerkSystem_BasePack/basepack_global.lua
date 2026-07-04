@@ -2516,6 +2516,7 @@ local handToHandState = {
     ironKnucklesEnabled = false,
     breakingFistEnabled = false,
     flowingCounterMode = "none",
+    emptyBodyMasteryEnabled = false,
 }
 
 local function shouldAttachWatcher(actor)
@@ -2550,6 +2551,7 @@ local function handToHandTargetStateActive()
     return handToHandState.ironKnucklesEnabled
         or handToHandState.breakingFistEnabled
         or handToHandState.flowingCounterMode ~= "none"
+        or handToHandState.emptyBodyMasteryEnabled
 end
 
 local function refreshWatchers()
@@ -2566,6 +2568,7 @@ local function onHandToHandState(data)
         ironKnucklesEnabled = data.ironKnucklesEnabled == true,
         breakingFistEnabled = data.breakingFistEnabled == true,
         flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",
+        emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true,
     }
     refreshWatchers()
 end

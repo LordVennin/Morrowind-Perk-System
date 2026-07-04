@@ -8310,9 +8310,11 @@ end
 local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
+    local emptyBodyMasteryEnabled = hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID)
     local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and cachedFlowingCounterMode() or "none"
     local stateKey = tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
+        .. tostring(emptyBodyMasteryEnabled) .. ":"
         .. tostring(flowingCounterMode)
     if not force and stateKey == lastHandToHandStateKey then
         return
@@ -8324,6 +8326,7 @@ local function refreshHandToHandState(force)
         playerId = pself.id,
         ironKnucklesEnabled = ironKnucklesEnabled,
         breakingFistEnabled = breakingFistEnabled,
+        emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
         flowingCounterMode = flowingCounterMode,
     })
 end
@@ -8374,6 +8377,7 @@ local HAND_TO_HAND_STATE_PERKS = {
     handtohand_open_palm = true,
     handtohand_iron_knuckles = true,
     handtohand_flowing_counter = true,
+    handtohand_empty_body_mastery = true,
     handtohand_breaking_fist = true,
 }
 
@@ -8442,6 +8446,23 @@ local function resolveAttackShapeFromText(value)
     return nil
 end
 
+local function resolveAttackShapeFromType(value)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    if attackTypes ~= nil then
+        if value == attackTypes.Chop then
+            return "chop"
+        end
+        if value == attackTypes.Slash then
+            return "slash"
+        end
+        if value == attackTypes.Thrust then
+            return "thrust"
+        end
+    end
+
+    return resolveAttackShapeFromText(value)
+end
+
 local function resolveHandToHandAttackShape(attack)
     if type(attack) ~= "table" then
         return lastEmptyBodyAttackShape
@@ -8462,7 +8483,7 @@ local function resolveHandToHandAttackShape(attack)
     }
 
     for _, candidate in ipairs(candidates) do
-        local shape = resolveAttackShapeFromText(candidate)
+        local shape = resolveAttackShapeFromType(candidate)
         if shape ~= nil then
             return shape
         end
@@ -8566,6 +8587,27 @@ local function onHandToHandHit(attack)
     lastEmptyBodyAttackShape = nil
 end
 
+local function handleTryEmptyBodyMastery(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    tryApplyEmptyBodyMastery({
+        type = data.attackType or data.type,
+        attackType = data.attackType or data.type,
+        attack = data.attack,
+        attackKind = data.attackKind,
+        attackSource = data.attackSource,
+        source = data.source,
+        animation = data.animation,
+        animationName = data.animationName,
+        groupName = data.groupName,
+        startKey = data.startKey,
+        stopKey = data.stopKey,
+    }, data.target)
+    lastEmptyBodyAttackShape = nil
+end
+
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then
     addOnHitHandler(onHandToHandHit)
@@ -8619,6 +8661,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryOpenPalm = tryApplyOpenPalm,
+        SkillPerkSystem_TryEmptyBodyMastery = handleTryEmptyBodyMastery,
         SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
         SkillPerkSystem_HandToHandStateDirty = function() markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW) end,
         UiModeChanged = function()

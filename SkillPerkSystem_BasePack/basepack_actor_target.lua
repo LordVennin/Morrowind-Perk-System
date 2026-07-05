@@ -1771,15 +1771,24 @@ end
 
 local function isPlayerHandToHandHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
+        logEmptyBodyDebug("rejected hit: missing attack table or unsuccessful")
         return false
     end
     if type(attack.damage) ~= "table" then
+        logEmptyBodyDebug("rejected hit: missing damage table")
         return false
     end
     if attack.attacker == nil or attack.attacker.id ~= playerId then
+        logEmptyBodyDebug(
+            "rejected hit: attacker mismatch attackerId="
+            .. tostring(attack.attacker ~= nil and attack.attacker.id or nil)
+            .. " playerId="
+            .. tostring(playerId)
+        )
         return false
     end
     if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        logEmptyBodyDebug("rejected hit: attacker invalid")
         return false
     end
 
@@ -1787,18 +1796,27 @@ local function isPlayerHandToHandHit(attack)
         and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
         and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
     if meleeType ~= nil and attack.sourceType ~= meleeType then
+        logEmptyBodyDebug("rejected hit: sourceType=" .. tostring(attack.sourceType) .. " meleeType=" .. tostring(meleeType))
         return false
     end
 
-    if attack.weapon ~= nil then
+    if itemIsWeapon(attack.weapon) then
+        logEmptyBodyDebug("rejected hit: attack weapon is a Weapon instance")
         return false
     end
 
     if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        logEmptyBodyDebug("rejected hit: equipment slots unavailable")
         return false
     end
 
-    return not itemIsWeapon(getEquippedItem(attack.attacker, Actor.EQUIPMENT_SLOT.CarriedRight))
+    local carriedRight = getEquippedItem(attack.attacker, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if itemIsWeapon(carriedRight) then
+        logEmptyBodyDebug("rejected hit: carried right is a Weapon instance")
+        return false
+    end
+
+    return true
 end
 
 local function onHit(attack)

@@ -65,7 +65,7 @@ return {
             x = -180,
             y = 440,
             title = "Empty Body Mastery",
-            description = "Placeholder capstone perk: reserves the defensive mastery endpoint of the Hand-to-hand tree.",
+            description = "Hand-to-hand hits channel glove enchantments: chop and slash attacks trigger your right glove's touch or target effects, while thrust attacks trigger your left glove's touch or target effects. Cast-on-self effects are ignored.",
         },
         {
             id = "handtohand_breaking_fist",

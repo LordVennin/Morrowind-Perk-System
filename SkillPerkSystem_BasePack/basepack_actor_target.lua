@@ -1693,6 +1693,7 @@ end
 -- 7b. hand-to-hand target damage modifiers
 do
 local interfaces = require("openmw.interfaces")
+local selfObj = require("openmw.self")
 local types = require("openmw.types")
 
 local Actor = types.Actor
@@ -1713,6 +1714,14 @@ local playerId = nil
 local ironKnucklesEnabled = false
 local breakingFistEnabled = false
 local flowingCounterMode = "none"
+local emptyBodyMasteryEnabled = false
+local EMPTY_BODY_DEBUG = false
+
+local function logEmptyBodyDebug(message)
+    if EMPTY_BODY_DEBUG then
+        print("[SkillPerkSystem_BasePack][EmptyBody][Target][debug] " .. tostring(message))
+    end
+end
 
 local function setState(data)
     if type(data) ~= "table" then
@@ -1723,6 +1732,7 @@ local function setState(data)
     ironKnucklesEnabled = data.ironKnucklesEnabled == true
     breakingFistEnabled = data.breakingFistEnabled == true
     flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
+    emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true
 end
 
 local function getEquippedItem(actor, slot)
@@ -1761,15 +1771,24 @@ end
 
 local function isPlayerHandToHandHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
+        logEmptyBodyDebug("rejected hit: missing attack table or unsuccessful")
         return false
     end
     if type(attack.damage) ~= "table" then
+        logEmptyBodyDebug("rejected hit: missing damage table")
         return false
     end
     if attack.attacker == nil or attack.attacker.id ~= playerId then
+        logEmptyBodyDebug(
+            "rejected hit: attacker mismatch attackerId="
+            .. tostring(attack.attacker ~= nil and attack.attacker.id or nil)
+            .. " playerId="
+            .. tostring(playerId)
+        )
         return false
     end
     if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        logEmptyBodyDebug("rejected hit: attacker invalid")
         return false
     end
 
@@ -1777,26 +1796,46 @@ local function isPlayerHandToHandHit(attack)
         and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
         and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
     if meleeType ~= nil and attack.sourceType ~= meleeType then
+        logEmptyBodyDebug("rejected hit: sourceType=" .. tostring(attack.sourceType) .. " meleeType=" .. tostring(meleeType))
         return false
     end
 
-    if attack.weapon ~= nil then
+    if itemIsWeapon(attack.weapon) then
+        logEmptyBodyDebug("rejected hit: attack weapon is a Weapon instance")
         return false
     end
 
     if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        logEmptyBodyDebug("rejected hit: equipment slots unavailable")
         return false
     end
 
-    return not itemIsWeapon(getEquippedItem(attack.attacker, Actor.EQUIPMENT_SLOT.CarriedRight))
+    local carriedRight = getEquippedItem(attack.attacker, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if itemIsWeapon(carriedRight) then
+        logEmptyBodyDebug("rejected hit: carried right is a Weapon instance")
+        return false
+    end
+
+    return true
 end
 
 local function onHit(attack)
-    if not ironKnucklesEnabled and not breakingFistEnabled and flowingCounterMode == "none" then
+    if not ironKnucklesEnabled
+        and not breakingFistEnabled
+        and flowingCounterMode == "none"
+        and not emptyBodyMasteryEnabled then
         return
     end
     if not isPlayerHandToHandHit(attack) then
         return
+    end
+
+    if emptyBodyMasteryEnabled then
+        logEmptyBodyDebug("sending request attackType=" .. tostring(attack.type))
+        attack.attacker:sendEvent("SkillPerkSystem_TryEmptyBodyMastery", {
+            target = selfObj,
+            attackType = attack.type,
+        })
     end
 
     if ironKnucklesEnabled then
@@ -1832,7 +1871,7 @@ handToHand.eventHandlers = {
     SkillPerkSystem_HandToHandRefresh = setState,
 }
 handToHand.hasActiveState = function()
-    return ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none"
+    return ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none" or emptyBodyMasteryEnabled
 end
 
 handToHand.engineHandlers = {
@@ -1852,6 +1891,7 @@ handToHand.engineHandlers = {
             ironKnucklesEnabled = ironKnucklesEnabled,
             breakingFistEnabled = breakingFistEnabled,
             flowingCounterMode = flowingCounterMode,
+            emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
         }
     end,
 }

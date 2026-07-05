@@ -2877,7 +2877,7 @@ local Actor = types.Actor
 
 local REACTIVE_DEFAULT_VFX_MODEL = "meshes\\e\\magic_hit_myst.nif"
 local REACTIVE_DEFAULT_SOUND_FILE = "Sound\\Fx\\magic\\mystH.wav"
-local EMPTY_BODY_DEBUG = false
+local EMPTY_BODY_DEBUG = true
 
 local function logEmptyBodyDebug(message)
     if EMPTY_BODY_DEBUG then

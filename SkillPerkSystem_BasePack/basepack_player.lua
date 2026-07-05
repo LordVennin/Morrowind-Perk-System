@@ -7788,6 +7788,7 @@ local types = require("openmw.types")
 
 local Actor = types.Actor
 local Armor = types.Armor
+local Clothing = types.Clothing
 local NPC = types.NPC
 local Weapon = types.Weapon
 
@@ -7830,7 +7831,7 @@ local handToHandEquipmentCache = {
     flowingCounterMode = "none",
 }
 local lastEmptyBodyAttackShape = nil
-local EMPTY_BODY_DEBUG = false
+local EMPTY_BODY_DEBUG = true
 
 local function logEmptyBodyDebug(message)
     if EMPTY_BODY_DEBUG then
@@ -7903,6 +7904,31 @@ local function getArmorRecord(item)
     return nil
 end
 
+local function getClothingRecord(item)
+    if item == nil or Clothing == nil then
+        return nil
+    end
+
+    if type(Clothing.record) == "function" then
+        local okRecord, record = pcall(Clothing.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Clothing.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Clothing.records) == "table" then
+        return Clothing.records[item.recordId]
+    end
+
+    return nil
+end
+
 local function itemIsWeapon(item)
     return item ~= nil and Weapon ~= nil and type(Weapon.objectIsInstance) == "function" and Weapon.objectIsInstance(item)
 end
@@ -7920,6 +7946,10 @@ local function armorTypeEquals(record, typeName)
     return record ~= nil and Armor ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE[typeName]
 end
 
+local function clothingTypeEquals(record, typeName)
+    return record ~= nil and Clothing ~= nil and Clothing.TYPE ~= nil and record.type == Clothing.TYPE[typeName]
+end
+
 local function getGloveRecordFromItem(item)
     if item == nil then
         return nil
@@ -7929,6 +7959,33 @@ local function getGloveRecordFromItem(item)
     end
 
     return getArmorRecord(item)
+end
+
+local function getEmptyBodyHandRecord(item, hand)
+    if item == nil then
+        return nil, nil
+    end
+
+    if Armor ~= nil and type(Armor.objectIsInstance) == "function" and Armor.objectIsInstance(item) then
+        local record = getArmorRecord(item)
+        local expectedGauntletType = hand == "right" and "RGauntlet" or "LGauntlet"
+        local expectedBracerType = hand == "right" and "RBracer" or "LBracer"
+
+        if armorTypeEquals(record, expectedGauntletType) or armorTypeEquals(record, expectedBracerType) then
+            return record, "armor"
+        end
+    end
+
+    if Clothing ~= nil and type(Clothing.objectIsInstance) == "function" and Clothing.objectIsInstance(item) then
+        local record = getClothingRecord(item)
+        local expectedGloveType = hand == "right" and "RGlove" or "LGlove"
+
+        if clothingTypeEquals(record, expectedGloveType) then
+            return record, "clothing"
+        end
+    end
+
+    return nil, nil
 end
 
 local function normalizedRecordText(record)
@@ -8512,16 +8569,9 @@ local function getEnchantedGloveForAttackShape(shape)
     end
 
     local glove = getEquippedItem(slot)
-    local record = getGloveRecordFromItem(glove)
+    local record, recordKind = getEmptyBodyHandRecord(glove, hand)
     if record == nil then
-        logEmptyBodyDebug("no glove/bracer equipped for hand=" .. tostring(hand))
-        return nil, nil, nil
-    end
-
-    local expectedGauntletType = hand == "right" and "RGauntlet" or "LGauntlet"
-    local expectedBracerType = hand == "right" and "RBracer" or "LBracer"
-    if not armorTypeEquals(record, expectedGauntletType) and not armorTypeEquals(record, expectedBracerType) then
-        logEmptyBodyDebug("equipped item is not matching glove/bracer for hand=" .. tostring(hand))
+        logEmptyBodyDebug("no matching hand item equipped for hand=" .. tostring(hand))
         return nil, nil, nil
     end
 
@@ -8534,7 +8584,7 @@ local function getEnchantedGloveForAttackShape(shape)
         return nil, nil, nil
     end
 
-    logEmptyBodyDebug("resolved hand=" .. tostring(hand) .. " enchantmentId=" .. tostring(enchantmentId))
+    logEmptyBodyDebug("resolved hand=" .. tostring(hand) .. " kind=" .. tostring(recordKind) .. " enchantmentId=" .. tostring(enchantmentId))
     return glove, enchantmentId, hand
 end
 

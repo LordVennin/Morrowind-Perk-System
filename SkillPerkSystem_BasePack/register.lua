@@ -114,6 +114,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.marksman.marksman",
         data = require("scripts.SkillPerkSystem_BasePack.perks.marksman.marksman"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.spear.spear",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.spear.spear"),
+    },
 }
 
 

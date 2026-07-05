@@ -7788,6 +7788,7 @@ local types = require("openmw.types")
 
 local Actor = types.Actor
 local Armor = types.Armor
+local Clothing = types.Clothing
 local NPC = types.NPC
 local Weapon = types.Weapon
 
@@ -7796,6 +7797,7 @@ local CENTERED_STANCE_PERK_ID = "handtohand_centered_stance"
 local OPEN_PALM_PERK_ID = "handtohand_open_palm"
 local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local FLOWING_COUNTER_PERK_ID = "handtohand_flowing_counter"
+local EMPTY_BODY_MASTERY_PERK_ID = "handtohand_empty_body_mastery"
 local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 local CENTERED_STANCE_BONUS = 3
 local FLOWING_COUNTER_ABILITY_ID = "sps_DeflectingPalm"
@@ -7828,6 +7830,14 @@ local handToHandEquipmentCache = {
     hasWeaponOrShield = true,
     flowingCounterMode = "none",
 }
+local lastEmptyBodyAttackShape = nil
+local EMPTY_BODY_DEBUG = true
+
+local function logEmptyBodyDebug(message)
+    if EMPTY_BODY_DEBUG then
+        print("[SkillPerkSystem_BasePack][EmptyBody][Player][debug] " .. tostring(message))
+    end
+end
 
 local ATTRIBUTES = {
     "agility",
@@ -7894,6 +7904,31 @@ local function getArmorRecord(item)
     return nil
 end
 
+local function getClothingRecord(item)
+    if item == nil or Clothing == nil then
+        return nil
+    end
+
+    if type(Clothing.record) == "function" then
+        local okRecord, record = pcall(Clothing.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Clothing.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Clothing.records) == "table" then
+        return Clothing.records[item.recordId]
+    end
+
+    return nil
+end
+
 local function itemIsWeapon(item)
     return item ~= nil and Weapon ~= nil and type(Weapon.objectIsInstance) == "function" and Weapon.objectIsInstance(item)
 end
@@ -7911,6 +7946,10 @@ local function armorTypeEquals(record, typeName)
     return record ~= nil and Armor ~= nil and Armor.TYPE ~= nil and record.type == Armor.TYPE[typeName]
 end
 
+local function clothingTypeEquals(record, typeName)
+    return record ~= nil and Clothing ~= nil and Clothing.TYPE ~= nil and record.type == Clothing.TYPE[typeName]
+end
+
 local function getGloveRecordFromItem(item)
     if item == nil then
         return nil
@@ -7920,6 +7959,33 @@ local function getGloveRecordFromItem(item)
     end
 
     return getArmorRecord(item)
+end
+
+local function getEmptyBodyHandRecord(item, hand)
+    if item == nil then
+        return nil, nil
+    end
+
+    if Armor ~= nil and type(Armor.objectIsInstance) == "function" and Armor.objectIsInstance(item) then
+        local record = getArmorRecord(item)
+        local expectedGauntletType = hand == "right" and "RGauntlet" or "LGauntlet"
+        local expectedBracerType = hand == "right" and "RBracer" or "LBracer"
+
+        if armorTypeEquals(record, expectedGauntletType) or armorTypeEquals(record, expectedBracerType) then
+            return record, "armor"
+        end
+    end
+
+    if Clothing ~= nil and type(Clothing.objectIsInstance) == "function" and Clothing.objectIsInstance(item) then
+        local record = getClothingRecord(item)
+        local expectedGloveType = hand == "right" and "RGlove" or "LGlove"
+
+        if clothingTypeEquals(record, expectedGloveType) then
+            return record, "clothing"
+        end
+    end
+
+    return nil, nil
 end
 
 local function normalizedRecordText(record)
@@ -8308,9 +8374,11 @@ end
 local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
+    local emptyBodyMasteryEnabled = hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID)
     local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and cachedFlowingCounterMode() or "none"
     local stateKey = tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
+        .. tostring(emptyBodyMasteryEnabled) .. ":"
         .. tostring(flowingCounterMode)
     if not force and stateKey == lastHandToHandStateKey then
         return
@@ -8322,6 +8390,7 @@ local function refreshHandToHandState(force)
         playerId = pself.id,
         ironKnucklesEnabled = ironKnucklesEnabled,
         breakingFistEnabled = breakingFistEnabled,
+        emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
         flowingCounterMode = flowingCounterMode,
     })
 end
@@ -8372,6 +8441,7 @@ local HAND_TO_HAND_STATE_PERKS = {
     handtohand_open_palm = true,
     handtohand_iron_knuckles = true,
     handtohand_flowing_counter = true,
+    handtohand_empty_body_mastery = true,
     handtohand_breaking_fist = true,
 }
 
@@ -8413,45 +8483,166 @@ local function shouldRunHandToHandUpdate(dt)
     return true
 end
 
-local function getHandToHandAttackTarget(attack)
-    if type(attack) ~= "table" then
+local function resolveAttackShapeFromText(value)
+    if type(value) ~= "string" then
         return nil
     end
 
-    return attack.target or attack.victim or attack.defender or attack.hitObject or attack.object
+    local normalized = string.lower(value)
+    if string.find(normalized, "thrust", 1, true) ~= nil then
+        return "thrust"
+    end
+    if string.find(normalized, "slash", 1, true) ~= nil then
+        return "slash"
+    end
+    if string.find(normalized, "chop", 1, true) ~= nil then
+        return "chop"
+    end
+
+    return nil
 end
 
-local function isSuccessfulPlayerHandToHandHit(attack)
-    if type(attack) ~= "table" or attack.successful ~= true then
-        return false
+local function resolveAttackShapeFromType(value)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    if attackTypes ~= nil then
+        if value == attackTypes.Chop then
+            return "chop"
+        end
+        if value == attackTypes.Slash then
+            return "slash"
+        end
+        if value == attackTypes.Thrust then
+            return "thrust"
+        end
     end
-    if attack.attacker ~= pself or attack.weapon ~= nil then
+
+    return resolveAttackShapeFromText(value)
+end
+
+local function resolveHandToHandAttackShape(attack)
+    if type(attack) ~= "table" then
+        return lastEmptyBodyAttackShape
+    end
+
+    local candidates = {
+        attack.attackType,
+        attack.type,
+        attack.attack,
+        attack.attackKind,
+        attack.attackSource,
+        attack.source,
+        attack.animation,
+        attack.animationName,
+        attack.groupName,
+        attack.startKey,
+        attack.stopKey,
+    }
+
+    for _, candidate in ipairs(candidates) do
+        local shape = resolveAttackShapeFromType(candidate)
+        if shape ~= nil then
+            return shape
+        end
+    end
+
+    return lastEmptyBodyAttackShape
+end
+
+local function getEnchantedGloveForAttackShape(shape)
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil, nil, nil
+    end
+
+    local slot = nil
+    local hand = nil
+    if shape == "chop" or shape == "slash" then
+        slot = Actor.EQUIPMENT_SLOT.RightGauntlet
+        hand = "right"
+    elseif shape == "thrust" then
+        slot = Actor.EQUIPMENT_SLOT.LeftGauntlet
+        hand = "left"
+    end
+
+    if slot == nil then
+        logEmptyBodyDebug("no glove slot for shape=" .. tostring(shape))
+        return nil, nil, nil
+    end
+
+    local glove = getEquippedItem(slot)
+    local record, recordKind = getEmptyBodyHandRecord(glove, hand)
+    if record == nil then
+        logEmptyBodyDebug("no matching hand item equipped for hand=" .. tostring(hand))
+        return nil, nil, nil
+    end
+
+    local enchantmentId = record.enchant or record.enchantment
+    if type(enchantmentId) == "table" and type(enchantmentId.id) == "string" then
+        enchantmentId = enchantmentId.id
+    end
+    if type(enchantmentId) ~= "string" or enchantmentId == "" then
+        logEmptyBodyDebug("matching glove/bracer has no enchantment for hand=" .. tostring(hand))
+        return nil, nil, nil
+    end
+
+    logEmptyBodyDebug("resolved hand=" .. tostring(hand) .. " kind=" .. tostring(recordKind) .. " enchantmentId=" .. tostring(enchantmentId))
+    return glove, enchantmentId, hand
+end
+
+local function tryApplyEmptyBodyMastery(attack, target)
+    if target == nil or not hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID) then
+        logEmptyBodyDebug("skipped missing target or disabled perk")
         return false
     end
 
-    local meleeType = interfaces.Combat ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
-        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
-    if meleeType ~= nil and attack.sourceType ~= meleeType then
+    local shape = resolveHandToHandAttackShape(attack)
+    if shape == nil then
+        logEmptyBodyDebug("skipped unresolved attack shape")
+        return false
+    end
+    logEmptyBodyDebug("resolved attackShape=" .. tostring(shape))
+
+    local glove, enchantmentId, hand = getEnchantedGloveForAttackShape(shape)
+    if glove == nil then
         return false
     end
 
+    core.sendGlobalEvent("SkillPerkSystem_ApplyEmptyBodyGloveEnchant", {
+        attacker = pself,
+        target = target,
+        glove = glove,
+        enchantmentId = enchantmentId,
+        hand = hand,
+        attackShape = shape,
+    })
+
+    logEmptyBodyDebug("sent global enchant event hand=" .. tostring(hand))
     return true
 end
 
-local function onHandToHandHit(attack)
-    if not isSuccessfulPlayerHandToHandHit(attack) then
+local function handleTryEmptyBodyMastery(data)
+    if type(data) ~= "table" then
+        return
+    end
+    if data.target == nil then
+        logEmptyBodyDebug("target-side request missing target")
+        lastEmptyBodyAttackShape = nil
         return
     end
 
-    tryApplyOpenPalm({
-        target = getHandToHandAttackTarget(attack),
-    })
-end
-
-local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
-if type(addOnHitHandler) == "function" then
-    addOnHitHandler(onHandToHandHit)
+    tryApplyEmptyBodyMastery({
+        type = data.attackType or data.type,
+        attackType = data.attackType or data.type,
+        attack = data.attack,
+        attackKind = data.attackKind,
+        attackSource = data.attackSource,
+        source = data.source,
+        animation = data.animation,
+        animationName = data.animationName,
+        groupName = data.groupName,
+        startKey = data.startKey,
+        stopKey = data.stopKey,
+    }, data.target)
+    lastEmptyBodyAttackShape = nil
 end
 
 local function handleHandToHandAnimation(event)
@@ -8459,6 +8650,14 @@ local function handleHandToHandAnimation(event)
     if not event.isHandToHandAttackShape then
         return
     end
+
+    local emptyBodyAttackShape = resolveAttackShapeFromText(event.startKeyLower)
+        or resolveAttackShapeFromText(event.stopKeyLower)
+        or resolveAttackShapeFromText(event.groupLower)
+    if emptyBodyAttackShape ~= nil then
+        lastEmptyBodyAttackShape = emptyBodyAttackShape
+    end
+
     if not hasEnabledPerk(FLOWING_COUNTER_PERK_ID) then
         return
     end
@@ -8494,6 +8693,7 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_TryOpenPalm = tryApplyOpenPalm,
+        SkillPerkSystem_TryEmptyBodyMastery = handleTryEmptyBodyMastery,
         SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
         SkillPerkSystem_HandToHandStateDirty = function() markHandToHandDirty(HAND_TO_HAND_SCAN_WINDOW) end,
         UiModeChanged = function()

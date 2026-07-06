@@ -2501,6 +2501,57 @@ subsystems.axe = {
 -- End consolidated from SkillPerkSystem_BasePack/axe_global.lua
 end
 
+-- 6a. spear global state handling
+do
+local spearPointControlState = {
+    playerId = nil,
+    pointControlEnabled = false,
+}
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_SpearPointControlRefresh", spearPointControlState)
+    end
+end
+
+local function spearTargetStateActive()
+    return spearPointControlState.pointControlEnabled
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("spear", spearTargetStateActive())
+end
+
+local function onSpearPointControlState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    spearPointControlState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        pointControlEnabled = data.pointControlEnabled == true,
+    }
+    refreshWatchers()
+end
+
+registerTargetWatcherProvider("spear", {
+    isActive = spearTargetStateActive,
+    sendState = sendState,
+})
+
+subsystems.spear = {
+    eventHandlers = {
+        SkillPerkSystem_SpearPointControlState = onSpearPointControlState,
+    },
+    engineHandlers = {
+        onLoad = function()
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6b. hand-to-hand global state handling
 do
 local world = require("openmw.world")
@@ -3866,6 +3917,7 @@ local eventHandlers = {
 
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
+    SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,
     SkillPerkSystem_HandToHandState = function(data) dispatchEvent("handtohand", "SkillPerkSystem_HandToHandState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
@@ -3888,6 +3940,7 @@ local engineOrder = {
     "lucky_find",
     "unseen_hand",
     "axe",
+    "spear",
     "bluntweapon",
     "duelists_tempo",
     "block_reactive",

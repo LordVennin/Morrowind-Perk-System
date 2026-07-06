@@ -4725,6 +4725,238 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 end
 
 ----------------------------------------------------------------------
+-- spear runtime logic
+----------------------------------------------------------------------
+do
+local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Weapon = types.Weapon
+
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local POINT_CONTROL_PERK_ID = "spear_point_control"
+local POINT_CONTROL_ENDURANCE_BONUS = 5
+local SPEAR_STATE_EVENT = "SkillPerkSystem_SpearPointControlState"
+local SPEAR_STATE_REFRESH_INTERVAL = 0.5
+local SPEAR_EQUIPMENT_SCAN_WINDOW = 1.5
+
+local appliedPointControlEnduranceBonus = 0
+local spearStateDirty = true
+local spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
+local spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
+local lastSpearStateKey = nil
+
+local function hasEnabledPerk(perkID)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
+        return false
+    end
+
+    if not playerApi.hasPerk(perkID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(perkID)
+    end
+
+    return true
+end
+
+local function getEquippedItem(actor, slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function isSpearRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local expected = tonumber(Weapon.TYPE.SpearTwoWide)
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function getEquippedSpearRecord()
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil
+    end
+
+    local weapon = getEquippedItem(pself, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return nil
+    end
+
+    local record = getWeaponRecord(weapon)
+    if not isSpearRecord(record) then
+        return nil
+    end
+
+    return record
+end
+
+local function resolveEnduranceStat()
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes.endurance
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyPointControlEnduranceBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedPointControlEnduranceBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveEnduranceStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedPointControlEnduranceBonus = desired
+end
+
+local function refreshPointControlEnduranceBonus()
+    local desiredBonus = 0
+    if hasEnabledPerk(POINT_CONTROL_PERK_ID) and getEquippedSpearRecord() ~= nil then
+        desiredBonus = POINT_CONTROL_ENDURANCE_BONUS
+    end
+
+    applyPointControlEnduranceBonus(desiredBonus)
+end
+
+local function publishSpearPointControlState(force)
+    local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
+    local stateKey = tostring(pointControlEnabled)
+    if not force and stateKey == lastSpearStateKey then
+        return
+    end
+
+    lastSpearStateKey = stateKey
+    core.sendGlobalEvent(SPEAR_STATE_EVENT, {
+        playerId = pself.id,
+        pointControlEnabled = pointControlEnabled,
+    })
+end
+
+local function markSpearStateDirty(scanWindow)
+    spearStateDirty = true
+    spearEquipmentScanRemaining = math.max(spearEquipmentScanRemaining, tonumber(scanWindow) or SPEAR_EQUIPMENT_SCAN_WINDOW)
+    spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
+end
+
+local function handlePerkStateChanged(data)
+    if type(data) ~= "table" or data.perkID ~= POINT_CONTROL_PERK_ID then
+        return
+    end
+    markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
+end
+
+local function shouldUpdateSpear(dt)
+    if spearStateDirty then
+        return true
+    end
+
+    if appliedPointControlEnduranceBonus ~= 0
+        and (not hasEnabledPerk(POINT_CONTROL_PERK_ID) or getEquippedSpearRecord() == nil) then
+        return true
+    end
+
+    spearEquipmentScanRemaining = math.max(0, spearEquipmentScanRemaining - (tonumber(dt) or 0))
+    if spearEquipmentScanRemaining <= 0 then
+        return false
+    end
+
+    spearRefreshTimer = spearRefreshTimer + (tonumber(dt) or 0)
+    return spearRefreshTimer >= SPEAR_STATE_REFRESH_INTERVAL
+end
+
+local function handleSpearAnimation()
+    markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
+end
+registerBasepackAnimationHandler(handleSpearAnimation)
+
+__basepack_subsystems[#__basepack_subsystems + 1] = {
+    engineHandlers = {
+        onUpdate = function()
+            spearStateDirty = false
+            spearRefreshTimer = 0
+            refreshPointControlEnduranceBonus()
+            publishSpearPointControlState(false)
+        end,
+        shouldUpdate = shouldUpdateSpear,
+        onLoad = function()
+            appliedPointControlEnduranceBonus = 0
+            spearStateDirty = true
+            spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
+            spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
+            lastSpearStateKey = nil
+            refreshPointControlEnduranceBonus()
+            publishSpearPointControlState(true)
+        end,
+    },
+    eventHandlers = {
+        SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_SpearStateDirty = function() markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW) end,
+        UiModeChanged = function() markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW) end,
+    },
+}
+
+end
+
+----------------------------------------------------------------------
 -- blunt weapon runtime logic (from bluntweapon_runtime.lua)
 ----------------------------------------------------------------------
 do

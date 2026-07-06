@@ -6,6 +6,7 @@ local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 
 local axe = {}
+local spear = {}
 local blunt = {}
 local duelistTempo = {}
 local aegisRite = {}
@@ -958,7 +959,180 @@ local script = {
     axe.onHit = onHit
 end
 
--- 4. blunt weapon target state/effects
+-- 4. spear target state/effects
+do
+local interfaces = require("openmw.interfaces")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Weapon = types.Weapon
+
+local POINT_CONTROL_THRUST_DAMAGE_MULTIPLIER = 1.05
+
+local pointControlEnabled = false
+local pointControlPlayerId = nil
+
+local function setPointControlState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    pointControlEnabled = data.pointControlEnabled == true
+    pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
+end
+
+local function getEquippedItem(actor, slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or actor == nil or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, actor, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(item.recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[item.recordId]
+    end
+
+    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
+        return item.type.records[item.recordId]
+    end
+
+    return nil
+end
+
+local function isSpearRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local expected = tonumber(Weapon.TYPE.SpearTwoWide)
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function actorHasEquippedSpear(actor)
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    local weapon = getEquippedItem(actor, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return false
+    end
+
+    if type(Weapon.objectIsInstance) == "function" then
+        local okInstance, isInstance = pcall(Weapon.objectIsInstance, weapon)
+        if not okInstance or not isInstance then
+            return false
+        end
+    end
+
+    return isSpearRecord(getWeaponRecord(weapon))
+end
+
+local function isThrustAttack(attack)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    local expected = attackTypes ~= nil and tonumber(attackTypes.Thrust) or nil
+    local actual = tonumber(attack.type or attack.attackType)
+    if expected ~= nil and actual ~= nil then
+        return actual == expected
+    end
+
+    local text = string.lower(tostring(attack.type or attack.attackType or attack.animation or attack.groupName or ""))
+    return string.find(text, "thrust", 1, true) ~= nil
+end
+
+local function isMeleeAttack(attack)
+    local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
+    local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
+    local actual = tonumber(attack.sourceType)
+    return expected == nil or actual == nil or actual == expected
+end
+
+local function isSuccessfulPointControlThrust(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not pointControlEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not isThrustAttack(attack) then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return actorHasEquippedSpear(attack.attacker)
+end
+
+local function onHit(attack)
+    if isSuccessfulPointControlThrust(attack) then
+        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_THRUST_DAMAGE_MULTIPLIER
+    end
+end
+
+spear.eventHandlers = {
+    SkillPerkSystem_SpearPointControlRefresh = setPointControlState,
+}
+
+spear.engineHandlers = {
+    onInit = function(initData)
+        setPointControlState(initData)
+    end,
+    onLoad = function(savedData, initData)
+        if type(savedData) == "table" then
+            setPointControlState(savedData)
+        else
+            setPointControlState(initData)
+        end
+    end,
+    onSave = function()
+        return {
+            playerId = pointControlPlayerId,
+            pointControlEnabled = pointControlEnabled,
+        }
+    end,
+}
+
+spear.hasActiveState = function()
+    return pointControlEnabled
+end
+
+spear.onHit = onHit
+
+end
+
+-- 5. blunt weapon target state/effects
 do
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
@@ -1900,6 +2074,7 @@ handToHand.onHit = onHit
 end
 
 copyEventHandlers(axe.eventHandlers)
+copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
 copyEventHandlers(duelistTempo.eventHandlers)
 copyEventHandlers(aegisRite.eventHandlers)
@@ -1908,6 +2083,7 @@ copyEventHandlers(handToHand.eventHandlers)
 local function combinedOnHit(attack)
     handToHand.onHit(attack)
     axe.onHit(attack)
+    spear.onHit(attack)
     blunt.onHit(attack)
     duelistTempo.onHit(attack)
     aegisRite.onHit(attack)
@@ -1932,6 +2108,7 @@ end
 
 local function hasAnyActiveTargetState()
     return subsystemHasActiveState(axe)
+        or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
         or subsystemHasActiveState(duelistTempo)
         or subsystemHasActiveState(aegisRite)
@@ -1958,6 +2135,7 @@ return {
     engineHandlers = {
         onInit = function(initData)
             callEngineHandler(axe, "onInit", initData)
+            callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
             callEngineHandler(duelistTempo, "onInit", initData)
             callEngineHandler(aegisRite, "onInit", initData)
@@ -1965,12 +2143,14 @@ return {
         end,
         onLoad = function(savedData, initData)
             local axeData = type(savedData) == "table" and type(savedData.axe) == "table" and savedData.axe or savedData
+            local spearData = type(savedData) == "table" and type(savedData.spear) == "table" and savedData.spear or savedData
             local bluntData = type(savedData) == "table" and type(savedData.blunt) == "table" and savedData.blunt or savedData
             local duelistTempoData = type(savedData) == "table" and type(savedData.duelistTempo) == "table" and savedData.duelistTempo or savedData
             local aegisRiteData = type(savedData) == "table" and type(savedData.aegisRite) == "table" and savedData.aegisRite or savedData
             local handToHandData = type(savedData) == "table" and type(savedData.handToHand) == "table" and savedData.handToHand or savedData
 
             callEngineHandler(axe, "onLoad", axeData, initData)
+            callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
             callEngineHandler(duelistTempo, "onLoad", duelistTempoData, initData)
             callEngineHandler(aegisRite, "onLoad", aegisRiteData, initData)
@@ -1979,6 +2159,7 @@ return {
         onSave = function()
             return {
                 axe = type(axe.engineHandlers.onSave) == "function" and axe.engineHandlers.onSave() or nil,
+                spear = type(spear.engineHandlers.onSave) == "function" and spear.engineHandlers.onSave() or nil,
                 blunt = type(blunt.engineHandlers.onSave) == "function" and blunt.engineHandlers.onSave() or nil,
                 duelistTempo = type(duelistTempo.engineHandlers.onSave) == "function" and duelistTempo.engineHandlers.onSave() or nil,
                 aegisRite = type(aegisRite.engineHandlers.onSave) == "function" and aegisRite.engineHandlers.onSave() or nil,
@@ -1987,6 +2168,7 @@ return {
         end,
         onUpdate = function(dt)
             callActiveUpdate(axe, dt)
+            callActiveUpdate(spear, dt)
             callActiveUpdate(blunt, dt)
             callActiveUpdate(duelistTempo, dt)
             callActiveUpdate(aegisRite, dt)

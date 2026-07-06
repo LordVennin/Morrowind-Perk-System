@@ -4728,6 +4728,7 @@ end
 -- spear runtime logic
 ----------------------------------------------------------------------
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
@@ -4738,7 +4739,7 @@ local Weapon = types.Weapon
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local POINT_CONTROL_PERK_ID = "spear_point_control"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
-local POINT_CONTROL_THRUST_DAMAGE_MULTIPLIER = 1.05
+local SPEAR_STATE_EVENT = "SkillPerkSystem_SpearPointControlState"
 local SPEAR_STATE_REFRESH_INTERVAL = 0.5
 local SPEAR_EQUIPMENT_SCAN_WINDOW = 1.5
 
@@ -4746,6 +4747,7 @@ local appliedPointControlEnduranceBonus = 0
 local spearStateDirty = true
 local spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
 local spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
+local lastSpearStateKey = nil
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4875,6 +4877,20 @@ local function refreshPointControlEnduranceBonus()
     applyPointControlEnduranceBonus(desiredBonus)
 end
 
+local function publishSpearPointControlState(force)
+    local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
+    local stateKey = tostring(pointControlEnabled)
+    if not force and stateKey == lastSpearStateKey then
+        return
+    end
+
+    lastSpearStateKey = stateKey
+    core.sendGlobalEvent(SPEAR_STATE_EVENT, {
+        playerId = pself.id,
+        pointControlEnabled = pointControlEnabled,
+    })
+end
+
 local function markSpearStateDirty(scanWindow)
     spearStateDirty = true
     spearEquipmentScanRemaining = math.max(spearEquipmentScanRemaining, tonumber(scanWindow) or SPEAR_EQUIPMENT_SCAN_WINDOW)
@@ -4907,54 +4923,6 @@ local function shouldUpdateSpear(dt)
     return spearRefreshTimer >= SPEAR_STATE_REFRESH_INTERVAL
 end
 
-local function isThrustAttack(attack)
-    if type(attack) ~= "table" then
-        return false
-    end
-
-    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
-    local expected = attackTypes ~= nil and tonumber(attackTypes.Thrust) or nil
-    local actual = tonumber(attack.type or attack.attackType)
-    if expected ~= nil and actual ~= nil then
-        return actual == expected
-    end
-
-    local text = string.lower(tostring(attack.type or attack.attackType or attack.animation or attack.groupName or ""))
-    return string.find(text, "thrust", 1, true) ~= nil
-end
-
-local function isMeleeAttack(attack)
-    local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
-    local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
-    local actual = tonumber(attack.sourceType)
-    return expected == nil or actual == nil or actual == expected
-end
-
-local function applyPointControlThrustDamage(attack)
-    if type(attack) ~= "table" or attack.successful ~= true then
-        return
-    end
-    if attack.attacker ~= pself then
-        return
-    end
-    if not hasEnabledPerk(POINT_CONTROL_PERK_ID) or getEquippedSpearRecord() == nil then
-        return
-    end
-    if not isMeleeAttack(attack) or not isThrustAttack(attack) then
-        return
-    end
-    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
-        return
-    end
-
-    attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_THRUST_DAMAGE_MULTIPLIER
-end
-
-local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
-if type(addOnHitHandler) == "function" then
-    addOnHitHandler(applyPointControlThrustDamage)
-end
-
 local function handleSpearAnimation()
     markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
 end
@@ -4966,6 +4934,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearStateDirty = false
             spearRefreshTimer = 0
             refreshPointControlEnduranceBonus()
+            publishSpearPointControlState(false)
         end,
         shouldUpdate = shouldUpdateSpear,
         onLoad = function()
@@ -4973,7 +4942,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearStateDirty = true
             spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
             spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
+            lastSpearStateKey = nil
             refreshPointControlEnduranceBonus()
+            publishSpearPointControlState(true)
         end,
     },
     eventHandlers = {

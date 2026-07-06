@@ -2506,6 +2506,7 @@ do
 local spearPointControlState = {
     playerId = nil,
     pointControlEnabled = false,
+    drivingStepEnabled = false,
     hookAndTurnEnabled = false,
 }
 
@@ -2516,7 +2517,7 @@ local function sendState(actor)
 end
 
 local function spearTargetStateActive()
-    return spearPointControlState.pointControlEnabled or spearPointControlState.hookAndTurnEnabled
+    return spearPointControlState.pointControlEnabled or spearPointControlState.drivingStepEnabled or spearPointControlState.hookAndTurnEnabled
 end
 
 local function refreshWatchers()
@@ -2531,6 +2532,7 @@ local function onSpearPointControlState(data)
     spearPointControlState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         pointControlEnabled = data.pointControlEnabled == true,
+        drivingStepEnabled = data.drivingStepEnabled == true,
         hookAndTurnEnabled = data.hookAndTurnEnabled == true,
     }
     refreshWatchers()

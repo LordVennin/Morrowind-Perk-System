@@ -36,7 +36,7 @@ return {
             x = 120,
             y = 190,
             title = "Driving Step",
-            description = "Placeholder: Convert forward movement into stronger spear thrusts.",
+            description = "Thrust attacks against opponents above 75% Health deal 10% more Health damage and 10 extra Fatigue damage.",
         },
         {
             id = "spear_hook_and_turn",

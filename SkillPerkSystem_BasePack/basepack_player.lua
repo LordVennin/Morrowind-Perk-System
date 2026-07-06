@@ -4789,6 +4789,7 @@ local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local POINT_CONTROL_PERK_ID = "spear_point_control"
+local DRIVING_STEP_PERK_ID = "spear_driving_step"
 local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
 local HOOK_AND_TURN_WINDOW = 5.0
@@ -5057,8 +5058,9 @@ end
 
 local function publishSpearPointControlState(force)
     local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
+    local drivingStepEnabled = hasEnabledPerk(DRIVING_STEP_PERK_ID)
     local hookAndTurnEnabled = hasEnabledPerk(HOOK_AND_TURN_PERK_ID)
-    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(hookAndTurnEnabled)
+    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled)
     if not force and stateKey == lastSpearStateKey then
         return
     end
@@ -5067,6 +5069,7 @@ local function publishSpearPointControlState(force)
     core.sendGlobalEvent(SPEAR_STATE_EVENT, {
         playerId = pself.id,
         pointControlEnabled = pointControlEnabled,
+        drivingStepEnabled = drivingStepEnabled,
         hookAndTurnEnabled = hookAndTurnEnabled,
     })
 end
@@ -5082,7 +5085,7 @@ local function handlePerkStateChanged(data)
         return
     end
 
-    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID then
+    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID then
         markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
     end
 end

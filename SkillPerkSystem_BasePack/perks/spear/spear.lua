@@ -24,7 +24,7 @@ return {
             x = -210,
             y = 115,
             title = "Long Guard",
-            description = "Placeholder: Keep enemies at bay with disciplined spear spacing.",
+            description = "While a spear is equipped and no shield is equipped, gain Armor equal to your Spear skill / 10 (rounded down).",
         },
         {
             id = "spear_driving_step",

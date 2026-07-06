@@ -2249,6 +2249,7 @@ local GUARDIANS_HABIT_PERK_ID = "block_guardians_habit"
 local STEADY_WALL_PERK_ID = "block_steady_wall"
 local BULWARK_OF_LIGHT_PERK_ID = "block_bulwark_of_light"
 local AEGIS_RITE_PERK_ID = "block_aegis_rite"
+local SPEAR_LONG_GUARD_PERK_ID = "spear_long_guard"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2414,6 +2415,21 @@ local function isOneHandedWeapon(item)
     return true
 end
 
+local function isSpearWeapon(item)
+    if item == nil or Weapon == nil or type(Weapon.objectIsInstance) ~= "function" or not Weapon.objectIsInstance(item) then
+        return false
+    end
+
+    local record = getWeaponRecord(item)
+    if record == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local expected = tonumber(Weapon.TYPE.SpearTwoWide)
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
 local function isTool(item)
     if item == nil then
         return false
@@ -2480,6 +2496,10 @@ end
 
 local function aegisRiteEnabled()
     return perkEffectEnabled(AEGIS_RITE_PERK_ID)
+end
+
+local function spearLongGuardEnabled()
+    return perkEffectEnabled(SPEAR_LONG_GUARD_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -2665,6 +2685,21 @@ local function getBlockSkillBonus()
     return math.floor(blockSkill / 7)
 end
 
+local function getSpearSkillBonus()
+    local spearAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.spear
+    if type(spearAccessor) ~= "function" then
+        return 0
+    end
+
+    local spearStat = spearAccessor(pself)
+    local spearSkill = spearStat ~= nil and tonumber(spearStat.base) or 0
+    if spearSkill <= 0 then
+        return 0
+    end
+
+    return math.floor(spearSkill / 10)
+end
+
 local function getGuardiansHabitFatigueRestore()
     local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
     if type(blockAccessor) ~= "function" then
@@ -2737,6 +2772,30 @@ local function shouldApplyShieldFundamentalsBonus()
     return hasValidShieldSetup()
 end
 
+local function shouldApplySpearLongGuardBonus()
+    if not spearLongGuardEnabled() then
+        return false
+    end
+
+    if getEquippedShield(pself) ~= nil then
+        return false
+    end
+
+    return isSpearWeapon(getEquippedRightHand(pself))
+end
+
+local function getTotalPassiveArmorBonus()
+    local bonus = 0
+    if shouldApplyShieldFundamentalsBonus() then
+        bonus = bonus + getBlockSkillBonus()
+    end
+    if shouldApplySpearLongGuardBonus() then
+        bonus = bonus + getSpearSkillBonus()
+    end
+    bonus = bonus + getMomentumArmorBonus()
+    return bonus
+end
+
 local function adjustDamageForArmorWithShieldBonuses(damage, actor)
     local fn = getBaseCombatFunction("adjustDamageForArmor")
     if fn == nil then
@@ -2750,11 +2809,7 @@ local function adjustDamageForArmorWithShieldBonuses(damage, actor)
         return adjusted
     end
 
-    local bonusArmor = 0
-    if shouldApplyShieldFundamentalsBonus() then
-        bonusArmor = bonusArmor + getBlockSkillBonus()
-    end
-    bonusArmor = bonusArmor + getMomentumArmorBonus()
+    local bonusArmor = getTotalPassiveArmorBonus()
 
     if bonusArmor <= 0 then
         return adjusted
@@ -2796,11 +2851,7 @@ local function getArmorRatingWithShieldBonuses(actor)
         return baseArmor
     end
 
-    local bonus = 0
-    if shouldApplyShieldFundamentalsBonus() then
-        bonus = bonus + getBlockSkillBonus()
-    end
-    bonus = bonus + getMomentumArmorBonus()
+    local bonus = getTotalPassiveArmorBonus()
 
     if bonus <= 0 then
         return baseArmor

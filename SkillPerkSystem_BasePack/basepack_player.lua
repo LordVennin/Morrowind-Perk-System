@@ -4791,6 +4791,9 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local POINT_CONTROL_PERK_ID = "spear_point_control"
 local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
+local HOOK_AND_TURN_WINDOW = 5.0
+local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
+local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
 local SPEAR_STATE_EVENT = "SkillPerkSystem_SpearPointControlState"
 local SPEAR_STATE_REFRESH_INTERVAL = 0.5
 local SPEAR_EQUIPMENT_SCAN_WINDOW = 1.5
@@ -4800,6 +4803,7 @@ local spearStateDirty = true
 local spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
 local spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
 local lastSpearStateKey = nil
+local hookAndTurnPrimedUntil = 0
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4892,6 +4896,128 @@ local function getEquippedSpearRecord()
     return record
 end
 
+local function isMeleeAttack(attack)
+    local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
+    local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
+    local actual = type(attack) == "table" and tonumber(attack.sourceType) or nil
+    return expected == nil or actual == nil or actual == expected
+end
+
+
+local function resolveAttackShapeFromText(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+
+    local normalized = string.lower(value)
+    if string.find(normalized, "thrust", 1, true) ~= nil then
+        return "thrust"
+    end
+    if string.find(normalized, "slash", 1, true) ~= nil then
+        return "slash"
+    end
+    if string.find(normalized, "chop", 1, true) ~= nil then
+        return "chop"
+    end
+
+    return nil
+end
+
+local function resolveAttackShapeFromType(value)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    if attackTypes ~= nil then
+        if value == attackTypes.Chop then
+            return "chop"
+        end
+        if value == attackTypes.Slash then
+            return "slash"
+        end
+        if value == attackTypes.Thrust then
+            return "thrust"
+        end
+    end
+
+    return resolveAttackShapeFromText(value)
+end
+
+local function resolveSpearAttackShape(attack)
+    if type(attack) ~= "table" then
+        return nil
+    end
+
+    local candidates = {
+        attack.attackType,
+        attack.type,
+        attack.attack,
+        attack.attackKind,
+        attack.attackSource,
+        attack.source,
+        attack.animation,
+        attack.animationName,
+        attack.groupName,
+        attack.startKey,
+        attack.stopKey,
+    }
+
+    for _, candidate in ipairs(candidates) do
+        local shape = resolveAttackShapeFromType(candidate)
+        if shape ~= nil then
+            return shape
+        end
+    end
+
+    return nil
+end
+
+local function isSuccessfulPlayerSpearHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.attacker ~= pself then
+        return false
+    end
+    if not hasEnabledPerk(HOOK_AND_TURN_PERK_ID) then
+        return false
+    end
+    if not isMeleeAttack(attack) then
+        return false
+    end
+    if getEquippedSpearRecord() == nil then
+        return false
+    end
+
+    return type(attack.damage) == "table"
+end
+
+local function updateHookAndTurn(attack)
+    if not isSuccessfulPlayerSpearHit(attack) then
+        return
+    end
+
+    local shape = resolveSpearAttackShape(attack)
+    if shape == nil then
+        return
+    end
+
+    local now = core.getSimulationTime()
+    if shape == "chop" or shape == "slash" then
+        hookAndTurnPrimedUntil = now + HOOK_AND_TURN_WINDOW
+        return
+    end
+
+    if shape ~= "thrust" then
+        return
+    end
+
+    if hookAndTurnPrimedUntil <= 0 or hookAndTurnPrimedUntil < now then
+        hookAndTurnPrimedUntil = 0
+        return
+    end
+
+    hookAndTurnPrimedUntil = 0
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * HOOK_AND_TURN_HEALTH_MULTIPLIER
+    attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + HOOK_AND_TURN_FATIGUE_DAMAGE
+end
 local function resolveEnduranceStat()
     local accessor = Actor ~= nil
         and Actor.stats ~= nil
@@ -4985,6 +5111,11 @@ local function handleSpearAnimation()
 end
 registerBasepackAnimationHandler(handleSpearAnimation)
 
+local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
+if type(addOnHitHandler) == "function" then
+    addOnHitHandler(updateHookAndTurn)
+end
+
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function()
@@ -5000,6 +5131,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
             spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
             lastSpearStateKey = nil
+            hookAndTurnPrimedUntil = 0
             refreshPointControlEnduranceBonus()
             publishSpearPointControlState(true)
         end,

@@ -1097,78 +1097,33 @@ end
 
 local function isAttackType(attack, typeName)
     local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
-    local expected = attackTypes ~= nil and attackTypes[typeName] or nil
-    if expected == nil or type(attack) ~= "table" then
-        return false
-    end
-
-    local actual = attack.type
-    return actual == expected or tonumber(actual) == tonumber(expected)
+    local expected = attackTypes ~= nil and tonumber(attackTypes[typeName]) or nil
+    local actual = type(attack) == "table" and tonumber(attack.type) or nil
+    return expected ~= nil and actual ~= nil and actual == expected
 end
 
-local function resolveAttackShapeFromText(value)
-    if type(value) ~= "string" then
-        return nil
-    end
-
-    local normalized = string.lower(value)
-    if string.find(normalized, "thrust", 1, true) ~= nil then
-        return "thrust"
-    end
-    if string.find(normalized, "slash", 1, true) ~= nil then
-        return "slash"
-    end
-    if string.find(normalized, "chop", 1, true) ~= nil then
-        return "chop"
-    end
-
-    return nil
-end
-
-local function resolveAttackShapeFromType(value)
-    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
-    if attackTypes ~= nil then
-        if value == attackTypes.Chop then
-            return "chop"
-        end
-        if value == attackTypes.Slash then
-            return "slash"
-        end
-        if value == attackTypes.Thrust then
-            return "thrust"
-        end
-    end
-
-    return resolveAttackShapeFromText(value)
-end
-
-local function resolveSpearAttackShape(attack)
-    if type(attack) ~= "table" then
-        return nil
-    end
-
-    local candidates = {
-        attack.attackType,
-        attack.type,
-        attack.attack,
-        attack.attackKind,
-        attack.attackSource,
-        attack.source,
-        attack.animation,
-        attack.animationName,
-        attack.groupName,
-        attack.startKey,
-        attack.stopKey,
-    }
-
-    for _, candidate in ipairs(candidates) do
-        local shape = resolveAttackShapeFromType(candidate)
-        if shape ~= nil then
-            return shape
-        end
-    end
-
-    return nil
+local function logHookAndTurn(attack, message, now, healthBefore, fatigueBefore, healthAfter, fatigueAfter)
+    now = now or core.getSimulationTime()
+    print(
+        "[SkillPerkSystem_BasePack][Spear][HookAndTurn] "
+        .. "message=" .. tostring(message)
+        .. " enabled=" .. tostring(hookAndTurnEnabled)
+        .. " attacker=" .. tostring(type(attack) == "table" and attack.attacker and attack.attacker.id)
+        .. " playerId=" .. tostring(pointControlPlayerId)
+        .. " sourceType=" .. tostring(type(attack) == "table" and attack.sourceType)
+        .. " type=" .. tostring(type(attack) == "table" and attack.type)
+        .. " chop=" .. tostring(isAttackType(attack, "Chop"))
+        .. " slash=" .. tostring(isAttackType(attack, "Slash"))
+        .. " thrust=" .. tostring(isAttackType(attack, "Thrust"))
+        .. " primedUntil=" .. tostring(hookAndTurnPrimedUntil)
+        .. " now=" .. tostring(now)
+        .. " health=" .. tostring(type(attack) == "table" and attack.damage and attack.damage.health)
+        .. " fatigue=" .. tostring(type(attack) == "table" and attack.damage and attack.damage.fatigue)
+        .. " healthBefore=" .. tostring(healthBefore)
+        .. " fatigueBefore=" .. tostring(fatigueBefore)
+        .. " healthAfter=" .. tostring(healthAfter)
+        .. " fatigueAfter=" .. tostring(fatigueAfter)
+    )
 end
 
 local function isSuccessfulPointControlHit(attack)
@@ -1210,21 +1165,34 @@ local function isSuccessfulHookAndTurnHit(attack)
     if not isMeleeAttack(attack) then
         return false
     end
-    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+    if type(attack.damage) ~= "table" then
         return false
     end
 
     return isSpearAttack(attack)
 end
 
+local function applyPointControlDamage(attack)
+    if isSuccessfulPointControlHit(attack) then
+        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
+    end
+
+    applyHookAndTurn(attack)
+end
+
 local function applyHookAndTurn(attack)
+    local now = core.getSimulationTime()
+    local healthBefore = type(attack) == "table" and attack.damage and attack.damage.health or nil
+    local fatigueBefore = type(attack) == "table" and attack.damage and attack.damage.fatigue or nil
+    logHookAndTurn(attack, "evaluating", now, healthBefore, fatigueBefore)
+
     if not isSuccessfulHookAndTurnHit(attack) then
         return
     end
 
-    local now = core.getSimulationTime()
     if isAttackType(attack, "Chop") or isAttackType(attack, "Slash") then
         hookAndTurnPrimedUntil = now + HOOK_AND_TURN_WINDOW
+        logHookAndTurn(attack, "primed", now, healthBefore, fatigueBefore)
         return
     end
 
@@ -1234,72 +1202,26 @@ local function applyHookAndTurn(attack)
 
     if hookAndTurnPrimedUntil <= 0 or hookAndTurnPrimedUntil < now then
         hookAndTurnPrimedUntil = 0
+        logHookAndTurn(attack, "thrust_without_active_prime", now, healthBefore, fatigueBefore)
         return
     end
 
     hookAndTurnPrimedUntil = 0
     attack.damage.health = (tonumber(attack.damage.health) or 0) * HOOK_AND_TURN_HEALTH_MULTIPLIER
     attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + HOOK_AND_TURN_FATIGUE_DAMAGE
-end
-
-local function isSuccessfulHookAndTurnHit(attack)
-    if type(attack) ~= "table" or attack.successful ~= true then
-        return false
-    end
-    if not hookAndTurnEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
-        return false
-    end
-    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
-        return false
-    end
-    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
-        return false
-    end
-    if not isMeleeAttack(attack) then
-        return false
-    end
-    if type(attack.damage) ~= "table" then
-        return false
-    end
-
-    return actorHasEquippedSpear(attack.attacker)
-end
-
-local function applyHookAndTurn(attack)
-    if not isSuccessfulHookAndTurnHit(attack) then
-        return
-    end
-
-    local shape = resolveSpearAttackShape(attack)
-    if shape == nil then
-        return
-    end
-
-    local now = core.getSimulationTime()
-    if shape == "chop" or shape == "slash" then
-        hookAndTurnPrimedUntil = now + HOOK_AND_TURN_WINDOW
-        return
-    end
-
-    if shape ~= "thrust" then
-        return
-    end
-
-    if hookAndTurnPrimedUntil <= 0 or hookAndTurnPrimedUntil < now then
-        hookAndTurnPrimedUntil = 0
-        return
-    end
-
-    hookAndTurnPrimedUntil = 0
-    attack.damage.health = (tonumber(attack.damage.health) or 0) * HOOK_AND_TURN_HEALTH_MULTIPLIER
-    attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + HOOK_AND_TURN_FATIGUE_DAMAGE
+    logHookAndTurn(
+        attack,
+        "consumed_prime",
+        now,
+        healthBefore,
+        fatigueBefore,
+        attack.damage.health,
+        attack.damage.fatigue
+    )
 end
 
 local function onHit(attack)
-    if isSuccessfulPointControlHit(attack) then
-        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
-    end
-
+    applyPointControlDamage(attack)
     applyHookAndTurn(attack)
 end
 

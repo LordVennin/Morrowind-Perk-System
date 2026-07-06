@@ -1176,6 +1176,8 @@ local function applyPointControlDamage(attack)
     if isSuccessfulPointControlHit(attack) then
         attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
     end
+
+    applyHookAndTurn(attack)
 end
 
 local function applyHookAndTurn(attack)

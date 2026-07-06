@@ -1043,6 +1043,19 @@ local function isSpearRecord(record)
     return expected ~= nil and actual ~= nil and actual == expected
 end
 
+local function getAttackWeaponRecord(attack)
+    if type(attack) == "table" and attack.weapon ~= nil then
+        return getWeaponRecord(attack.weapon)
+    end
+
+    return nil
+end
+
+local function attackHasSpearWeapon(attack)
+    local record = getAttackWeaponRecord(attack)
+    return record ~= nil and isSpearRecord(record)
+end
+
 local function actorHasEquippedSpear(actor)
     if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
         return false
@@ -1063,11 +1076,34 @@ local function actorHasEquippedSpear(actor)
     return isSpearRecord(getWeaponRecord(weapon))
 end
 
+local function isSpearAttack(attack)
+    if attackHasSpearWeapon(attack) then
+        return true
+    end
+
+    return type(attack) == "table" and actorHasEquippedSpear(attack.attacker)
+end
+
 local function isMeleeAttack(attack)
     local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
-    local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
-    local actual = tonumber(attack.sourceType)
-    return expected == nil or actual == nil or actual == expected
+    local expected = sourceTypes ~= nil and sourceTypes.Melee or nil
+    if expected == nil then
+        return true
+    end
+
+    local actual = type(attack) == "table" and attack.sourceType or nil
+    return actual == nil or actual == expected or tonumber(actual) == tonumber(expected)
+end
+
+local function isAttackType(attack, typeName)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    local expected = attackTypes ~= nil and attackTypes[typeName] or nil
+    if expected == nil or type(attack) ~= "table" then
+        return false
+    end
+
+    local actual = attack.type
+    return actual == expected or tonumber(actual) == tonumber(expected)
 end
 
 local function resolveAttackShapeFromText(value)
@@ -1155,7 +1191,55 @@ local function isSuccessfulPointControlHit(attack)
         return false
     end
 
-    return actorHasEquippedSpear(attack.attacker)
+    return isSpearAttack(attack)
+end
+
+local function isSuccessfulHookAndTurnHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not hookAndTurnEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return isSpearAttack(attack)
+end
+
+local function applyHookAndTurn(attack)
+    if not isSuccessfulHookAndTurnHit(attack) then
+        return
+    end
+
+    local now = core.getSimulationTime()
+    if isAttackType(attack, "Chop") or isAttackType(attack, "Slash") then
+        hookAndTurnPrimedUntil = now + HOOK_AND_TURN_WINDOW
+        return
+    end
+
+    if not isAttackType(attack, "Thrust") then
+        return
+    end
+
+    if hookAndTurnPrimedUntil <= 0 or hookAndTurnPrimedUntil < now then
+        hookAndTurnPrimedUntil = 0
+        return
+    end
+
+    hookAndTurnPrimedUntil = 0
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * HOOK_AND_TURN_HEALTH_MULTIPLIER
+    attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + HOOK_AND_TURN_FATIGUE_DAMAGE
 end
 
 local function isSuccessfulHookAndTurnHit(attack)

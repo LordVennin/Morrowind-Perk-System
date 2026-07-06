@@ -5057,7 +5057,8 @@ end
 
 local function publishSpearPointControlState(force)
     local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
-    local stateKey = tostring(pointControlEnabled)
+    local hookAndTurnEnabled = hasEnabledPerk(HOOK_AND_TURN_PERK_ID)
+    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(hookAndTurnEnabled)
     if not force and stateKey == lastSpearStateKey then
         return
     end
@@ -5066,6 +5067,7 @@ local function publishSpearPointControlState(force)
     core.sendGlobalEvent(SPEAR_STATE_EVENT, {
         playerId = pself.id,
         pointControlEnabled = pointControlEnabled,
+        hookAndTurnEnabled = hookAndTurnEnabled,
     })
 end
 
@@ -5080,10 +5082,8 @@ local function handlePerkStateChanged(data)
         return
     end
 
-    if data.perkID == POINT_CONTROL_PERK_ID then
+    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID then
         markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
-    elseif data.perkID == HOOK_AND_TURN_PERK_ID and not hasEnabledPerk(HOOK_AND_TURN_PERK_ID) then
-        hookAndTurnPrimedUntil = 0
     end
 end
 

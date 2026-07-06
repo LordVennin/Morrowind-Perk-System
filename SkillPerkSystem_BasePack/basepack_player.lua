@@ -4789,6 +4789,7 @@ local Weapon = types.Weapon
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local POINT_CONTROL_PERK_ID = "spear_point_control"
+local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
 local SPEAR_STATE_EVENT = "SkillPerkSystem_SpearPointControlState"
 local SPEAR_STATE_REFRESH_INTERVAL = 0.5
@@ -4930,7 +4931,8 @@ end
 
 local function publishSpearPointControlState(force)
     local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
-    local stateKey = tostring(pointControlEnabled)
+    local hookAndTurnEnabled = hasEnabledPerk(HOOK_AND_TURN_PERK_ID)
+    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(hookAndTurnEnabled)
     if not force and stateKey == lastSpearStateKey then
         return
     end
@@ -4939,6 +4941,7 @@ local function publishSpearPointControlState(force)
     core.sendGlobalEvent(SPEAR_STATE_EVENT, {
         playerId = pself.id,
         pointControlEnabled = pointControlEnabled,
+        hookAndTurnEnabled = hookAndTurnEnabled,
     })
 end
 
@@ -4949,10 +4952,13 @@ local function markSpearStateDirty(scanWindow)
 end
 
 local function handlePerkStateChanged(data)
-    if type(data) ~= "table" or data.perkID ~= POINT_CONTROL_PERK_ID then
+    if type(data) ~= "table" then
         return
     end
-    markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
+
+    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID then
+        markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
+    end
 end
 
 local function shouldUpdateSpear(dt)

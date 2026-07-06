@@ -968,9 +968,14 @@ local Actor = types.Actor
 local Weapon = types.Weapon
 
 local POINT_CONTROL_DAMAGE_MULTIPLIER = 1.05
+local HOOK_AND_TURN_WINDOW = 5.0
+local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
+local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
 
 local pointControlEnabled = false
+local hookAndTurnEnabled = false
 local pointControlPlayerId = nil
+local hookAndTurnPrimedUntil = 0
 
 local function setPointControlState(data)
     if type(data) ~= "table" then
@@ -978,7 +983,12 @@ local function setPointControlState(data)
     end
 
     pointControlEnabled = data.pointControlEnabled == true
+    hookAndTurnEnabled = data.hookAndTurnEnabled == true
     pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
+
+    if not hookAndTurnEnabled then
+        hookAndTurnPrimedUntil = 0
+    end
 end
 
 local function getEquippedItem(actor, slot)
@@ -1060,6 +1070,71 @@ local function isMeleeAttack(attack)
     return expected == nil or actual == nil or actual == expected
 end
 
+local function resolveAttackShapeFromText(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+
+    local normalized = string.lower(value)
+    if string.find(normalized, "thrust", 1, true) ~= nil then
+        return "thrust"
+    end
+    if string.find(normalized, "slash", 1, true) ~= nil then
+        return "slash"
+    end
+    if string.find(normalized, "chop", 1, true) ~= nil then
+        return "chop"
+    end
+
+    return nil
+end
+
+local function resolveAttackShapeFromType(value)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    if attackTypes ~= nil then
+        if value == attackTypes.Chop then
+            return "chop"
+        end
+        if value == attackTypes.Slash then
+            return "slash"
+        end
+        if value == attackTypes.Thrust then
+            return "thrust"
+        end
+    end
+
+    return resolveAttackShapeFromText(value)
+end
+
+local function resolveSpearAttackShape(attack)
+    if type(attack) ~= "table" then
+        return nil
+    end
+
+    local candidates = {
+        attack.attackType,
+        attack.type,
+        attack.attack,
+        attack.attackKind,
+        attack.attackSource,
+        attack.source,
+        attack.animation,
+        attack.animationName,
+        attack.groupName,
+        attack.startKey,
+        attack.stopKey,
+    }
+
+    for _, candidate in ipairs(candidates) do
+        local shape = resolveAttackShapeFromType(candidate)
+        if shape ~= nil then
+            return shape
+        end
+    end
+
+    return nil
+end
+
 local function isSuccessfulPointControlHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
@@ -1083,10 +1158,65 @@ local function isSuccessfulPointControlHit(attack)
     return actorHasEquippedSpear(attack.attacker)
 end
 
+local function isSuccessfulHookAndTurnHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not hookAndTurnEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) then
+        return false
+    end
+    if type(attack.damage) ~= "table" then
+        return false
+    end
+
+    return actorHasEquippedSpear(attack.attacker)
+end
+
+local function applyHookAndTurn(attack)
+    if not isSuccessfulHookAndTurnHit(attack) then
+        return
+    end
+
+    local shape = resolveSpearAttackShape(attack)
+    if shape == nil then
+        return
+    end
+
+    local now = core.getSimulationTime()
+    if shape == "chop" or shape == "slash" then
+        hookAndTurnPrimedUntil = now + HOOK_AND_TURN_WINDOW
+        return
+    end
+
+    if shape ~= "thrust" then
+        return
+    end
+
+    if hookAndTurnPrimedUntil <= 0 or hookAndTurnPrimedUntil < now then
+        hookAndTurnPrimedUntil = 0
+        return
+    end
+
+    hookAndTurnPrimedUntil = 0
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * HOOK_AND_TURN_HEALTH_MULTIPLIER
+    attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + HOOK_AND_TURN_FATIGUE_DAMAGE
+end
+
 local function onHit(attack)
     if isSuccessfulPointControlHit(attack) then
         attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
     end
+
+    applyHookAndTurn(attack)
 end
 
 spear.eventHandlers = {
@@ -1100,6 +1230,7 @@ spear.engineHandlers = {
     onLoad = function(savedData, initData)
         if type(savedData) == "table" then
             setPointControlState(savedData)
+            hookAndTurnPrimedUntil = math.max(0, tonumber(savedData.hookAndTurnPrimedUntil) or 0)
         else
             setPointControlState(initData)
         end
@@ -1108,12 +1239,14 @@ spear.engineHandlers = {
         return {
             playerId = pointControlPlayerId,
             pointControlEnabled = pointControlEnabled,
+            hookAndTurnEnabled = hookAndTurnEnabled,
+            hookAndTurnPrimedUntil = hookAndTurnPrimedUntil,
         }
     end,
 }
 
 spear.hasActiveState = function()
-    return pointControlEnabled
+    return pointControlEnabled or hookAndTurnEnabled or hookAndTurnPrimedUntil > 0
 end
 
 spear.onHit = onHit

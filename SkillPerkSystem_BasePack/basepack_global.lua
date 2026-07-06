@@ -3917,6 +3917,7 @@ local eventHandlers = {
 
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
+    SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,
     SkillPerkSystem_HandToHandState = function(data) dispatchEvent("handtohand", "SkillPerkSystem_HandToHandState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
@@ -3939,6 +3940,7 @@ local engineOrder = {
     "lucky_find",
     "unseen_hand",
     "axe",
+    "spear",
     "bluntweapon",
     "duelists_tempo",
     "block_reactive",

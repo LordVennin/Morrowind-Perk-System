@@ -1173,11 +1173,36 @@ local function isSuccessfulHookAndTurnHit(attack)
 end
 
 local function applyPointControlDamage(attack)
-    if isSuccessfulPointControlHit(attack) then
-        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
+    local ok, successful = pcall(isSuccessfulPointControlHit, attack)
+    if not ok then
+        print(
+            "[SkillPerkSystem_BasePack][Spear][PointControl] "
+            .. "error=" .. tostring(successful)
+            .. " attacker=" .. tostring(type(attack) == "table" and attack.attacker and attack.attacker.id)
+            .. " playerId=" .. tostring(pointControlPlayerId)
+            .. " sourceType=" .. tostring(type(attack) == "table" and attack.sourceType)
+            .. " type=" .. tostring(type(attack) == "table" and attack.type)
+            .. " damageType=" .. tostring(type(attack) == "table" and type(attack.damage))
+        )
+        return
     end
 
-    applyHookAndTurn(attack)
+    if not successful or type(attack) ~= "table" or type(attack.damage) ~= "table" then
+        return
+    end
+
+    local okApply, applyError = pcall(function()
+        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
+    end)
+    if not okApply then
+        print(
+            "[SkillPerkSystem_BasePack][Spear][PointControl] "
+            .. "applyError=" .. tostring(applyError)
+            .. " attacker=" .. tostring(type(attack) == "table" and attack.attacker and attack.attacker.id)
+            .. " playerId=" .. tostring(pointControlPlayerId)
+            .. " damageType=" .. tostring(type(attack) == "table" and type(attack.damage))
+        )
+    end
 end
 
 local function applyHookAndTurn(attack)
@@ -1186,7 +1211,13 @@ local function applyHookAndTurn(attack)
     local fatigueBefore = type(attack) == "table" and attack.damage and attack.damage.fatigue or nil
     logHookAndTurn(attack, "evaluating", now, healthBefore, fatigueBefore)
 
-    if not isSuccessfulHookAndTurnHit(attack) then
+    local ok, successful = pcall(isSuccessfulHookAndTurnHit, attack)
+    if not ok then
+        logHookAndTurn(attack, "validation_error=" .. tostring(successful), now, healthBefore, fatigueBefore)
+        return
+    end
+
+    if not successful then
         return
     end
 

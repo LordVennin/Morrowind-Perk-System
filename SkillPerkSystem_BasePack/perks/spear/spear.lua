@@ -12,7 +12,7 @@ return {
             x = 0,
             y = 0,
             title = "Point Control",
-            description = "While a spear is equipped, fortify Endurance by 5 and thrust attacks deal 5% more Health damage.",
+            description = "While a spear is equipped, fortify Endurance by 5 and attacks deal 5% more Health damage.",
         },
         {
             id = "spear_long_guard",

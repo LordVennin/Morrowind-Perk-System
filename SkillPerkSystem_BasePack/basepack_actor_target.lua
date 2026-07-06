@@ -967,7 +967,7 @@ local types = require("openmw.types")
 local Actor = types.Actor
 local Weapon = types.Weapon
 
-local POINT_CONTROL_THRUST_DAMAGE_MULTIPLIER = 1.05
+local POINT_CONTROL_DAMAGE_MULTIPLIER = 1.05
 
 local pointControlEnabled = false
 local pointControlPlayerId = nil
@@ -1053,18 +1053,6 @@ local function actorHasEquippedSpear(actor)
     return isSpearRecord(getWeaponRecord(weapon))
 end
 
-local function isThrustAttack(attack)
-    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
-    local expected = attackTypes ~= nil and tonumber(attackTypes.Thrust) or nil
-    local actual = tonumber(attack.type or attack.attackType)
-    if expected ~= nil and actual ~= nil then
-        return actual == expected
-    end
-
-    local text = string.lower(tostring(attack.type or attack.attackType or attack.animation or attack.groupName or ""))
-    return string.find(text, "thrust", 1, true) ~= nil
-end
-
 local function isMeleeAttack(attack)
     local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
     local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
@@ -1072,7 +1060,7 @@ local function isMeleeAttack(attack)
     return expected == nil or actual == nil or actual == expected
 end
 
-local function isSuccessfulPointControlThrust(attack)
+local function isSuccessfulPointControlHit(attack)
     if type(attack) ~= "table" or attack.successful ~= true then
         return false
     end
@@ -1085,7 +1073,7 @@ local function isSuccessfulPointControlThrust(attack)
     if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
         return false
     end
-    if not isMeleeAttack(attack) or not isThrustAttack(attack) then
+    if not isMeleeAttack(attack) then
         return false
     end
     if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
@@ -1096,8 +1084,8 @@ local function isSuccessfulPointControlThrust(attack)
 end
 
 local function onHit(attack)
-    if isSuccessfulPointControlThrust(attack) then
-        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_THRUST_DAMAGE_MULTIPLIER
+    if isSuccessfulPointControlHit(attack) then
+        attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
     end
 end
 

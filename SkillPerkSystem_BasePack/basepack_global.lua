@@ -2506,6 +2506,7 @@ do
 local spearPointControlState = {
     playerId = nil,
     pointControlEnabled = false,
+    hookAndTurnEnabled = false,
 }
 
 local function sendState(actor)
@@ -2515,7 +2516,7 @@ local function sendState(actor)
 end
 
 local function spearTargetStateActive()
-    return spearPointControlState.pointControlEnabled
+    return spearPointControlState.pointControlEnabled or spearPointControlState.hookAndTurnEnabled
 end
 
 local function refreshWatchers()
@@ -2530,6 +2531,7 @@ local function onSpearPointControlState(data)
     spearPointControlState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         pointControlEnabled = data.pointControlEnabled == true,
+        hookAndTurnEnabled = data.hookAndTurnEnabled == true,
     }
     refreshWatchers()
 end

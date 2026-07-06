@@ -968,9 +968,14 @@ local Actor = types.Actor
 local Weapon = types.Weapon
 
 local POINT_CONTROL_DAMAGE_MULTIPLIER = 1.05
+local HOOK_AND_TURN_WINDOW = 5.0
+local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
+local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
 
 local pointControlEnabled = false
+local hookAndTurnEnabled = false
 local pointControlPlayerId = nil
+local hookAndTurnPrimedUntil = 0
 
 local function setPointControlState(data)
     if type(data) ~= "table" then
@@ -978,7 +983,12 @@ local function setPointControlState(data)
     end
 
     pointControlEnabled = data.pointControlEnabled == true
+    hookAndTurnEnabled = data.hookAndTurnEnabled == true
     pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
+
+    if not hookAndTurnEnabled then
+        hookAndTurnPrimedUntil = 0
+    end
 end
 
 local function getEquippedItem(actor, slot)
@@ -1033,6 +1043,19 @@ local function isSpearRecord(record)
     return expected ~= nil and actual ~= nil and actual == expected
 end
 
+local function getAttackWeaponRecord(attack)
+    if type(attack) == "table" and attack.weapon ~= nil then
+        return getWeaponRecord(attack.weapon)
+    end
+
+    return nil
+end
+
+local function attackHasSpearWeapon(attack)
+    local record = getAttackWeaponRecord(attack)
+    return record ~= nil and isSpearRecord(record)
+end
+
 local function actorHasEquippedSpear(actor)
     if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
         return false
@@ -1053,11 +1076,54 @@ local function actorHasEquippedSpear(actor)
     return isSpearRecord(getWeaponRecord(weapon))
 end
 
+local function isSpearAttack(attack)
+    if attackHasSpearWeapon(attack) then
+        return true
+    end
+
+    return type(attack) == "table" and actorHasEquippedSpear(attack.attacker)
+end
+
 local function isMeleeAttack(attack)
     local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
-    local expected = sourceTypes ~= nil and tonumber(sourceTypes.Melee) or nil
-    local actual = tonumber(attack.sourceType)
-    return expected == nil or actual == nil or actual == expected
+    local expected = sourceTypes ~= nil and sourceTypes.Melee or nil
+    if expected == nil then
+        return true
+    end
+
+    local actual = type(attack) == "table" and attack.sourceType or nil
+    return actual == nil or actual == expected or tonumber(actual) == tonumber(expected)
+end
+
+local function isAttackType(attack, typeName)
+    local attackTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_TYPES or nil
+    local expected = attackTypes ~= nil and tonumber(attackTypes[typeName]) or nil
+    local actual = type(attack) == "table" and tonumber(attack.type) or nil
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function logHookAndTurn(attack, message, now, healthBefore, fatigueBefore, healthAfter, fatigueAfter)
+    now = now or core.getSimulationTime()
+    print(
+        "[SkillPerkSystem_BasePack][Spear][HookAndTurn] "
+        .. "message=" .. tostring(message)
+        .. " enabled=" .. tostring(hookAndTurnEnabled)
+        .. " attacker=" .. tostring(type(attack) == "table" and attack.attacker and attack.attacker.id)
+        .. " playerId=" .. tostring(pointControlPlayerId)
+        .. " sourceType=" .. tostring(type(attack) == "table" and attack.sourceType)
+        .. " type=" .. tostring(type(attack) == "table" and attack.type)
+        .. " chop=" .. tostring(isAttackType(attack, "Chop"))
+        .. " slash=" .. tostring(isAttackType(attack, "Slash"))
+        .. " thrust=" .. tostring(isAttackType(attack, "Thrust"))
+        .. " primedUntil=" .. tostring(hookAndTurnPrimedUntil)
+        .. " now=" .. tostring(now)
+        .. " health=" .. tostring(type(attack) == "table" and attack.damage and attack.damage.health)
+        .. " fatigue=" .. tostring(type(attack) == "table" and attack.damage and attack.damage.fatigue)
+        .. " healthBefore=" .. tostring(healthBefore)
+        .. " fatigueBefore=" .. tostring(fatigueBefore)
+        .. " healthAfter=" .. tostring(healthAfter)
+        .. " fatigueAfter=" .. tostring(fatigueAfter)
+    )
 end
 
 local function isSuccessfulPointControlHit(attack)
@@ -1080,13 +1146,81 @@ local function isSuccessfulPointControlHit(attack)
         return false
     end
 
-    return actorHasEquippedSpear(attack.attacker)
+    return isSpearAttack(attack)
 end
 
-local function onHit(attack)
+local function isSuccessfulHookAndTurnHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not hookAndTurnEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) then
+        return false
+    end
+    if type(attack.damage) ~= "table" then
+        return false
+    end
+
+    return isSpearAttack(attack)
+end
+
+local function applyPointControlDamage(attack)
     if isSuccessfulPointControlHit(attack) then
         attack.damage.health = (tonumber(attack.damage.health) or 0) * POINT_CONTROL_DAMAGE_MULTIPLIER
     end
+end
+
+local function applyHookAndTurn(attack)
+    local now = core.getSimulationTime()
+    local healthBefore = type(attack) == "table" and attack.damage and attack.damage.health or nil
+    local fatigueBefore = type(attack) == "table" and attack.damage and attack.damage.fatigue or nil
+    logHookAndTurn(attack, "evaluating", now, healthBefore, fatigueBefore)
+
+    if not isSuccessfulHookAndTurnHit(attack) then
+        return
+    end
+
+    if isAttackType(attack, "Chop") or isAttackType(attack, "Slash") then
+        hookAndTurnPrimedUntil = now + HOOK_AND_TURN_WINDOW
+        logHookAndTurn(attack, "primed", now, healthBefore, fatigueBefore)
+        return
+    end
+
+    if not isAttackType(attack, "Thrust") then
+        return
+    end
+
+    if hookAndTurnPrimedUntil <= 0 or hookAndTurnPrimedUntil < now then
+        hookAndTurnPrimedUntil = 0
+        logHookAndTurn(attack, "thrust_without_active_prime", now, healthBefore, fatigueBefore)
+        return
+    end
+
+    hookAndTurnPrimedUntil = 0
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * HOOK_AND_TURN_HEALTH_MULTIPLIER
+    attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + HOOK_AND_TURN_FATIGUE_DAMAGE
+    logHookAndTurn(
+        attack,
+        "consumed_prime",
+        now,
+        healthBefore,
+        fatigueBefore,
+        attack.damage.health,
+        attack.damage.fatigue
+    )
+end
+
+local function onHit(attack)
+    applyPointControlDamage(attack)
+    applyHookAndTurn(attack)
 end
 
 spear.eventHandlers = {
@@ -1100,6 +1234,7 @@ spear.engineHandlers = {
     onLoad = function(savedData, initData)
         if type(savedData) == "table" then
             setPointControlState(savedData)
+            hookAndTurnPrimedUntil = math.max(0, tonumber(savedData.hookAndTurnPrimedUntil) or 0)
         else
             setPointControlState(initData)
         end
@@ -1108,12 +1243,14 @@ spear.engineHandlers = {
         return {
             playerId = pointControlPlayerId,
             pointControlEnabled = pointControlEnabled,
+            hookAndTurnEnabled = hookAndTurnEnabled,
+            hookAndTurnPrimedUntil = hookAndTurnPrimedUntil,
         }
     end,
 }
 
 spear.hasActiveState = function()
-    return pointControlEnabled
+    return pointControlEnabled or hookAndTurnEnabled or hookAndTurnPrimedUntil > 0
 end
 
 spear.onHit = onHit

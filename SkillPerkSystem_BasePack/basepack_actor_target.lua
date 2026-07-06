@@ -962,17 +962,22 @@ end
 -- 4. spear target state/effects
 do
 local interfaces = require("openmw.interfaces")
+local selfObj = require("openmw.self")
 local types = require("openmw.types")
 
 local Actor = types.Actor
 local Weapon = types.Weapon
 
 local POINT_CONTROL_DAMAGE_MULTIPLIER = 1.05
+local DRIVING_STEP_HEALTH_THRESHOLD = 0.75
+local DRIVING_STEP_HEALTH_MULTIPLIER = 1.10
+local DRIVING_STEP_FATIGUE_DAMAGE = 10
 local HOOK_AND_TURN_WINDOW = 5.0
 local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
 local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
 
 local pointControlEnabled = false
+local drivingStepEnabled = false
 local hookAndTurnEnabled = false
 local pointControlPlayerId = nil
 local hookAndTurnPrimedUntil = 0
@@ -983,6 +988,7 @@ local function setPointControlState(data)
     end
 
     pointControlEnabled = data.pointControlEnabled == true
+    drivingStepEnabled = data.drivingStepEnabled == true
     hookAndTurnEnabled = data.hookAndTurnEnabled == true
     pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
 
@@ -1102,6 +1108,32 @@ local function isAttackType(attack, typeName)
     return expected ~= nil and actual ~= nil and actual == expected
 end
 
+local function getTargetHealthPercent()
+    local healthAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.health
+    if type(healthAccessor) ~= "function" then
+        return 1
+    end
+
+    local health = healthAccessor(selfObj)
+    if health == nil then
+        return 1
+    end
+
+    local current = tonumber(health.current) or 0
+    local base = tonumber(health.base) or current
+    local modifier = tonumber(health.modifier) or 0
+    local maxHealth = math.max(0, base + modifier)
+    if maxHealth <= 0 then
+        return 0
+    end
+
+    return current / maxHealth
+end
+
+
 local function logHookAndTurn(attack, message, now, healthBefore, fatigueBefore, healthAfter, fatigueAfter)
     now = now or core.getSimulationTime()
     print(
@@ -1170,6 +1202,39 @@ local function isSuccessfulHookAndTurnHit(attack)
     end
 
     return isSpearAttack(attack)
+end
+
+local function isSuccessfulDrivingStepHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not drivingStepEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not isAttackType(attack, "Thrust") then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return isSpearAttack(attack) and getTargetHealthPercent() > DRIVING_STEP_HEALTH_THRESHOLD
+end
+
+local function applyDrivingStep(attack)
+    local ok, successful = pcall(isSuccessfulDrivingStepHit, attack)
+    if not ok or not successful or type(attack) ~= "table" or type(attack.damage) ~= "table" then
+        return
+    end
+
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * DRIVING_STEP_HEALTH_MULTIPLIER
+    attack.damage.fatigue = (tonumber(attack.damage.fatigue) or 0) + DRIVING_STEP_FATIGUE_DAMAGE
 end
 
 local function applyPointControlDamage(attack)
@@ -1253,6 +1318,7 @@ end
 
 local function onHit(attack)
     applyPointControlDamage(attack)
+    applyDrivingStep(attack)
     applyHookAndTurn(attack)
 end
 
@@ -1276,6 +1342,7 @@ spear.engineHandlers = {
         return {
             playerId = pointControlPlayerId,
             pointControlEnabled = pointControlEnabled,
+            drivingStepEnabled = drivingStepEnabled,
             hookAndTurnEnabled = hookAndTurnEnabled,
             hookAndTurnPrimedUntil = hookAndTurnPrimedUntil,
         }
@@ -1283,7 +1350,7 @@ spear.engineHandlers = {
 }
 
 spear.hasActiveState = function()
-    return pointControlEnabled or hookAndTurnEnabled or hookAndTurnPrimedUntil > 0
+    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or hookAndTurnPrimedUntil > 0
 end
 
 spear.onHit = onHit

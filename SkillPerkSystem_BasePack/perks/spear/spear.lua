@@ -48,7 +48,7 @@ return {
             x = -120,
             y = 305,
             title = "Hook and Turn",
-            description = "Placeholder: Use the spear haft and head to disrupt an enemy's stance.",
+            description = "While a spear is equipped, successful chop or slash attacks prime your next thrust within 5 seconds. The primed thrust deals 15% more Health damage and 10 extra Fatigue damage.",
         },
         {
             id = "spear_line_breaker",

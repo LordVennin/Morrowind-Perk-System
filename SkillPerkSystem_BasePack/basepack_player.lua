@@ -4791,6 +4791,7 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local POINT_CONTROL_PERK_ID = "spear_point_control"
 local DRIVING_STEP_PERK_ID = "spear_driving_step"
 local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
+local LINE_BREAKER_PERK_ID = "spear_line_breaker"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
 local HOOK_AND_TURN_WINDOW = 5.0
 local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
@@ -4977,7 +4978,24 @@ local function isSuccessfulPlayerSpearHit(attack)
     if attack.attacker ~= pself then
         return false
     end
-    if not hasEnabledPerk(HOOK_AND_TURN_PERK_ID) then
+    if not isMeleeAttack(attack) then
+        return false
+    end
+    if getEquippedSpearRecord() == nil then
+        return false
+    end
+
+    return type(attack.damage) == "table"
+end
+
+local function isSuccessfulPlayerSpearHitForPerk(attack, perkID)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.attacker ~= pself then
+        return false
+    end
+    if not hasEnabledPerk(perkID) then
         return false
     end
     if not isMeleeAttack(attack) then
@@ -4991,7 +5009,7 @@ local function isSuccessfulPlayerSpearHit(attack)
 end
 
 local function updateHookAndTurn(attack)
-    if not isSuccessfulPlayerSpearHit(attack) then
+    if not isSuccessfulPlayerSpearHitForPerk(attack, HOOK_AND_TURN_PERK_ID) then
         return
     end
 
@@ -5060,7 +5078,8 @@ local function publishSpearPointControlState(force)
     local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
     local drivingStepEnabled = hasEnabledPerk(DRIVING_STEP_PERK_ID)
     local hookAndTurnEnabled = hasEnabledPerk(HOOK_AND_TURN_PERK_ID)
-    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled)
+    local lineBreakerEnabled = hasEnabledPerk(LINE_BREAKER_PERK_ID)
+    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled) .. ":" .. tostring(lineBreakerEnabled)
     if not force and stateKey == lastSpearStateKey then
         return
     end
@@ -5071,6 +5090,7 @@ local function publishSpearPointControlState(force)
         pointControlEnabled = pointControlEnabled,
         drivingStepEnabled = drivingStepEnabled,
         hookAndTurnEnabled = hookAndTurnEnabled,
+        lineBreakerEnabled = lineBreakerEnabled,
     })
 end
 
@@ -5085,7 +5105,7 @@ local function handlePerkStateChanged(data)
         return
     end
 
-    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID then
+    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID or data.perkID == LINE_BREAKER_PERK_ID then
         markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
     end
 end

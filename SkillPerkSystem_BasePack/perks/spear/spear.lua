@@ -61,7 +61,7 @@ return {
             x = 210,
             y = 420,
             title = "Line Breaker",
-            description = "Placeholder: Punish staggered foes with decisive spear follow-through.",
+            description = "Spear chop and slash attacks deal 200% more Health damage to targets below 50% Fatigue.",
         },
         {
             id = "spear_ashlander_pike",

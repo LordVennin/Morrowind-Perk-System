@@ -2508,6 +2508,7 @@ local spearPointControlState = {
     pointControlEnabled = false,
     drivingStepEnabled = false,
     hookAndTurnEnabled = false,
+    lineBreakerEnabled = false,
 }
 
 local function sendState(actor)
@@ -2517,7 +2518,7 @@ local function sendState(actor)
 end
 
 local function spearTargetStateActive()
-    return spearPointControlState.pointControlEnabled or spearPointControlState.drivingStepEnabled or spearPointControlState.hookAndTurnEnabled
+    return spearPointControlState.pointControlEnabled or spearPointControlState.drivingStepEnabled or spearPointControlState.hookAndTurnEnabled or spearPointControlState.lineBreakerEnabled
 end
 
 local function refreshWatchers()
@@ -2534,6 +2535,7 @@ local function onSpearPointControlState(data)
         pointControlEnabled = data.pointControlEnabled == true,
         drivingStepEnabled = data.drivingStepEnabled == true,
         hookAndTurnEnabled = data.hookAndTurnEnabled == true,
+        lineBreakerEnabled = data.lineBreakerEnabled == true,
     }
     refreshWatchers()
 end

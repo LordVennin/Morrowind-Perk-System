@@ -975,10 +975,13 @@ local DRIVING_STEP_FATIGUE_DAMAGE = 10
 local HOOK_AND_TURN_WINDOW = 5.0
 local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
 local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
+local LINE_BREAKER_FATIGUE_THRESHOLD = 0.50
+local LINE_BREAKER_DAMAGE_MULTIPLIER = 3.0
 
 local pointControlEnabled = false
 local drivingStepEnabled = false
 local hookAndTurnEnabled = false
+local lineBreakerEnabled = false
 local pointControlPlayerId = nil
 local hookAndTurnPrimedUntil = 0
 
@@ -990,6 +993,7 @@ local function setPointControlState(data)
     pointControlEnabled = data.pointControlEnabled == true
     drivingStepEnabled = data.drivingStepEnabled == true
     hookAndTurnEnabled = data.hookAndTurnEnabled == true
+    lineBreakerEnabled = data.lineBreakerEnabled == true
     pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
 
     if not hookAndTurnEnabled then
@@ -1108,29 +1112,37 @@ local function isAttackType(attack, typeName)
     return expected ~= nil and actual ~= nil and actual == expected
 end
 
-local function getTargetHealthPercent()
-    local healthAccessor = Actor ~= nil
+local function getTargetDynamicPercent(statName)
+    local dynamicStats = Actor ~= nil
         and Actor.stats ~= nil
-        and Actor.stats.dynamic ~= nil
-        and Actor.stats.dynamic.health
-    if type(healthAccessor) ~= "function" then
+        and Actor.stats.dynamic
+    local accessor = dynamicStats ~= nil and dynamicStats[statName] or nil
+    if type(accessor) ~= "function" then
         return 1
     end
 
-    local health = healthAccessor(selfObj)
-    if health == nil then
+    local stat = accessor(selfObj)
+    if stat == nil then
         return 1
     end
 
-    local current = tonumber(health.current) or 0
-    local base = tonumber(health.base) or current
-    local modifier = tonumber(health.modifier) or 0
-    local maxHealth = math.max(0, base + modifier)
-    if maxHealth <= 0 then
+    local current = tonumber(stat.current) or 0
+    local base = tonumber(stat.base) or current
+    local modifier = tonumber(stat.modifier) or 0
+    local maxValue = math.max(0, base + modifier)
+    if maxValue <= 0 then
         return 0
     end
 
-    return current / maxHealth
+    return current / maxValue
+end
+
+local function getTargetHealthPercent()
+    return getTargetDynamicPercent("health")
+end
+
+local function getTargetFatiguePercent()
+    return getTargetDynamicPercent("fatigue")
 end
 
 
@@ -1227,6 +1239,38 @@ local function isSuccessfulDrivingStepHit(attack)
     return isSpearAttack(attack) and getTargetHealthPercent() > DRIVING_STEP_HEALTH_THRESHOLD
 end
 
+local function isSuccessfulLineBreakerHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not lineBreakerEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or not (isAttackType(attack, "Chop") or isAttackType(attack, "Slash")) then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    return isSpearAttack(attack) and getTargetFatiguePercent() < LINE_BREAKER_FATIGUE_THRESHOLD
+end
+
+local function applyLineBreaker(attack)
+    local ok, successful = pcall(isSuccessfulLineBreakerHit, attack)
+    if not ok or not successful or type(attack) ~= "table" or type(attack.damage) ~= "table" then
+        return
+    end
+
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * LINE_BREAKER_DAMAGE_MULTIPLIER
+end
+
 local function applyDrivingStep(attack)
     local ok, successful = pcall(isSuccessfulDrivingStepHit, attack)
     if not ok or not successful or type(attack) ~= "table" or type(attack.damage) ~= "table" then
@@ -1319,6 +1363,7 @@ end
 local function onHit(attack)
     applyPointControlDamage(attack)
     applyDrivingStep(attack)
+    applyLineBreaker(attack)
     applyHookAndTurn(attack)
 end
 
@@ -1344,13 +1389,14 @@ spear.engineHandlers = {
             pointControlEnabled = pointControlEnabled,
             drivingStepEnabled = drivingStepEnabled,
             hookAndTurnEnabled = hookAndTurnEnabled,
+            lineBreakerEnabled = lineBreakerEnabled,
             hookAndTurnPrimedUntil = hookAndTurnPrimedUntil,
         }
     end,
 }
 
 spear.hasActiveState = function()
-    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or hookAndTurnPrimedUntil > 0
+    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or lineBreakerEnabled or hookAndTurnPrimedUntil > 0
 end
 
 spear.onHit = onHit

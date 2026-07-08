@@ -4793,7 +4793,7 @@ local POINT_CONTROL_PERK_ID = "spear_point_control"
 local DRIVING_STEP_PERK_ID = "spear_driving_step"
 local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
 local LINE_BREAKER_PERK_ID = "spear_line_breaker"
-local MASTER_VANGUARD_PERK_ID = "spear_master_vanguard"
+local MASTER_VANGUARD_PERK_ID = "spear_ashlander_pike"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
 local HOOK_AND_TURN_WINDOW = 5.0
 local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
@@ -5099,16 +5099,6 @@ local function tryApplyMasterVanguard(data)
     rememberMasterVanguardApplication(target)
     masterVanguardRemaining = MASTER_VANGUARD_DURATION
     applyMasterVanguardBonuses(MASTER_VANGUARD_ATTRIBUTE_BONUS)
-end
-
-local function updateMasterVanguard(attack)
-    if not isSuccessfulPlayerSpearHitForPerk(attack, MASTER_VANGUARD_PERK_ID) then
-        return
-    end
-
-    tryApplyMasterVanguard({
-        target = type(attack) == "table" and (attack.target or attack.victim or attack.defender or attack.hitObject or attack.object) or nil,
-    })
 end
 
 local function updateHookAndTurn(attack)

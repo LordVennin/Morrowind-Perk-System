@@ -5261,6 +5261,7 @@ registerBasepackAnimationHandler(handleSpearAnimation)
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then
     addOnHitHandler(updateHookAndTurn)
+    addOnHitHandler(updateMasterVanguard)
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
@@ -5272,6 +5273,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearStateDirty = false
             spearRefreshTimer = 0
             refreshPointControlEnduranceBonus()
+            refreshMasterVanguardBonuses()
             publishSpearPointControlState(false)
         end,
         shouldUpdate = shouldUpdateSpear,

@@ -64,7 +64,7 @@ return {
             description = "Spear chop and slash attacks deal 200% more Health damage to targets below 50% Fatigue.",
         },
         {
-            id = "spear_ashlander_pike",
+            id = "spear_master_vanguard",
             tab = "Spear",
             effectId = "demo_noop",
             minimumSkill = 90,

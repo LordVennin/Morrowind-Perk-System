@@ -4391,6 +4391,10 @@ local AXE_STATE_PERKS = {
     marksman_deadeye_mastery = true,
 }
 
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
+
 local function handlePerkStateChanged(data)
     if type(data) ~= "table" or AXE_STATE_PERKS[data.perkID] ~= true then
         return
@@ -4683,6 +4687,10 @@ local MARKSMAN_STATE_PERKS = {
     marksman_deadeye_mastery = true,
     marksman_steady_draw = true,
 }
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
 
 local function handlePerkStateChanged(data)
     if type(data) ~= "table" or MARKSMAN_STATE_PERKS[data.perkID] ~= true then
@@ -5308,6 +5316,10 @@ local function markSpearStateDirty(scanWindow)
     spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
 end
 
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
+
 local function handlePerkStateChanged(data)
     if type(data) ~= "table" then
         return
@@ -5682,6 +5694,10 @@ local BLUNT_STATE_PERKS = {
 
 local function markBluntStateDirty()
     bluntStateDirty = true
+end
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
 end
 
 local function handlePerkStateChanged(data)
@@ -9118,6 +9134,10 @@ local function markHandToHandDirty(scanWindow)
     handToHandStateDirty = true
     handToHandScanRemaining = math.max(handToHandScanRemaining, tonumber(scanWindow) or HAND_TO_HAND_SCAN_WINDOW)
     handToHandScanTimer = HAND_TO_HAND_SCAN_INTERVAL
+end
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
 end
 
 local function handlePerkStateChanged(data)

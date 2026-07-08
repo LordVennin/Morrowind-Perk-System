@@ -5,6 +5,7 @@
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 
+local shortBlade = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -15,6 +16,171 @@ local TARGET_SCRIPT_IDLE_EVENT = "SkillPerkSystem_BasePack_TargetScriptIdle"
 
 -- 2. shared actor/stat/weapon/combat helpers
 -- Subsystem-specific copies remain local below to preserve existing behavior and API fallbacks.
+
+-- 2a. short blade target state/effects
+do
+local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
+local selfObj = require("openmw.self")
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Weapon = types.Weapon
+
+local VITAL_STRIKE_CRITICAL_CHANCE = 0.50
+local VITAL_STRIKE_DAMAGE_MULTIPLIER = 1.15
+local VITAL_STRIKE_SOUND_FILE = "Sound\\criticalDMG.wav"
+
+local shortBladePlayerId = nil
+local vitalStrikeEnabled = false
+
+local function setShortBladeState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    shortBladePlayerId = type(data.playerId) == "string" and data.playerId or nil
+    vitalStrikeEnabled = data.vitalStrikeEnabled == true
+end
+
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    local recordId = type(item) == "string" and item or item.recordId
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[recordId]
+    end
+
+    if type(item) == "table" and item.type ~= nil and type(item.type.records) == "table" and type(recordId) == "string" then
+        return item.type.records[recordId]
+    end
+
+    return nil
+end
+
+local function isShortBladeRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local weaponType = tonumber(record.type)
+    local shortBladeType = tonumber(Weapon.TYPE.ShortBladeOneHand)
+    return weaponType ~= nil and shortBladeType ~= nil and weaponType == shortBladeType
+end
+
+local function actorHasEquippedShortBlade(actor)
+    if actor == nil or Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+    if type(Actor.getEquipment) ~= "function" then
+        return false
+    end
+
+    local okEquipment, weapon = pcall(Actor.getEquipment, actor, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if not okEquipment or weapon == nil then
+        return false
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return false
+    end
+
+    return isShortBladeRecord(getWeaponRecord(weapon))
+end
+
+local function isMeleeAttack(attack)
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    return meleeType == nil or (type(attack) == "table" and attack.sourceType == meleeType)
+end
+
+local function isSuccessfulVitalStrikeHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if not vitalStrikeEnabled or type(shortBladePlayerId) ~= "string" or shortBladePlayerId == "" then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= shortBladePlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) then
+        return false
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+
+    local weaponRecord = getWeaponRecord(attack.weapon)
+    if weaponRecord ~= nil then
+        return isShortBladeRecord(weaponRecord)
+    end
+
+    return actorHasEquippedShortBlade(attack.attacker)
+end
+
+local function onHit(attack)
+    if not isSuccessfulVitalStrikeHit(attack) then
+        return
+    end
+    if math.random() >= VITAL_STRIKE_CRITICAL_CHANCE then
+        return
+    end
+
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * VITAL_STRIKE_DAMAGE_MULTIPLIER
+    core.sound.playSoundFile3d(VITAL_STRIKE_SOUND_FILE, selfObj, {
+        volume = 1.0,
+        pitch = 1.0,
+        loop = false,
+    })
+end
+
+shortBlade.eventHandlers = {
+    SkillPerkSystem_ShortBladeRefresh = setShortBladeState,
+}
+shortBlade.engineHandlers = {
+    onInit = function(initData)
+        setShortBladeState(initData)
+    end,
+    onLoad = function(savedData, initData)
+        if type(savedData) == "table" then
+            setShortBladeState(savedData)
+        else
+            setShortBladeState(initData)
+        end
+    end,
+    onSave = function()
+        return {
+            playerId = shortBladePlayerId,
+            vitalStrikeEnabled = vitalStrikeEnabled,
+        }
+    end,
+}
+shortBlade.hasActiveState = function()
+    return vitalStrikeEnabled == true and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= ""
+end
+shortBlade.onHit = onHit
+
+end
 
 -- 3. axe target state/effects
 do
@@ -2367,6 +2533,7 @@ handToHand.onHit = onHit
 
 end
 
+copyEventHandlers(shortBlade.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -2375,6 +2542,7 @@ copyEventHandlers(aegisRite.eventHandlers)
 copyEventHandlers(handToHand.eventHandlers)
 
 local function combinedOnHit(attack)
+    shortBlade.onHit(attack)
     handToHand.onHit(attack)
     axe.onHit(attack)
     spear.onHit(attack)
@@ -2401,7 +2569,8 @@ local function subsystemHasActiveState(subsystem)
 end
 
 local function hasAnyActiveTargetState()
-    return subsystemHasActiveState(axe)
+    return subsystemHasActiveState(shortBlade)
+        or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
         or subsystemHasActiveState(duelistTempo)
@@ -2428,6 +2597,7 @@ return {
     eventHandlers = eventHandlers,
     engineHandlers = {
         onInit = function(initData)
+            callEngineHandler(shortBlade, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -2436,6 +2606,7 @@ return {
             callEngineHandler(handToHand, "onInit", initData)
         end,
         onLoad = function(savedData, initData)
+            local shortBladeData = type(savedData) == "table" and type(savedData.shortBlade) == "table" and savedData.shortBlade or savedData
             local axeData = type(savedData) == "table" and type(savedData.axe) == "table" and savedData.axe or savedData
             local spearData = type(savedData) == "table" and type(savedData.spear) == "table" and savedData.spear or savedData
             local bluntData = type(savedData) == "table" and type(savedData.blunt) == "table" and savedData.blunt or savedData
@@ -2443,6 +2614,7 @@ return {
             local aegisRiteData = type(savedData) == "table" and type(savedData.aegisRite) == "table" and savedData.aegisRite or savedData
             local handToHandData = type(savedData) == "table" and type(savedData.handToHand) == "table" and savedData.handToHand or savedData
 
+            callEngineHandler(shortBlade, "onLoad", shortBladeData, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
@@ -2452,6 +2624,7 @@ return {
         end,
         onSave = function()
             return {
+                shortBlade = type(shortBlade.engineHandlers.onSave) == "function" and shortBlade.engineHandlers.onSave() or nil,
                 axe = type(axe.engineHandlers.onSave) == "function" and axe.engineHandlers.onSave() or nil,
                 spear = type(spear.engineHandlers.onSave) == "function" and spear.engineHandlers.onSave() or nil,
                 blunt = type(blunt.engineHandlers.onSave) == "function" and blunt.engineHandlers.onSave() or nil,

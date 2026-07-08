@@ -91,6 +91,10 @@ local modules = {
         data = require("scripts.SkillPerkSystem_BasePack.perks.longblade.longblade"),
     },
     {
+        source = "scripts.SkillPerkSystem_BasePack.perks.shortblade.shortblade",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.shortblade.shortblade"),
+    },
+    {
         source = "scripts.SkillPerkSystem_BasePack.perks.axe.axe",
         data = require("scripts.SkillPerkSystem_BasePack.perks.axe.axe"),
     },

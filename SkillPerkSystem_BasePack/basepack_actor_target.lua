@@ -982,6 +982,7 @@ local pointControlEnabled = false
 local drivingStepEnabled = false
 local hookAndTurnEnabled = false
 local lineBreakerEnabled = false
+local masterVanguardEnabled = false
 local pointControlPlayerId = nil
 local hookAndTurnPrimedUntil = 0
 
@@ -994,6 +995,7 @@ local function setPointControlState(data)
     drivingStepEnabled = data.drivingStepEnabled == true
     hookAndTurnEnabled = data.hookAndTurnEnabled == true
     lineBreakerEnabled = data.lineBreakerEnabled == true
+    masterVanguardEnabled = data.masterVanguardEnabled == true
     pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
 
     if not hookAndTurnEnabled then
@@ -1360,7 +1362,27 @@ local function applyHookAndTurn(attack)
     )
 end
 
+local function tryApplyMasterVanguard(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return
+    end
+    if not masterVanguardEnabled or type(pointControlPlayerId) ~= "string" or pointControlPlayerId == "" then
+        return
+    end
+    if attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId or type(attack.attacker.sendEvent) ~= "function" then
+        return
+    end
+    if not isMeleeAttack(attack) or not isSpearAttack(attack) then
+        return
+    end
+
+    attack.attacker:sendEvent("SkillPerkSystem_TryMasterVanguard", {
+        target = selfObj,
+    })
+end
+
 local function onHit(attack)
+    tryApplyMasterVanguard(attack)
     applyPointControlDamage(attack)
     applyDrivingStep(attack)
     applyLineBreaker(attack)
@@ -1390,13 +1412,14 @@ spear.engineHandlers = {
             drivingStepEnabled = drivingStepEnabled,
             hookAndTurnEnabled = hookAndTurnEnabled,
             lineBreakerEnabled = lineBreakerEnabled,
+            masterVanguardEnabled = masterVanguardEnabled,
             hookAndTurnPrimedUntil = hookAndTurnPrimedUntil,
         }
     end,
 }
 
 spear.hasActiveState = function()
-    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or lineBreakerEnabled or hookAndTurnPrimedUntil > 0
+    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or lineBreakerEnabled or masterVanguardEnabled or hookAndTurnPrimedUntil > 0
 end
 
 spear.onHit = onHit

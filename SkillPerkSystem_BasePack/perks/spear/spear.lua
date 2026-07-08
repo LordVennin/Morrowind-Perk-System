@@ -72,8 +72,8 @@ return {
             cost = 2,
             x = 0,
             y = 560,
-            title = "Ashlander Pike",
-            description = "Placeholder: Master the spear with a capstone technique worthy of Vvardenfell's open wastes.",
+            title = "Master Vanguard",
+            description = "Spear hits fortify Endurance and Agility by 5 for 10 seconds.",
         },
     },
 }

@@ -4782,6 +4782,7 @@ do
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
+local storage = require("openmw.storage")
 local types = require("openmw.types")
 
 local Actor = types.Actor
@@ -4799,9 +4800,14 @@ local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
 local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
 local MASTER_VANGUARD_ATTRIBUTE_BONUS = 5
 local MASTER_VANGUARD_DURATION = 10.0
+local STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_Spear"
+local MASTER_VANGUARD_ENDURANCE_APPLIED_KEY = "master_vanguard.applied_endurance_bonus"
+local MASTER_VANGUARD_AGILITY_APPLIED_KEY = "master_vanguard.applied_agility_bonus"
 local SPEAR_STATE_EVENT = "SkillPerkSystem_SpearPointControlState"
 local SPEAR_STATE_REFRESH_INTERVAL = 0.5
 local SPEAR_EQUIPMENT_SCAN_WINDOW = 1.5
+
+local storageSection = storage.playerSection(STORAGE_SECTION_ID)
 
 local appliedPointControlEnduranceBonus = 0
 local spearStateDirty = true
@@ -4809,9 +4815,12 @@ local spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
 local spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
 local lastSpearStateKey = nil
 local hookAndTurnPrimedUntil = 0
-local appliedMasterVanguardEnduranceBonus = 0
-local appliedMasterVanguardAgilityBonus = 0
-local masterVanguardExpiresAt = 0
+local appliedMasterVanguardEnduranceBonus = tonumber(storageSection:get(MASTER_VANGUARD_ENDURANCE_APPLIED_KEY)) or 0
+local appliedMasterVanguardAgilityBonus = tonumber(storageSection:get(MASTER_VANGUARD_AGILITY_APPLIED_KEY)) or 0
+local masterVanguardRemaining = 0
+local spearRuntimeTime = 0
+local lastMasterVanguardTarget = nil
+local lastMasterVanguardApplyTime = -1
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -5053,14 +5062,43 @@ local function applyMasterVanguardBonuses(targetBonus)
         appliedMasterVanguardAgilityBonus,
         targetBonus
     )
+    storageSection:set(MASTER_VANGUARD_ENDURANCE_APPLIED_KEY, appliedMasterVanguardEnduranceBonus)
+    storageSection:set(MASTER_VANGUARD_AGILITY_APPLIED_KEY, appliedMasterVanguardAgilityBonus)
 end
 
-local function refreshMasterVanguardBonuses()
-    local now = core.getSimulationTime()
-    if masterVanguardExpiresAt <= now or not hasEnabledPerk(MASTER_VANGUARD_PERK_ID) then
-        masterVanguardExpiresAt = 0
-        applyMasterVanguardBonuses(0)
+local function clearMasterVanguardBonuses()
+    masterVanguardRemaining = 0
+    applyMasterVanguardBonuses(0)
+end
+
+local function recentlyAppliedMasterVanguard(target)
+    return target ~= nil and target == lastMasterVanguardTarget and (spearRuntimeTime - lastMasterVanguardApplyTime) < 0.05
+end
+
+local function rememberMasterVanguardApplication(target)
+    lastMasterVanguardTarget = target
+    lastMasterVanguardApplyTime = spearRuntimeTime
+end
+
+local function tryApplyMasterVanguard(data)
+    if type(data) ~= "table" then
+        return
     end
+
+    local target = data.target
+    if target ~= nil and type(target.isValid) == "function" and not target:isValid() then
+        return
+    end
+    if not hasEnabledPerk(MASTER_VANGUARD_PERK_ID) or getEquippedSpearRecord() == nil then
+        return
+    end
+    if recentlyAppliedMasterVanguard(target) then
+        return
+    end
+
+    rememberMasterVanguardApplication(target)
+    masterVanguardRemaining = MASTER_VANGUARD_DURATION
+    applyMasterVanguardBonuses(MASTER_VANGUARD_ATTRIBUTE_BONUS)
 end
 
 local function updateMasterVanguard(attack)
@@ -5068,8 +5106,9 @@ local function updateMasterVanguard(attack)
         return
     end
 
-    masterVanguardExpiresAt = core.getSimulationTime() + MASTER_VANGUARD_DURATION
-    applyMasterVanguardBonuses(MASTER_VANGUARD_ATTRIBUTE_BONUS)
+    tryApplyMasterVanguard({
+        target = type(attack) == "table" and (attack.target or attack.victim or attack.defender or attack.hitObject or attack.object) or nil,
+    })
 end
 
 local function updateHookAndTurn(attack)
@@ -5186,7 +5225,7 @@ local function shouldUpdateSpear(dt)
         return true
     end
 
-    if appliedMasterVanguardEnduranceBonus ~= 0 or appliedMasterVanguardAgilityBonus ~= 0 then
+    if masterVanguardRemaining > 0 or appliedMasterVanguardEnduranceBonus ~= 0 or appliedMasterVanguardAgilityBonus ~= 0 then
         return true
     end
 
@@ -5212,7 +5251,17 @@ end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
-        onUpdate = function()
+        onUpdate = function(dt)
+            spearRuntimeTime = spearRuntimeTime + (tonumber(dt) or 0)
+            if masterVanguardRemaining > 0 then
+                masterVanguardRemaining = math.max(0, masterVanguardRemaining - (tonumber(dt) or 0))
+                if masterVanguardRemaining <= 0 or not hasEnabledPerk(MASTER_VANGUARD_PERK_ID) or getEquippedSpearRecord() == nil then
+                    clearMasterVanguardBonuses()
+                end
+            elseif appliedMasterVanguardEnduranceBonus ~= 0 or appliedMasterVanguardAgilityBonus ~= 0 then
+                clearMasterVanguardBonuses()
+            end
+
             spearStateDirty = false
             spearRefreshTimer = 0
             refreshPointControlEnduranceBonus()
@@ -5227,15 +5276,19 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
             lastSpearStateKey = nil
             hookAndTurnPrimedUntil = 0
-            appliedMasterVanguardEnduranceBonus = 0
-            appliedMasterVanguardAgilityBonus = 0
-            masterVanguardExpiresAt = 0
+            appliedMasterVanguardEnduranceBonus = math.max(0, math.floor(tonumber(storageSection:get(MASTER_VANGUARD_ENDURANCE_APPLIED_KEY)) or 0))
+            appliedMasterVanguardAgilityBonus = math.max(0, math.floor(tonumber(storageSection:get(MASTER_VANGUARD_AGILITY_APPLIED_KEY)) or 0))
+            clearMasterVanguardBonuses()
+            spearRuntimeTime = 0
+            lastMasterVanguardTarget = nil
+            lastMasterVanguardApplyTime = -1
             refreshPointControlEnduranceBonus()
             publishSpearPointControlState(true)
         end,
     },
     eventHandlers = {
         SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_TryMasterVanguard = tryApplyMasterVanguard,
         SkillPerkSystem_SpearStateDirty = function() markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW) end,
         UiModeChanged = function() markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW) end,
     },

@@ -5083,6 +5083,19 @@ local function clearMasterVanguardBonuses()
     applyMasterVanguardBonuses(0)
 end
 
+local function refreshMasterVanguardBonuses(dt)
+    if masterVanguardRemaining > 0 then
+        masterVanguardRemaining = math.max(0, masterVanguardRemaining - (tonumber(dt) or 0))
+        if masterVanguardRemaining <= 0
+            or not hasEnabledPerk(MASTER_VANGUARD_PERK_ID)
+            or getEquippedSpearRecord() == nil then
+            clearMasterVanguardBonuses()
+        end
+    elseif appliedMasterVanguardEnduranceBonus ~= 0 or appliedMasterVanguardAgilityBonus ~= 0 then
+        clearMasterVanguardBonuses()
+    end
+end
+
 local function recentlyAppliedMasterVanguard(target)
     return target ~= nil and target == lastMasterVanguardTarget and (spearRuntimeTime - lastMasterVanguardApplyTime) < 0.05
 end
@@ -5255,14 +5268,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function(dt)
             spearRuntimeTime = spearRuntimeTime + (tonumber(dt) or 0)
-            if masterVanguardRemaining > 0 then
-                masterVanguardRemaining = math.max(0, masterVanguardRemaining - (tonumber(dt) or 0))
-                if masterVanguardRemaining <= 0 or not hasEnabledPerk(MASTER_VANGUARD_PERK_ID) or getEquippedSpearRecord() == nil then
-                    clearMasterVanguardBonuses()
-                end
-            elseif appliedMasterVanguardEnduranceBonus ~= 0 or appliedMasterVanguardAgilityBonus ~= 0 then
-                clearMasterVanguardBonuses()
-            end
+            refreshMasterVanguardBonuses(dt)
 
             spearStateDirty = false
             spearRefreshTimer = 0

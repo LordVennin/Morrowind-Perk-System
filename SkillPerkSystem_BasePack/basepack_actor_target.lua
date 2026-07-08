@@ -19,6 +19,7 @@ local TARGET_SCRIPT_IDLE_EVENT = "SkillPerkSystem_BasePack_TargetScriptIdle"
 
 -- 2a. short blade target state/effects
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local selfObj = require("openmw.self")
 local types = require("openmw.types")
@@ -28,6 +29,7 @@ local Weapon = types.Weapon
 
 local VITAL_STRIKE_CRITICAL_CHANCE = 0.50
 local VITAL_STRIKE_DAMAGE_MULTIPLIER = 1.15
+local VITAL_STRIKE_SOUND_FILE = "Sound\\criticalDMG.wav"
 
 local shortBladePlayerId = nil
 local vitalStrikeEnabled = false
@@ -145,11 +147,11 @@ local function onHit(attack)
     end
 
     attack.damage.health = (tonumber(attack.damage.health) or 0) * VITAL_STRIKE_DAMAGE_MULTIPLIER
-    if attack.attacker ~= nil and type(attack.attacker.sendEvent) == "function" then
-        attack.attacker:sendEvent("SkillPerkSystem_ShortBladeVitalStrikeCritical", {
-            target = selfObj,
-        })
-    end
+    core.sound.playSoundFile3d(VITAL_STRIKE_SOUND_FILE, selfObj, {
+        volume = 1.0,
+        pitch = 1.0,
+        loop = false,
+    })
 end
 
 shortBlade.eventHandlers = {

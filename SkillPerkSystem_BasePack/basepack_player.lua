@@ -5265,6 +5265,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearStateDirty = false
             spearRefreshTimer = 0
             refreshPointControlEnduranceBonus()
+            refreshMasterVanguardBonuses()
             publishSpearPointControlState(false)
         end,
         shouldUpdate = shouldUpdateSpear,

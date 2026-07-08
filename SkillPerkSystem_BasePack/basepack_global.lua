@@ -2366,6 +2366,57 @@ subsystems.unseen_hand = {
 -- End consolidated from SkillPerkSystem_BasePack/unseen_hand_global_runtime.lua
 end
 
+-- 5a. short blade global state handling
+do
+local shortBladeState = {
+    playerId = nil,
+    vitalStrikeEnabled = false,
+}
+
+local function shortBladeTargetStateActive()
+    return shortBladeState.vitalStrikeEnabled == true and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_ShortBladeRefresh", shortBladeState)
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("shortblade", shortBladeTargetStateActive())
+end
+
+local function onShortBladeState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    shortBladeState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        vitalStrikeEnabled = data.vitalStrikeEnabled == true,
+    }
+    refreshWatchers()
+end
+
+registerTargetWatcherProvider("shortblade", {
+    isActive = shortBladeTargetStateActive,
+    sendState = sendState,
+})
+
+subsystems.shortblade = {
+    eventHandlers = {
+        SkillPerkSystem_ShortBladeState = onShortBladeState,
+    },
+    engineHandlers = {
+        onLoad = function()
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -3923,6 +3974,7 @@ local eventHandlers = {
     end,
     SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
 
+    SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,
@@ -3947,6 +3999,7 @@ local engineOrder = {
     "treasure_sense",
     "lucky_find",
     "unseen_hand",
+    "shortblade",
     "axe",
     "spear",
     "bluntweapon",

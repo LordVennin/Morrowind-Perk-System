@@ -16,6 +16,7 @@ do
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
+local ui = require("openmw.ui")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
 
@@ -3410,25 +3411,26 @@ local function getWeaponRecord(item)
         return nil
     end
 
+    local recordId = type(item) == "string" and item or item.recordId
     if type(Weapon.record) == "function" then
         local okRecord, record = pcall(Weapon.record, item)
         if okRecord and record ~= nil then
             return record
         end
-        if type(item.recordId) == "string" then
-            local okRecordId, recordFromId = pcall(Weapon.record, item.recordId)
+        if type(recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, recordId)
             if okRecordId and recordFromId ~= nil then
                 return recordFromId
             end
         end
     end
 
-    if type(item.recordId) == "string" and type(Weapon.records) == "table" then
-        return Weapon.records[item.recordId]
+    if type(recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[recordId]
     end
 
-    if item.type ~= nil and type(item.type.records) == "table" and type(item.recordId) == "string" then
-        return item.type.records[item.recordId]
+    if type(item) == "table" and item.type ~= nil and type(item.type.records) == "table" and type(recordId) == "string" then
+        return item.type.records[recordId]
     end
 
     return nil
@@ -4078,6 +4080,100 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 
 end
 
+
+----------------------------------------------------------------------
+-- short blade runtime logic
+----------------------------------------------------------------------
+do
+local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local ui = require("openmw.ui")
+
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local VITAL_STRIKE_PERK_ID = "shortblade_vital_strike"
+local SHORT_BLADE_STATE_EVENT = "SkillPerkSystem_ShortBladeState"
+local VITAL_STRIKE_CRITICAL_MESSAGE = "Vital Strike critical hit!"
+
+local shortBladeStateDirty = true
+local lastShortBladeStateKey = nil
+
+local function hasEnabledPerk(perkID)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then
+        return false
+    end
+
+    if not playerApi.hasPerk(perkID) then
+        return false
+    end
+
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(perkID)
+    end
+
+    return true
+end
+
+local function markShortBladeStateDirty()
+    shortBladeStateDirty = true
+end
+
+local function publishShortBladeState(force)
+    local vitalStrikeEnabled = hasEnabledPerk(VITAL_STRIKE_PERK_ID)
+    local stateKey = tostring(vitalStrikeEnabled)
+    if not force and stateKey == lastShortBladeStateKey then
+        return
+    end
+
+    lastShortBladeStateKey = stateKey
+    core.sendGlobalEvent(SHORT_BLADE_STATE_EVENT, {
+        playerId = pself.id,
+        vitalStrikeEnabled = vitalStrikeEnabled,
+    })
+end
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
+
+local function handlePerkStateChanged(data)
+    if type(data) ~= "table" or data.perkID ~= VITAL_STRIKE_PERK_ID then
+        return
+    end
+
+    markShortBladeStateDirty()
+end
+
+__basepack_subsystems[#__basepack_subsystems + 1] = {
+    engineHandlers = {
+        onUpdate = function()
+            if shortBladeStateDirty then
+                shortBladeStateDirty = false
+                publishShortBladeState(false)
+            end
+        end,
+        shouldUpdate = function()
+            return shortBladeStateDirty
+        end,
+        onLoad = function()
+            lastShortBladeStateKey = nil
+            shortBladeStateDirty = true
+            publishShortBladeState(true)
+            shortBladeStateDirty = false
+        end,
+    },
+    eventHandlers = {
+        SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        SkillPerkSystem_ShortBladeStateDirty = function() markShortBladeStateDirty() end,
+        UiModeChanged = function() markShortBladeStateDirty() end,
+        SkillPerkSystem_ShortBladeVitalStrikeCritical = showVitalStrikeMessage,
+    },
+}
+
+end
+
+
 ----------------------------------------------------------------------
 -- axe runtime logic (from axe_runtime.lua)
 ----------------------------------------------------------------------
@@ -4302,6 +4398,10 @@ local AXE_STATE_PERKS = {
     marksman_trick_throw = true,
     marksman_deadeye_mastery = true,
 }
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
 
 local function handlePerkStateChanged(data)
     if type(data) ~= "table" or AXE_STATE_PERKS[data.perkID] ~= true then
@@ -4595,6 +4695,10 @@ local MARKSMAN_STATE_PERKS = {
     marksman_deadeye_mastery = true,
     marksman_steady_draw = true,
 }
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
 
 local function handlePerkStateChanged(data)
     if type(data) ~= "table" or MARKSMAN_STATE_PERKS[data.perkID] ~= true then
@@ -5220,6 +5324,10 @@ local function markSpearStateDirty(scanWindow)
     spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
 end
 
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
+end
+
 local function handlePerkStateChanged(data)
     if type(data) ~= "table" then
         return
@@ -5594,6 +5702,10 @@ local BLUNT_STATE_PERKS = {
 
 local function markBluntStateDirty()
     bluntStateDirty = true
+end
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
 end
 
 local function handlePerkStateChanged(data)
@@ -9030,6 +9142,10 @@ local function markHandToHandDirty(scanWindow)
     handToHandStateDirty = true
     handToHandScanRemaining = math.max(handToHandScanRemaining, tonumber(scanWindow) or HAND_TO_HAND_SCAN_WINDOW)
     handToHandScanTimer = HAND_TO_HAND_SCAN_INTERVAL
+end
+
+local function showVitalStrikeMessage()
+    ui.showMessage(VITAL_STRIKE_CRITICAL_MESSAGE, { showInDialogue = false })
 end
 
 local function handlePerkStateChanged(data)

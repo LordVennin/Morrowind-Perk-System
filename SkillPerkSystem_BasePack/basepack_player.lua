@@ -5023,16 +5023,28 @@ local function isSuccessfulPlayerSpearHitForPerk(attack, perkID)
     return type(attack.damage) == "table"
 end
 
-local function resolveAttributeStat(attributeName)
-    local accessor = Actor ~= nil
+local function resolveMasterVanguardAttributeStat(attributeName)
+    local attributes = Actor ~= nil
         and Actor.stats ~= nil
         and Actor.stats.attributes ~= nil
-        and Actor.stats.attributes[attributeName]
+        and Actor.stats.attributes
+        or nil
+    local accessor = nil
+    if attributeName == "endurance" then
+        accessor = attributes ~= nil and attributes.endurance or nil
+    elseif attributeName == "agility" then
+        accessor = attributes ~= nil and attributes.agility or nil
+    end
     if type(accessor) ~= "function" then
         return nil
     end
 
-    return accessor(pself)
+    local ok, stat = pcall(accessor, pself)
+    if not ok then
+        return nil
+    end
+
+    return stat
 end
 
 local function applyAttributeBonus(attributeName, currentBonus, targetBonus)
@@ -5042,7 +5054,7 @@ local function applyAttributeBonus(attributeName, currentBonus, targetBonus)
         return current
     end
 
-    local stat = resolveAttributeStat(attributeName)
+    local stat = resolveMasterVanguardAttributeStat(attributeName)
     if stat == nil or type(stat.modifier) ~= "number" then
         return current
     end

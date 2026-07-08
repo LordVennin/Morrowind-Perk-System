@@ -4792,10 +4792,13 @@ local POINT_CONTROL_PERK_ID = "spear_point_control"
 local DRIVING_STEP_PERK_ID = "spear_driving_step"
 local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
 local LINE_BREAKER_PERK_ID = "spear_line_breaker"
+local MASTER_VANGUARD_PERK_ID = "spear_master_vanguard"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
 local HOOK_AND_TURN_WINDOW = 5.0
 local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
 local HOOK_AND_TURN_FATIGUE_DAMAGE = 10
+local MASTER_VANGUARD_ATTRIBUTE_BONUS = 5
+local MASTER_VANGUARD_DURATION = 10.0
 local SPEAR_STATE_EVENT = "SkillPerkSystem_SpearPointControlState"
 local SPEAR_STATE_REFRESH_INTERVAL = 0.5
 local SPEAR_EQUIPMENT_SCAN_WINDOW = 1.5
@@ -4806,6 +4809,9 @@ local spearEquipmentScanRemaining = SPEAR_EQUIPMENT_SCAN_WINDOW
 local spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
 local lastSpearStateKey = nil
 local hookAndTurnPrimedUntil = 0
+local appliedMasterVanguardEnduranceBonus = 0
+local appliedMasterVanguardAgilityBonus = 0
+local masterVanguardExpiresAt = 0
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -5008,6 +5014,64 @@ local function isSuccessfulPlayerSpearHitForPerk(attack, perkID)
     return type(attack.damage) == "table"
 end
 
+local function resolveAttributeStat(attributeName)
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes[attributeName]
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyAttributeBonus(attributeName, currentBonus, targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(currentBonus) or 0))
+    if desired == current then
+        return current
+    end
+
+    local stat = resolveAttributeStat(attributeName)
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return current
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    return desired
+end
+
+local function applyMasterVanguardBonuses(targetBonus)
+    appliedMasterVanguardEnduranceBonus = applyAttributeBonus(
+        "endurance",
+        appliedMasterVanguardEnduranceBonus,
+        targetBonus
+    )
+    appliedMasterVanguardAgilityBonus = applyAttributeBonus(
+        "agility",
+        appliedMasterVanguardAgilityBonus,
+        targetBonus
+    )
+end
+
+local function refreshMasterVanguardBonuses()
+    local now = core.getSimulationTime()
+    if masterVanguardExpiresAt <= now or not hasEnabledPerk(MASTER_VANGUARD_PERK_ID) then
+        masterVanguardExpiresAt = 0
+        applyMasterVanguardBonuses(0)
+    end
+end
+
+local function updateMasterVanguard(attack)
+    if not isSuccessfulPlayerSpearHitForPerk(attack, MASTER_VANGUARD_PERK_ID) then
+        return
+    end
+
+    masterVanguardExpiresAt = core.getSimulationTime() + MASTER_VANGUARD_DURATION
+    applyMasterVanguardBonuses(MASTER_VANGUARD_ATTRIBUTE_BONUS)
+end
+
 local function updateHookAndTurn(attack)
     if not isSuccessfulPlayerSpearHitForPerk(attack, HOOK_AND_TURN_PERK_ID) then
         return
@@ -5076,10 +5140,11 @@ end
 
 local function publishSpearPointControlState(force)
     local pointControlEnabled = hasEnabledPerk(POINT_CONTROL_PERK_ID)
+    local masterVanguardEnabled = hasEnabledPerk(MASTER_VANGUARD_PERK_ID)
     local drivingStepEnabled = hasEnabledPerk(DRIVING_STEP_PERK_ID)
     local hookAndTurnEnabled = hasEnabledPerk(HOOK_AND_TURN_PERK_ID)
     local lineBreakerEnabled = hasEnabledPerk(LINE_BREAKER_PERK_ID)
-    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled) .. ":" .. tostring(lineBreakerEnabled)
+    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled) .. ":" .. tostring(lineBreakerEnabled) .. ":" .. tostring(masterVanguardEnabled)
     if not force and stateKey == lastSpearStateKey then
         return
     end
@@ -5091,6 +5156,7 @@ local function publishSpearPointControlState(force)
         drivingStepEnabled = drivingStepEnabled,
         hookAndTurnEnabled = hookAndTurnEnabled,
         lineBreakerEnabled = lineBreakerEnabled,
+        masterVanguardEnabled = masterVanguardEnabled,
     })
 end
 
@@ -5105,7 +5171,7 @@ local function handlePerkStateChanged(data)
         return
     end
 
-    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID or data.perkID == LINE_BREAKER_PERK_ID then
+    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID or data.perkID == LINE_BREAKER_PERK_ID or data.perkID == MASTER_VANGUARD_PERK_ID then
         markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
     end
 end
@@ -5117,6 +5183,10 @@ local function shouldUpdateSpear(dt)
 
     if appliedPointControlEnduranceBonus ~= 0
         and (not hasEnabledPerk(POINT_CONTROL_PERK_ID) or getEquippedSpearRecord() == nil) then
+        return true
+    end
+
+    if appliedMasterVanguardEnduranceBonus ~= 0 or appliedMasterVanguardAgilityBonus ~= 0 then
         return true
     end
 
@@ -5137,6 +5207,7 @@ registerBasepackAnimationHandler(handleSpearAnimation)
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then
     addOnHitHandler(updateHookAndTurn)
+    addOnHitHandler(updateMasterVanguard)
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
@@ -5145,6 +5216,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearStateDirty = false
             spearRefreshTimer = 0
             refreshPointControlEnduranceBonus()
+            refreshMasterVanguardBonuses()
             publishSpearPointControlState(false)
         end,
         shouldUpdate = shouldUpdateSpear,
@@ -5155,6 +5227,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             spearRefreshTimer = SPEAR_STATE_REFRESH_INTERVAL
             lastSpearStateKey = nil
             hookAndTurnPrimedUntil = 0
+            appliedMasterVanguardEnduranceBonus = 0
+            appliedMasterVanguardAgilityBonus = 0
+            masterVanguardExpiresAt = 0
             refreshPointControlEnduranceBonus()
             publishSpearPointControlState(true)
         end,

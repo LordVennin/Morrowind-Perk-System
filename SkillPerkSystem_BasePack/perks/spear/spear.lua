@@ -64,7 +64,7 @@ return {
             description = "Spear chop and slash attacks deal 200% more Health damage to targets below 50% Fatigue.",
         },
         {
-            id = "spear_ashlander_pike",
+            id = "spear_master_vanguard",
             tab = "Spear",
             effectId = "demo_noop",
             minimumSkill = 90,
@@ -72,8 +72,8 @@ return {
             cost = 2,
             x = 0,
             y = 560,
-            title = "Ashlander Pike",
-            description = "Placeholder: Master the spear with a capstone technique worthy of Vvardenfell's open wastes.",
+            title = "Master Vanguard",
+            description = "Spear hits fortify Endurance and Agility by 5 for 10 seconds.",
         },
     },
 }

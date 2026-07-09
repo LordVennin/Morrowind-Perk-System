@@ -2371,10 +2371,11 @@ do
 local shortBladeState = {
     playerId = nil,
     vitalStrikeEnabled = false,
+    flashCutEnabled = false,
 }
 
 local function shortBladeTargetStateActive()
-    return shortBladeState.vitalStrikeEnabled == true and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
+    return (shortBladeState.vitalStrikeEnabled == true or shortBladeState.flashCutEnabled == true) and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
 end
 
 local function sendState(actor)
@@ -2395,6 +2396,7 @@ local function onShortBladeState(data)
     shortBladeState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         vitalStrikeEnabled = data.vitalStrikeEnabled == true,
+        flashCutEnabled = data.flashCutEnabled == true,
     }
     refreshWatchers()
 end

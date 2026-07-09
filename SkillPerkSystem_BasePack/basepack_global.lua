@@ -2368,6 +2368,8 @@ end
 
 -- 5a. short blade global state handling
 do
+local world = require("openmw.world")
+
 local shortBladeState = {
     playerId = nil,
     vitalStrikeEnabled = false,

@@ -39,6 +39,7 @@ local shortBladePlayerId = nil
 local vitalStrikeEnabled = false
 local flashCutEnabled = false
 local flashCutBleedStacks = {}
+local pendingFlashCutBleeds = {}
 
 local function setShortBladeState(data)
     if type(data) ~= "table" then
@@ -81,16 +82,22 @@ local function spawnBloodSpray(position)
     spawnBloodEffect(position or selfObj.position)
 end
 
-local function addFlashCutBleedStack(attack)
+local function addFlashCutBleedStack(position)
     flashCutBleedStacks[#flashCutBleedStacks + 1] = {
         remainingTime = FLASH_CUT_BLEED_DURATION,
+        damageTimer = 0,
         bloodTimer = 0,
     }
-    spawnBloodSpray(type(attack) == "table" and attack.hitPos or selfObj.position)
+    spawnBloodSpray(position or selfObj.position)
+end
+
+local function queueFlashCutBleedStack(attack)
+    pendingFlashCutBleeds[#pendingFlashCutBleeds + 1] = type(attack) == "table" and attack.hitPos or selfObj.position
 end
 
 local function clearFlashCutBleeds()
     flashCutBleedStacks = {}
+    pendingFlashCutBleeds = {}
 end
 
 local function getWeaponRecord(item)
@@ -198,7 +205,7 @@ local function onHit(attack)
 
     attack.damage.health = (tonumber(attack.damage.health) or 0) * VITAL_STRIKE_DAMAGE_MULTIPLIER
     if flashCutEnabled then
-        addFlashCutBleedStack(attack)
+        queueFlashCutBleedStack(attack)
     end
     core.sound.playSoundFile3d(VITAL_STRIKE_SOUND_FILE, selfObj, {
         volume = 1.0,
@@ -218,6 +225,7 @@ shortBlade.engineHandlers = {
         if type(savedData) == "table" then
             setShortBladeState(savedData)
             flashCutBleedStacks = type(savedData.flashCutBleedStacks) == "table" and savedData.flashCutBleedStacks or {}
+            pendingFlashCutBleeds = {}
         else
             setShortBladeState(initData)
             clearFlashCutBleeds()
@@ -232,6 +240,13 @@ shortBlade.engineHandlers = {
         }
     end,
     onUpdate = function(dt)
+        if #pendingFlashCutBleeds > 0 then
+            for index = 1, #pendingFlashCutBleeds do
+                addFlashCutBleedStack(pendingFlashCutBleeds[index])
+            end
+            pendingFlashCutBleeds = {}
+        end
+
         if #flashCutBleedStacks == 0 then
             return
         end
@@ -247,17 +262,20 @@ shortBlade.engineHandlers = {
                 table.remove(flashCutBleedStacks, index)
             else
                 local remainingTime = math.max(0, tonumber(stack.remainingTime) or 0)
-                local appliedTime = math.min(remainingTime, elapsed)
-                if appliedTime > 0 then
-                    applyHealthDamage(appliedTime * FLASH_CUT_BLEED_DAMAGE_PER_SECOND)
+                local activeTime = math.min(remainingTime, elapsed)
+                stack.remainingTime = remainingTime - activeTime
+                stack.damageTimer = (tonumber(stack.damageTimer) or 0) + activeTime
+                stack.bloodTimer = (tonumber(stack.bloodTimer) or 0) + elapsed
+
+                while stack.damageTimer >= 1.0 do
+                    stack.damageTimer = stack.damageTimer - 1.0
+                    applyHealthDamage(FLASH_CUT_BLEED_DAMAGE_PER_SECOND)
                     if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
                         clearFlashCutBleeds()
                         return
                     end
                 end
 
-                stack.remainingTime = remainingTime - appliedTime
-                stack.bloodTimer = (tonumber(stack.bloodTimer) or 0) + elapsed
                 if stack.remainingTime <= 0 then
                     table.remove(flashCutBleedStacks, index)
                 elseif stack.bloodTimer >= FLASH_CUT_BLOOD_INTERVAL then

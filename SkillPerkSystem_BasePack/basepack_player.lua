@@ -4088,13 +4088,27 @@ do
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
+local storage = require("openmw.storage")
+local types = require("openmw.types")
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local VITAL_STRIKE_PERK_ID = "shortblade_vital_strike"
 local FLASH_CUT_PERK_ID = "shortblade_flash_cut"
+local CLOSE_MEASURE_PERK_ID = "shortblade_close_measure"
 local SHORT_BLADE_STATE_EVENT = "SkillPerkSystem_ShortBladeState"
+local CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
+local SHORT_BLADE_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_ShortBlade"
+local CLOSE_MEASURE_APPLIED_KEY = "close_measure.applied_agility_bonus"
+local CLOSE_MEASURE_MAX_STACKS = 5
+local CLOSE_MEASURE_DURATION = 5.0
+local CLOSE_MEASURE_AGILITY_PER_STACK = 2
 
+local Actor = types.Actor
+local shortBladeStorageSection = storage.playerSection(SHORT_BLADE_STORAGE_SECTION_ID)
 local shortBladeStateDirty = true
 local lastShortBladeStateKey = nil
+local closeMeasureStacks = 0
+local closeMeasureRemaining = 0
+local appliedCloseMeasureAgilityBonus = tonumber(shortBladeStorageSection:get(CLOSE_MEASURE_APPLIED_KEY)) or 0
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4113,6 +4127,42 @@ local function hasEnabledPerk(perkID)
     return true
 end
 
+
+local function resolveAgilityStat()
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes.agility
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyCloseMeasureAgilityBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedCloseMeasureAgilityBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveAgilityStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedCloseMeasureAgilityBonus = desired
+    shortBladeStorageSection:set(CLOSE_MEASURE_APPLIED_KEY, desired)
+end
+
+local function clearCloseMeasureBonus()
+    closeMeasureStacks = 0
+    closeMeasureRemaining = 0
+    applyCloseMeasureAgilityBonus(0)
+end
+
 local function markShortBladeStateDirty()
     shortBladeStateDirty = true
 end
@@ -4120,7 +4170,8 @@ end
 local function publishShortBladeState(force)
     local vitalStrikeEnabled = hasEnabledPerk(VITAL_STRIKE_PERK_ID)
     local flashCutEnabled = hasEnabledPerk(FLASH_CUT_PERK_ID)
-    local stateKey = tostring(vitalStrikeEnabled) .. ":" .. tostring(flashCutEnabled)
+    local closeMeasureEnabled = hasEnabledPerk(CLOSE_MEASURE_PERK_ID)
+    local stateKey = tostring(vitalStrikeEnabled) .. ":" .. tostring(flashCutEnabled) .. ":" .. tostring(closeMeasureEnabled)
     if not force and stateKey == lastShortBladeStateKey then
         return
     end
@@ -4130,6 +4181,7 @@ local function publishShortBladeState(force)
         playerId = pself.id,
         vitalStrikeEnabled = vitalStrikeEnabled,
         flashCutEnabled = flashCutEnabled,
+        closeMeasureEnabled = closeMeasureEnabled,
     })
 end
 
@@ -4137,31 +4189,61 @@ local function handlePerkStateChanged(data)
     if type(data) ~= "table" then
         return
     end
-    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID then
+    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID or data.perkID == CLOSE_MEASURE_PERK_ID then
         markShortBladeStateDirty()
+        if data.perkID == CLOSE_MEASURE_PERK_ID and not hasEnabledPerk(CLOSE_MEASURE_PERK_ID) then
+            clearCloseMeasureBonus()
+        end
     end
 end
 
+local function handleCloseMeasureTrigger(data)
+    if type(data) ~= "table" or data.playerId ~= pself.id then
+        return
+    end
+    if not hasEnabledPerk(CLOSE_MEASURE_PERK_ID) then
+        clearCloseMeasureBonus()
+        return
+    end
+
+    closeMeasureStacks = math.min(CLOSE_MEASURE_MAX_STACKS, closeMeasureStacks + 1)
+    closeMeasureRemaining = CLOSE_MEASURE_DURATION
+    applyCloseMeasureAgilityBonus(closeMeasureStacks * CLOSE_MEASURE_AGILITY_PER_STACK)
+end
+
+
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
-        onUpdate = function()
+        onUpdate = function(dt)
+            if closeMeasureRemaining > 0 then
+                closeMeasureRemaining = math.max(0, closeMeasureRemaining - (tonumber(dt) or 0))
+                if closeMeasureRemaining <= 0 or not hasEnabledPerk(CLOSE_MEASURE_PERK_ID) then
+                    clearCloseMeasureBonus()
+                end
+            elseif appliedCloseMeasureAgilityBonus ~= 0 then
+                clearCloseMeasureBonus()
+            end
+
             if shortBladeStateDirty then
                 shortBladeStateDirty = false
                 publishShortBladeState(false)
             end
         end,
         shouldUpdate = function()
-            return shortBladeStateDirty
+            return shortBladeStateDirty or closeMeasureRemaining > 0 or appliedCloseMeasureAgilityBonus ~= 0
         end,
         onLoad = function()
             lastShortBladeStateKey = nil
             shortBladeStateDirty = true
+            appliedCloseMeasureAgilityBonus = math.max(0, math.floor(tonumber(shortBladeStorageSection:get(CLOSE_MEASURE_APPLIED_KEY)) or 0))
+            clearCloseMeasureBonus()
             publishShortBladeState(true)
             shortBladeStateDirty = false
         end,
     },
     eventHandlers = {
         SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
+        [CLOSE_MEASURE_TRIGGER_EVENT] = handleCloseMeasureTrigger,
         SkillPerkSystem_ShortBladeStateDirty = function() markShortBladeStateDirty() end,
         UiModeChanged = function() markShortBladeStateDirty() end,
     },

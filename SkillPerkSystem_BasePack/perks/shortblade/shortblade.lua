@@ -35,8 +35,8 @@ return {
             cost = 1,
             x = 260,
             y = 170,
-            title = "Flash Cut",
-            description = "Placeholder: rapid short blade strikes can pressure vulnerable targets.",
+            title = "Arterial Cut",
+            description = "Vital Strike critical hits apply a bleeding wound that deals 4 Health damage over 30 seconds. This bleed stacks without limit.",
         },
         {
             id = "shortblade_shadow_step",

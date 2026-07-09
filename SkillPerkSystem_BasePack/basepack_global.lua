@@ -2368,14 +2368,18 @@ end
 
 -- 5a. short blade global state handling
 do
+local world = require("openmw.world")
+
 local shortBladeState = {
     playerId = nil,
     vitalStrikeEnabled = false,
     flashCutEnabled = false,
+    closeMeasureEnabled = false,
 }
+local SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
 
 local function shortBladeTargetStateActive()
-    return (shortBladeState.vitalStrikeEnabled == true or shortBladeState.flashCutEnabled == true) and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
+    return (shortBladeState.vitalStrikeEnabled == true or shortBladeState.flashCutEnabled == true or shortBladeState.closeMeasureEnabled == true) and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
 end
 
 local function sendState(actor)
@@ -2397,8 +2401,25 @@ local function onShortBladeState(data)
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         vitalStrikeEnabled = data.vitalStrikeEnabled == true,
         flashCutEnabled = data.flashCutEnabled == true,
+        closeMeasureEnabled = data.closeMeasureEnabled == true,
     }
     refreshWatchers()
+end
+
+local function forwardCloseMeasureTrigger(data)
+    if type(data) ~= "table" or type(data.playerId) ~= "string" or data.playerId ~= shortBladeState.playerId then
+        return
+    end
+    if not shortBladeState.closeMeasureEnabled then
+        return
+    end
+
+    local player = world.players[1]
+    if player == nil or type(player.sendEvent) ~= "function" or player.id ~= data.playerId then
+        return
+    end
+
+    player:sendEvent(SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT, data)
 end
 
 registerTargetWatcherProvider("shortblade", {
@@ -2409,6 +2430,7 @@ registerTargetWatcherProvider("shortblade", {
 subsystems.shortblade = {
     eventHandlers = {
         SkillPerkSystem_ShortBladeState = onShortBladeState,
+        [SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT] = forwardCloseMeasureTrigger,
     },
     engineHandlers = {
         onLoad = function()
@@ -3977,6 +3999,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
+    SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,

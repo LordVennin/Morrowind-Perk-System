@@ -24,7 +24,7 @@ return {
             x = -260,
             y = 170,
             title = "Close Measure",
-            description = "Placeholder: fighting at knife range improves short blade consistency.",
+            description = "Vital Strike critical hits fortify Agility by 2 points for 5 seconds. This bonus stacks up to 5 times, and each new stack refreshes the duration.",
         },
         {
             id = "shortblade_flash_cut",

@@ -30,9 +30,15 @@ local Weapon = types.Weapon
 local VITAL_STRIKE_CRITICAL_CHANCE = 0.50
 local VITAL_STRIKE_DAMAGE_MULTIPLIER = 1.15
 local VITAL_STRIKE_SOUND_FILE = "Sound\\Fx\\criticalDMG.wav"
+local FLASH_CUT_BLEED_DURATION = 30.0
+local FLASH_CUT_BLEED_DAMAGE = 4.0
+local FLASH_CUT_BLEED_DAMAGE_PER_SECOND = FLASH_CUT_BLEED_DAMAGE / FLASH_CUT_BLEED_DURATION
+local FLASH_CUT_BLOOD_INTERVAL = 2.0
 
 local shortBladePlayerId = nil
 local vitalStrikeEnabled = false
+local flashCutEnabled = false
+local flashCutBleedStacks = {}
 
 local function setShortBladeState(data)
     if type(data) ~= "table" then
@@ -41,6 +47,50 @@ local function setShortBladeState(data)
 
     shortBladePlayerId = type(data.playerId) == "string" and data.playerId or nil
     vitalStrikeEnabled = data.vitalStrikeEnabled == true
+    flashCutEnabled = data.flashCutEnabled == true
+end
+
+local function getHealth()
+    local healthAccessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.dynamic ~= nil
+        and Actor.stats.dynamic.health
+    if type(healthAccessor) ~= "function" then
+        return nil
+    end
+
+    return healthAccessor(selfObj)
+end
+
+local function applyHealthDamage(amount)
+    local health = getHealth()
+    if health == nil or type(health.current) ~= "number" then
+        return false
+    end
+
+    health.current = math.max(0, health.current - math.max(0, tonumber(amount) or 0))
+    return true
+end
+
+local function spawnBloodSpray(position)
+    local spawnBloodEffect = interfaces.Combat ~= nil and interfaces.Combat.spawnBloodEffect
+    if type(spawnBloodEffect) ~= "function" then
+        return
+    end
+
+    spawnBloodEffect(position or selfObj.position)
+end
+
+local function addFlashCutBleedStack(attack)
+    flashCutBleedStacks[#flashCutBleedStacks + 1] = {
+        remainingTime = FLASH_CUT_BLEED_DURATION,
+        bloodTimer = 0,
+    }
+    spawnBloodSpray(type(attack) == "table" and attack.hitPos or selfObj.position)
+end
+
+local function clearFlashCutBleeds()
+    flashCutBleedStacks = {}
 end
 
 local function getWeaponRecord(item)
@@ -147,6 +197,9 @@ local function onHit(attack)
     end
 
     attack.damage.health = (tonumber(attack.damage.health) or 0) * VITAL_STRIKE_DAMAGE_MULTIPLIER
+    if flashCutEnabled then
+        addFlashCutBleedStack(attack)
+    end
     core.sound.playSoundFile3d(VITAL_STRIKE_SOUND_FILE, selfObj, {
         volume = 1.0,
         pitch = 1.0,
@@ -164,19 +217,60 @@ shortBlade.engineHandlers = {
     onLoad = function(savedData, initData)
         if type(savedData) == "table" then
             setShortBladeState(savedData)
+            flashCutBleedStacks = type(savedData.flashCutBleedStacks) == "table" and savedData.flashCutBleedStacks or {}
         else
             setShortBladeState(initData)
+            clearFlashCutBleeds()
         end
     end,
     onSave = function()
         return {
             playerId = shortBladePlayerId,
             vitalStrikeEnabled = vitalStrikeEnabled,
+            flashCutEnabled = flashCutEnabled,
+            flashCutBleedStacks = flashCutBleedStacks,
         }
+    end,
+    onUpdate = function(dt)
+        if #flashCutBleedStacks == 0 then
+            return
+        end
+        if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+            clearFlashCutBleeds()
+            return
+        end
+
+        local elapsed = math.max(0, tonumber(dt) or 0)
+        for index = #flashCutBleedStacks, 1, -1 do
+            local stack = flashCutBleedStacks[index]
+            if type(stack) ~= "table" then
+                table.remove(flashCutBleedStacks, index)
+            else
+                local remainingTime = math.max(0, tonumber(stack.remainingTime) or 0)
+                local appliedTime = math.min(remainingTime, elapsed)
+                if appliedTime > 0 then
+                    applyHealthDamage(appliedTime * FLASH_CUT_BLEED_DAMAGE_PER_SECOND)
+                    if type(Actor.isDead) == "function" and Actor.isDead(selfObj) then
+                        clearFlashCutBleeds()
+                        return
+                    end
+                end
+
+                stack.remainingTime = remainingTime - appliedTime
+                stack.bloodTimer = (tonumber(stack.bloodTimer) or 0) + elapsed
+                if stack.remainingTime <= 0 then
+                    table.remove(flashCutBleedStacks, index)
+                elseif stack.bloodTimer >= FLASH_CUT_BLOOD_INTERVAL then
+                    stack.bloodTimer = 0
+                    spawnBloodSpray(selfObj.position)
+                end
+            end
+        end
     end,
 }
 shortBlade.hasActiveState = function()
-    return vitalStrikeEnabled == true and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= ""
+    return (vitalStrikeEnabled == true and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= "")
+        or #flashCutBleedStacks > 0
 end
 shortBlade.onHit = onHit
 
@@ -2634,6 +2728,7 @@ return {
             }
         end,
         onUpdate = function(dt)
+            callActiveUpdate(shortBlade, dt)
             callActiveUpdate(axe, dt)
             callActiveUpdate(spear, dt)
             callActiveUpdate(blunt, dt)

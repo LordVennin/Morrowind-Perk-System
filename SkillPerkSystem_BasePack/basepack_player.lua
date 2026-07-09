@@ -4090,6 +4090,7 @@ local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local VITAL_STRIKE_PERK_ID = "shortblade_vital_strike"
+local FLASH_CUT_PERK_ID = "shortblade_flash_cut"
 local SHORT_BLADE_STATE_EVENT = "SkillPerkSystem_ShortBladeState"
 
 local shortBladeStateDirty = true
@@ -4118,7 +4119,8 @@ end
 
 local function publishShortBladeState(force)
     local vitalStrikeEnabled = hasEnabledPerk(VITAL_STRIKE_PERK_ID)
-    local stateKey = tostring(vitalStrikeEnabled)
+    local flashCutEnabled = hasEnabledPerk(FLASH_CUT_PERK_ID)
+    local stateKey = tostring(vitalStrikeEnabled) .. ":" .. tostring(flashCutEnabled)
     if not force and stateKey == lastShortBladeStateKey then
         return
     end
@@ -4127,15 +4129,17 @@ local function publishShortBladeState(force)
     core.sendGlobalEvent(SHORT_BLADE_STATE_EVENT, {
         playerId = pself.id,
         vitalStrikeEnabled = vitalStrikeEnabled,
+        flashCutEnabled = flashCutEnabled,
     })
 end
 
 local function handlePerkStateChanged(data)
-    if type(data) ~= "table" or data.perkID ~= VITAL_STRIKE_PERK_ID then
+    if type(data) ~= "table" then
         return
     end
-
-    markShortBladeStateDirty()
+    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID then
+        markShortBladeStateDirty()
+    end
 end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {

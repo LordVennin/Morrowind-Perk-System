@@ -29,7 +29,7 @@ local Weapon = types.Weapon
 
 local VITAL_STRIKE_CRITICAL_CHANCE = 0.50
 local VITAL_STRIKE_DAMAGE_MULTIPLIER = 1.15
-local VITAL_STRIKE_SOUND_FILE = "Sound\\criticalDMG.wav"
+local VITAL_STRIKE_SOUND_FILE = "Sound\\Fx\\criticalDMG.wav"
 
 local shortBladePlayerId = nil
 local vitalStrikeEnabled = false

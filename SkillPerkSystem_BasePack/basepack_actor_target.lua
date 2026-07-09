@@ -34,10 +34,12 @@ local FLASH_CUT_BLEED_DURATION = 30.0
 local FLASH_CUT_BLEED_DAMAGE = 4.0
 local FLASH_CUT_BLEED_DAMAGE_PER_SECOND = FLASH_CUT_BLEED_DAMAGE / FLASH_CUT_BLEED_DURATION
 local FLASH_CUT_BLOOD_INTERVAL = 2.0
+local CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
 
 local shortBladePlayerId = nil
 local vitalStrikeEnabled = false
 local flashCutEnabled = false
+local closeMeasureEnabled = false
 local flashCutBleedStacks = {}
 local pendingFlashCutBleeds = {}
 
@@ -49,6 +51,7 @@ local function setShortBladeState(data)
     shortBladePlayerId = type(data.playerId) == "string" and data.playerId or nil
     vitalStrikeEnabled = data.vitalStrikeEnabled == true
     flashCutEnabled = data.flashCutEnabled == true
+    closeMeasureEnabled = data.closeMeasureEnabled == true
 end
 
 local function getHealth()
@@ -207,6 +210,11 @@ local function onHit(attack)
     if flashCutEnabled then
         queueFlashCutBleedStack(attack)
     end
+    if closeMeasureEnabled then
+        core.sendGlobalEvent(CLOSE_MEASURE_TRIGGER_EVENT, {
+            playerId = shortBladePlayerId,
+        })
+    end
     core.sound.playSoundFile3d(VITAL_STRIKE_SOUND_FILE, selfObj, {
         volume = 1.0,
         pitch = 1.0,
@@ -236,6 +244,7 @@ shortBlade.engineHandlers = {
             playerId = shortBladePlayerId,
             vitalStrikeEnabled = vitalStrikeEnabled,
             flashCutEnabled = flashCutEnabled,
+            closeMeasureEnabled = closeMeasureEnabled,
             flashCutBleedStacks = flashCutBleedStacks,
         }
     end,
@@ -287,7 +296,7 @@ shortBlade.engineHandlers = {
     end,
 }
 shortBlade.hasActiveState = function()
-    return (vitalStrikeEnabled == true and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= "")
+    return ((vitalStrikeEnabled == true or closeMeasureEnabled == true) and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= "")
         or #flashCutBleedStacks > 0
 end
 shortBlade.onHit = onHit

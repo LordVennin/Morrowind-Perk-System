@@ -2252,6 +2252,7 @@ local BULWARK_OF_LIGHT_PERK_ID = "block_bulwark_of_light"
 local AEGIS_RITE_PERK_ID = "block_aegis_rite"
 local SPEAR_LONG_GUARD_PERK_ID = "spear_long_guard"
 local UNARMORED_UNBURDENED_FORM_PERK_ID = "unarmored_unburdened_form"
+local UNARMORED_FLOWING_STEP_PERK_ID = "unarmored_flowing_step"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2263,6 +2264,10 @@ local STEADY_WALL_DURATION = 5.0
 local STEADY_WALL_BLOCK_PER_STACK = 4
 local STEADY_WALL_ARMOR_PER_STACK = 3
 local BLOCK_STATE_REFRESH_INTERVAL = 0.5
+local UNARMORED_FLOWING_STEP_AGILITY_BONUS = 5
+local UNARMORED_FLOWING_STEP_HIGH_FATIGUE_AGILITY_BONUS = 10
+local UNARMORED_FLOWING_STEP_HIGH_FATIGUE_THRESHOLD = 0.75
+local UNARMORED_FLOWING_STEP_APPLIED_KEY = "unarmored.flowing_step.applied_agility_bonus"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local BULWARK_SELF_SPELL_ID = "sps_bullightself"
@@ -2270,6 +2275,7 @@ local AEGIS_RITE_WINDOW = 3.0
 local AEGIS_RITE_MAGICKA_COST = 5
 
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
+local unarmoredRuntimeSection = storage.playerSection(CONFIG_SECTION_ID .. "_Unarmored")
 local baseCombatInterface = nil
 local momentumExpirations = {}
 local runtimeTime = 0
@@ -2279,6 +2285,7 @@ local hallowedGuardRemoveFailureLogged = false
 local hallowedGuardSpellBookFailureState = nil
 local blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
 local blockStateRefreshDue = false
+local appliedUnarmoredFlowingStepAgilityBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_FLOWING_STEP_APPLIED_KEY)) or 0
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -2506,6 +2513,10 @@ end
 
 local function unarmoredUnburdenedFormEnabled()
     return perkEffectEnabled(UNARMORED_UNBURDENED_FORM_PERK_ID)
+end
+
+local function unarmoredFlowingStepEnabled()
+    return perkEffectEnabled(UNARMORED_FLOWING_STEP_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -2852,6 +2863,102 @@ local function hasArmoredCuirassGreavesOrShieldEquipped()
     return false
 end
 
+local function isEquippedArmorOrShield(equipped)
+    return equipped ~= nil
+        and Armor ~= nil
+        and type(Armor.objectIsInstance) == "function"
+        and Armor.objectIsInstance(equipped)
+end
+
+local function hasArmorOrShieldEquipped()
+    if Actor == nil or type(Actor.getEquipment) ~= "function" then
+        return false
+    end
+
+    local okEquipment, equipment = pcall(Actor.getEquipment, pself)
+    if not okEquipment or type(equipment) ~= "table" then
+        return false
+    end
+
+    for _, equipped in pairs(equipment) do
+        if isEquippedArmorOrShield(equipped) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function getBlockRuntimeFatiguePercent()
+    local fatigueAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return 0
+    end
+
+    local fatigue = fatigueAccessor(pself)
+    if fatigue == nil then
+        return 0
+    end
+
+    local current = tonumber(fatigue.current) or 0
+    local base = tonumber(fatigue.base) or current
+    local modifier = tonumber(fatigue.modifier) or 0
+    local maxFatigue = math.max(0, base + modifier)
+    if maxFatigue <= 0 then
+        return 0
+    end
+
+    return current / maxFatigue
+end
+
+local function resolveBlockRuntimeAgilityStat()
+    local accessor = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes ~= nil
+        and Actor.stats.attributes.agility
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applyUnarmoredFlowingStepAgilityBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedUnarmoredFlowingStepAgilityBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveBlockRuntimeAgilityStat()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedUnarmoredFlowingStepAgilityBonus = desired
+    unarmoredRuntimeSection:set(UNARMORED_FLOWING_STEP_APPLIED_KEY, desired)
+end
+
+local function getUnarmoredFlowingStepAgilityBonus()
+    if not unarmoredFlowingStepEnabled() or hasArmorOrShieldEquipped() then
+        return 0
+    end
+
+    if getBlockRuntimeFatiguePercent() > UNARMORED_FLOWING_STEP_HIGH_FATIGUE_THRESHOLD then
+        return UNARMORED_FLOWING_STEP_HIGH_FATIGUE_AGILITY_BONUS
+    end
+
+    return UNARMORED_FLOWING_STEP_AGILITY_BONUS
+end
+
+local function refreshUnarmoredFlowingStepAgilityBonus()
+    applyUnarmoredFlowingStepAgilityBonus(getUnarmoredFlowingStepAgilityBonus())
+end
+
 local function shouldApplyUnarmoredUnburdenedFormBonus()
     if not unarmoredUnburdenedFormEnabled() then
         return false
@@ -3195,7 +3302,9 @@ local function shouldUpdateBlock(dt)
         return true
     end
 
-    if not hallowedGuardApplied and not hallowedGuardEnabled() then
+    local needsHallowedGuardRefresh = hallowedGuardApplied or hallowedGuardEnabled()
+    local needsFlowingStepRefresh = appliedUnarmoredFlowingStepAgilityBonus ~= 0 or unarmoredFlowingStepEnabled()
+    if not needsHallowedGuardRefresh and not needsFlowingStepRefresh then
         return false
     end
 
@@ -3245,12 +3354,14 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
             blockStateRefreshDue = false
             applyMomentumBlockModifier()
+            refreshUnarmoredFlowingStepAgilityBonus()
             updateHallowedGuardAbility()
         end,
         onUpdate = function(dt)
             runtimeTime = runtimeTime + (tonumber(dt) or 0)
             pruneMomentumStacks()
             applyMomentumBlockModifier()
+            refreshUnarmoredFlowingStepAgilityBonus()
             blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
             if blockStateRefreshDue
                 or blockStateRefreshTimer >= BLOCK_STATE_REFRESH_INTERVAL

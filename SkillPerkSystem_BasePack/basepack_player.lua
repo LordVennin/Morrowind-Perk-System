@@ -4094,6 +4094,9 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local VITAL_STRIKE_PERK_ID = "shortblade_vital_strike"
 local FLASH_CUT_PERK_ID = "shortblade_flash_cut"
 local CLOSE_MEASURE_PERK_ID = "shortblade_close_measure"
+local SHADOW_STEP_PERK_ID = "shortblade_shadow_step"
+local SHADOW_STEP_ABILITY_ID = "sps_daggersense"
+local SHADOW_STEP_REFRESH_INTERVAL = 0.5
 local SHORT_BLADE_STATE_EVENT = "SkillPerkSystem_ShortBladeState"
 local CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
 local SHORT_BLADE_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_ShortBlade"
@@ -4103,12 +4106,16 @@ local CLOSE_MEASURE_DURATION = 5.0
 local CLOSE_MEASURE_AGILITY_PER_STACK = 2
 
 local Actor = types.Actor
+local Weapon = types.Weapon
 local shortBladeStorageSection = storage.playerSection(SHORT_BLADE_STORAGE_SECTION_ID)
 local shortBladeStateDirty = true
 local lastShortBladeStateKey = nil
 local closeMeasureStacks = 0
 local closeMeasureRemaining = 0
 local appliedCloseMeasureAgilityBonus = tonumber(shortBladeStorageSection:get(CLOSE_MEASURE_APPLIED_KEY)) or 0
+local shadowStepAbilityApplied = false
+local shadowStepRefreshTimer = SHADOW_STEP_REFRESH_INTERVAL
+local shadowStepRefreshDue = true
 
 local function hasEnabledPerk(perkID)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -4127,6 +4134,193 @@ local function hasEnabledPerk(perkID)
     return true
 end
 
+
+
+local function shadowStepEnabled()
+    return hasEnabledPerk(SHADOW_STEP_PERK_ID)
+end
+
+local function getEquippedItem(slot)
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or slot == nil then
+        return nil
+    end
+
+    local okEquipment, item = pcall(Actor.getEquipment, pself, slot)
+    if not okEquipment then
+        return nil
+    end
+
+    return item
+end
+
+local function getWeaponRecord(item)
+    if item == nil or Weapon == nil then
+        return nil
+    end
+
+    local recordId = type(item) == "string" and item or item.recordId
+    if type(Weapon.record) == "function" then
+        local okRecord, record = pcall(Weapon.record, item)
+        if okRecord and record ~= nil then
+            return record
+        end
+        if type(recordId) == "string" then
+            local okRecordId, recordFromId = pcall(Weapon.record, recordId)
+            if okRecordId and recordFromId ~= nil then
+                return recordFromId
+            end
+        end
+    end
+
+    if type(recordId) == "string" and type(Weapon.records) == "table" then
+        return Weapon.records[recordId]
+    end
+
+    if type(item) == "table" and item.type ~= nil and type(item.type.records) == "table" and type(recordId) == "string" then
+        return item.type.records[recordId]
+    end
+
+    return nil
+end
+
+local function isShortBladeRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+
+    local expected = tonumber(Weapon.TYPE.ShortBladeOneHand)
+    local actual = tonumber(record.type)
+    return expected ~= nil and actual ~= nil and actual == expected
+end
+
+local function hasEquippedShortBlade()
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+
+    local weapon = getEquippedItem(Actor.EQUIPMENT_SLOT.CarriedRight)
+    if weapon == nil then
+        return false
+    end
+
+    if type(Weapon.objectIsInstance) == "function" and not Weapon.objectIsInstance(weapon) then
+        return false
+    end
+
+    return isShortBladeRecord(getWeaponRecord(weapon))
+end
+
+local function getPlayerSpells()
+    if Actor == nil or type(Actor.spells) ~= "function" then
+        return nil
+    end
+
+    local okSpells, spells = pcall(Actor.spells, pself)
+    if not okSpells then
+        return nil
+    end
+
+    return spells
+end
+
+local function resolveAbilityRecord(abilityId)
+    local okRecords, records = pcall(function()
+        return core.magic.spells.records
+    end)
+    if not okRecords or type(records) ~= "table" then
+        return nil
+    end
+
+    return records[abilityId]
+end
+
+local function spellBookHasAbility(spells, abilityId)
+    if spells == nil then
+        return false
+    end
+
+    if type(spells.has) == "function" then
+        local okHasById, hasById = pcall(function() return spells:has(abilityId) end)
+        if okHasById and hasById == true then
+            return true
+        end
+
+        local record = resolveAbilityRecord(abilityId)
+        if record ~= nil then
+            local okHasByRecord, hasByRecord = pcall(function() return spells:has(record) end)
+            if okHasByRecord and hasByRecord == true then
+                return true
+            end
+        end
+    end
+
+    for _, spell in pairs(spells) do
+        if type(spell) == "table" and spell.id == abilityId then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function addAbility(spells, abilityId)
+    if type(spells.add) ~= "function" then
+        return false
+    end
+
+    local okAddById = pcall(function() spells:add(abilityId) end)
+    if okAddById then
+        return true
+    end
+
+    local record = resolveAbilityRecord(abilityId)
+    if record == nil then
+        return false
+    end
+
+    local okAddByRecord = pcall(function() spells:add(record) end)
+    return okAddByRecord == true
+end
+
+local function removeAbility(spells, abilityId)
+    if type(spells.remove) ~= "function" then
+        return false
+    end
+
+    local okRemoveById = pcall(function() spells:remove(abilityId) end)
+    if okRemoveById then
+        return true
+    end
+
+    local record = resolveAbilityRecord(abilityId)
+    if record == nil then
+        return false
+    end
+
+    local okRemoveByRecord = pcall(function() spells:remove(record) end)
+    return okRemoveByRecord == true
+end
+
+local function updateShadowStepAbility()
+    local spells = getPlayerSpells()
+    if spells == nil then
+        return
+    end
+
+    local shouldHave = shadowStepEnabled() and hasEquippedShortBlade()
+    local hasAbility = spellBookHasAbility(spells, SHADOW_STEP_ABILITY_ID)
+    if shouldHave and not hasAbility then
+        if addAbility(spells, SHADOW_STEP_ABILITY_ID) then
+            shadowStepAbilityApplied = true
+        end
+    elseif (not shouldHave) and (hasAbility or shadowStepAbilityApplied) then
+        if removeAbility(spells, SHADOW_STEP_ABILITY_ID) then
+            shadowStepAbilityApplied = false
+        end
+    else
+        shadowStepAbilityApplied = hasAbility and shouldHave
+    end
+end
 
 local function resolveAgilityStat()
     local accessor = Actor ~= nil
@@ -4189,8 +4383,11 @@ local function handlePerkStateChanged(data)
     if type(data) ~= "table" then
         return
     end
-    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID or data.perkID == CLOSE_MEASURE_PERK_ID then
+    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID or data.perkID == CLOSE_MEASURE_PERK_ID or data.perkID == SHADOW_STEP_PERK_ID then
         markShortBladeStateDirty()
+        if data.perkID == SHADOW_STEP_PERK_ID then
+            shadowStepRefreshDue = true
+        end
         if data.perkID == CLOSE_MEASURE_PERK_ID and not hasEnabledPerk(CLOSE_MEASURE_PERK_ID) then
             clearCloseMeasureBonus()
         end
@@ -4224,19 +4421,43 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
                 clearCloseMeasureBonus()
             end
 
+            if shadowStepRefreshDue or shadowStepAbilityApplied then
+                shadowStepRefreshDue = false
+                shadowStepRefreshTimer = 0
+                updateShadowStepAbility()
+            end
+
             if shortBladeStateDirty then
                 shortBladeStateDirty = false
                 publishShortBladeState(false)
             end
         end,
-        shouldUpdate = function()
-            return shortBladeStateDirty or closeMeasureRemaining > 0 or appliedCloseMeasureAgilityBonus ~= 0
+        shouldUpdate = function(dt)
+            if shortBladeStateDirty or closeMeasureRemaining > 0 or appliedCloseMeasureAgilityBonus ~= 0 or shadowStepRefreshDue or shadowStepAbilityApplied then
+                return true
+            end
+
+            if not shadowStepEnabled() then
+                return false
+            end
+
+            shadowStepRefreshTimer = shadowStepRefreshTimer + (tonumber(dt) or 0)
+            if shadowStepRefreshTimer < SHADOW_STEP_REFRESH_INTERVAL then
+                return false
+            end
+
+            shadowStepRefreshDue = true
+            return true
         end,
         onLoad = function()
             lastShortBladeStateKey = nil
             shortBladeStateDirty = true
             appliedCloseMeasureAgilityBonus = math.max(0, math.floor(tonumber(shortBladeStorageSection:get(CLOSE_MEASURE_APPLIED_KEY)) or 0))
             clearCloseMeasureBonus()
+            shadowStepAbilityApplied = false
+            shadowStepRefreshTimer = SHADOW_STEP_REFRESH_INTERVAL
+            shadowStepRefreshDue = true
+            updateShadowStepAbility()
             publishShortBladeState(true)
             shortBladeStateDirty = false
         end,
@@ -4245,7 +4466,10 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
         [CLOSE_MEASURE_TRIGGER_EVENT] = handleCloseMeasureTrigger,
         SkillPerkSystem_ShortBladeStateDirty = function() markShortBladeStateDirty() end,
-        UiModeChanged = function() markShortBladeStateDirty() end,
+        UiModeChanged = function()
+            markShortBladeStateDirty()
+            shadowStepRefreshDue = true
+        end,
     },
 }
 
@@ -4719,6 +4943,7 @@ local function getEquippedBowOrCrossbowRecord()
 
     return record
 end
+
 
 local function resolveAgilityStat()
     local accessor = Actor ~= nil

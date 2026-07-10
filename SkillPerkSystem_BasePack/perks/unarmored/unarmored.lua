@@ -24,7 +24,7 @@ return {
             x = -180,
             y = 140,
             title = "Flowing Step",
-            description = "Placeholder perk for the Unarmored tree.",
+            description = "While you have no armor or shield equipped, fortify Agility by 5. This bonus increases to 10 while you are above 75% Fatigue.",
         },
         {
             id = "unarmored_silk_guard",

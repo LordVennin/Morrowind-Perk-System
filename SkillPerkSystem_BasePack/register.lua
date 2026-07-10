@@ -122,6 +122,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.spear.spear",
         data = require("scripts.SkillPerkSystem_BasePack.perks.spear.spear"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.unarmored.unarmored",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.unarmored.unarmored"),
+    },
 }
 
 

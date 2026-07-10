@@ -2375,11 +2375,13 @@ local shortBladeState = {
     vitalStrikeEnabled = false,
     flashCutEnabled = false,
     closeMeasureEnabled = false,
+    masterOfKnivesEnabled = false,
 }
 local SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
+local SHORT_BLADE_MASTER_OF_KNIVES_TRIGGER_EVENT = "SkillPerkSystem_MasterOfKnivesTriggered"
 
 local function shortBladeTargetStateActive()
-    return (shortBladeState.vitalStrikeEnabled == true or shortBladeState.flashCutEnabled == true or shortBladeState.closeMeasureEnabled == true) and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
+    return (shortBladeState.vitalStrikeEnabled == true or shortBladeState.flashCutEnabled == true or shortBladeState.closeMeasureEnabled == true or shortBladeState.masterOfKnivesEnabled == true) and type(shortBladeState.playerId) == "string" and shortBladeState.playerId ~= ""
 end
 
 local function sendState(actor)
@@ -2402,15 +2404,16 @@ local function onShortBladeState(data)
         vitalStrikeEnabled = data.vitalStrikeEnabled == true,
         flashCutEnabled = data.flashCutEnabled == true,
         closeMeasureEnabled = data.closeMeasureEnabled == true,
+        masterOfKnivesEnabled = data.masterOfKnivesEnabled == true,
     }
     refreshWatchers()
 end
 
-local function forwardCloseMeasureTrigger(data)
+local function forwardShortBladePlayerTrigger(data, requiredStateKey, eventName)
     if type(data) ~= "table" or type(data.playerId) ~= "string" or data.playerId ~= shortBladeState.playerId then
         return
     end
-    if not shortBladeState.closeMeasureEnabled then
+    if not shortBladeState[requiredStateKey] then
         return
     end
 
@@ -2419,7 +2422,15 @@ local function forwardCloseMeasureTrigger(data)
         return
     end
 
-    player:sendEvent(SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT, data)
+    player:sendEvent(eventName, data)
+end
+
+local function forwardCloseMeasureTrigger(data)
+    forwardShortBladePlayerTrigger(data, "closeMeasureEnabled", SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT)
+end
+
+local function forwardMasterOfKnivesTrigger(data)
+    forwardShortBladePlayerTrigger(data, "masterOfKnivesEnabled", SHORT_BLADE_MASTER_OF_KNIVES_TRIGGER_EVENT)
 end
 
 registerTargetWatcherProvider("shortblade", {
@@ -2431,6 +2442,7 @@ subsystems.shortblade = {
     eventHandlers = {
         SkillPerkSystem_ShortBladeState = onShortBladeState,
         [SHORT_BLADE_CLOSE_MEASURE_TRIGGER_EVENT] = forwardCloseMeasureTrigger,
+        [SHORT_BLADE_MASTER_OF_KNIVES_TRIGGER_EVENT] = forwardMasterOfKnivesTrigger,
     },
     engineHandlers = {
         onLoad = function()
@@ -4000,6 +4012,7 @@ local eventHandlers = {
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
+    SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,

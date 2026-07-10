@@ -4095,15 +4095,21 @@ local VITAL_STRIKE_PERK_ID = "shortblade_vital_strike"
 local FLASH_CUT_PERK_ID = "shortblade_flash_cut"
 local CLOSE_MEASURE_PERK_ID = "shortblade_close_measure"
 local SHADOW_STEP_PERK_ID = "shortblade_shadow_step"
+local MASTER_OF_KNIVES_PERK_ID = "shortblade_master_of_knives"
 local SHADOW_STEP_ABILITY_ID = "sps_daggersense"
 local SHADOW_STEP_REFRESH_INTERVAL = 0.5
 local SHORT_BLADE_STATE_EVENT = "SkillPerkSystem_ShortBladeState"
 local CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
+local MASTER_OF_KNIVES_TRIGGER_EVENT = "SkillPerkSystem_MasterOfKnivesTriggered"
 local SHORT_BLADE_STORAGE_SECTION_ID = "SkillPerkSystem_BasePack_ShortBlade"
 local CLOSE_MEASURE_APPLIED_KEY = "close_measure.applied_agility_bonus"
 local CLOSE_MEASURE_MAX_STACKS = 5
 local CLOSE_MEASURE_DURATION = 5.0
 local CLOSE_MEASURE_AGILITY_PER_STACK = 2
+local MASTER_OF_KNIVES_AGILITY_APPLIED_KEY = "master_of_knives.applied_agility_bonus"
+local MASTER_OF_KNIVES_LUCK_APPLIED_KEY = "master_of_knives.applied_luck_bonus"
+local MASTER_OF_KNIVES_DURATION = 5.0
+local MASTER_OF_KNIVES_ATTRIBUTE_PER_STACK = 2
 
 local Actor = types.Actor
 local Weapon = types.Weapon
@@ -4113,6 +4119,9 @@ local lastShortBladeStateKey = nil
 local closeMeasureStacks = 0
 local closeMeasureRemaining = 0
 local appliedCloseMeasureAgilityBonus = tonumber(shortBladeStorageSection:get(CLOSE_MEASURE_APPLIED_KEY)) or 0
+local masterOfKnivesStacks = {}
+local appliedMasterOfKnivesAgilityBonus = tonumber(shortBladeStorageSection:get(MASTER_OF_KNIVES_AGILITY_APPLIED_KEY)) or 0
+local appliedMasterOfKnivesLuckBonus = tonumber(shortBladeStorageSection:get(MASTER_OF_KNIVES_LUCK_APPLIED_KEY)) or 0
 local shadowStepAbilityApplied = false
 local shadowStepRefreshTimer = SHADOW_STEP_REFRESH_INTERVAL
 local shadowStepRefreshDue = true
@@ -4322,6 +4331,18 @@ local function updateShadowStepAbility()
     end
 end
 
+local function resolveAttributeStat(attributeName)
+    local attributes = Actor ~= nil
+        and Actor.stats ~= nil
+        and Actor.stats.attributes
+    local accessor = attributes ~= nil and attributes[attributeName] or nil
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
 local function resolveAgilityStat()
     local accessor = Actor ~= nil
         and Actor.stats ~= nil
@@ -4332,6 +4353,10 @@ local function resolveAgilityStat()
     end
 
     return accessor(pself)
+end
+
+local function resolveLuckStat()
+    return resolveAttributeStat("luck")
 end
 
 local function applyCloseMeasureAgilityBonus(targetBonus)
@@ -4357,6 +4382,62 @@ local function clearCloseMeasureBonus()
     applyCloseMeasureAgilityBonus(0)
 end
 
+
+local function applyMasterOfKnivesAttributeBonus(statResolver, appliedBonus, storageKey, targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedBonus) or 0))
+    if desired == current then
+        return current
+    end
+
+    local stat = statResolver()
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return current
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    shortBladeStorageSection:set(storageKey, desired)
+    return desired
+end
+
+local function applyMasterOfKnivesBonus(targetBonus)
+    appliedMasterOfKnivesAgilityBonus = applyMasterOfKnivesAttributeBonus(
+        resolveAgilityStat,
+        appliedMasterOfKnivesAgilityBonus,
+        MASTER_OF_KNIVES_AGILITY_APPLIED_KEY,
+        targetBonus
+    )
+    appliedMasterOfKnivesLuckBonus = applyMasterOfKnivesAttributeBonus(
+        resolveLuckStat,
+        appliedMasterOfKnivesLuckBonus,
+        MASTER_OF_KNIVES_LUCK_APPLIED_KEY,
+        targetBonus
+    )
+end
+
+local function clearMasterOfKnivesBonus()
+    masterOfKnivesStacks = {}
+    applyMasterOfKnivesBonus(0)
+end
+
+local function refreshMasterOfKnivesBonus(dt)
+    local elapsed = math.max(0, tonumber(dt) or 0)
+    for index = #masterOfKnivesStacks, 1, -1 do
+        local remaining = math.max(0, tonumber(masterOfKnivesStacks[index]) or 0) - elapsed
+        if remaining <= 0 then
+            table.remove(masterOfKnivesStacks, index)
+        else
+            masterOfKnivesStacks[index] = remaining
+        end
+    end
+
+    if #masterOfKnivesStacks == 0 then
+        applyMasterOfKnivesBonus(0)
+    else
+        applyMasterOfKnivesBonus(#masterOfKnivesStacks * MASTER_OF_KNIVES_ATTRIBUTE_PER_STACK)
+    end
+end
+
 local function markShortBladeStateDirty()
     shortBladeStateDirty = true
 end
@@ -4365,7 +4446,8 @@ local function publishShortBladeState(force)
     local vitalStrikeEnabled = hasEnabledPerk(VITAL_STRIKE_PERK_ID)
     local flashCutEnabled = hasEnabledPerk(FLASH_CUT_PERK_ID)
     local closeMeasureEnabled = hasEnabledPerk(CLOSE_MEASURE_PERK_ID)
-    local stateKey = tostring(vitalStrikeEnabled) .. ":" .. tostring(flashCutEnabled) .. ":" .. tostring(closeMeasureEnabled)
+    local masterOfKnivesEnabled = hasEnabledPerk(MASTER_OF_KNIVES_PERK_ID)
+    local stateKey = tostring(vitalStrikeEnabled) .. ":" .. tostring(flashCutEnabled) .. ":" .. tostring(closeMeasureEnabled) .. ":" .. tostring(masterOfKnivesEnabled)
     if not force and stateKey == lastShortBladeStateKey then
         return
     end
@@ -4376,6 +4458,7 @@ local function publishShortBladeState(force)
         vitalStrikeEnabled = vitalStrikeEnabled,
         flashCutEnabled = flashCutEnabled,
         closeMeasureEnabled = closeMeasureEnabled,
+        masterOfKnivesEnabled = masterOfKnivesEnabled,
     })
 end
 
@@ -4383,7 +4466,7 @@ local function handlePerkStateChanged(data)
     if type(data) ~= "table" then
         return
     end
-    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID or data.perkID == CLOSE_MEASURE_PERK_ID or data.perkID == SHADOW_STEP_PERK_ID then
+    if data.perkID == VITAL_STRIKE_PERK_ID or data.perkID == FLASH_CUT_PERK_ID or data.perkID == CLOSE_MEASURE_PERK_ID or data.perkID == SHADOW_STEP_PERK_ID or data.perkID == MASTER_OF_KNIVES_PERK_ID then
         markShortBladeStateDirty()
         if data.perkID == SHADOW_STEP_PERK_ID then
             shadowStepRefreshDue = true
@@ -4391,7 +4474,23 @@ local function handlePerkStateChanged(data)
         if data.perkID == CLOSE_MEASURE_PERK_ID and not hasEnabledPerk(CLOSE_MEASURE_PERK_ID) then
             clearCloseMeasureBonus()
         end
+        if data.perkID == MASTER_OF_KNIVES_PERK_ID and not hasEnabledPerk(MASTER_OF_KNIVES_PERK_ID) then
+            clearMasterOfKnivesBonus()
+        end
     end
+end
+
+local function handleMasterOfKnivesTrigger(data)
+    if type(data) ~= "table" or data.playerId ~= pself.id then
+        return
+    end
+    if not hasEnabledPerk(MASTER_OF_KNIVES_PERK_ID) then
+        clearMasterOfKnivesBonus()
+        return
+    end
+
+    masterOfKnivesStacks[#masterOfKnivesStacks + 1] = MASTER_OF_KNIVES_DURATION
+    applyMasterOfKnivesBonus(#masterOfKnivesStacks * MASTER_OF_KNIVES_ATTRIBUTE_PER_STACK)
 end
 
 local function handleCloseMeasureTrigger(data)
@@ -4412,6 +4511,16 @@ end
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onUpdate = function(dt)
+            if #masterOfKnivesStacks > 0 then
+                if hasEnabledPerk(MASTER_OF_KNIVES_PERK_ID) then
+                    refreshMasterOfKnivesBonus(dt)
+                else
+                    clearMasterOfKnivesBonus()
+                end
+            elseif appliedMasterOfKnivesAgilityBonus ~= 0 or appliedMasterOfKnivesLuckBonus ~= 0 then
+                clearMasterOfKnivesBonus()
+            end
+
             if closeMeasureRemaining > 0 then
                 closeMeasureRemaining = math.max(0, closeMeasureRemaining - (tonumber(dt) or 0))
                 if closeMeasureRemaining <= 0 or not hasEnabledPerk(CLOSE_MEASURE_PERK_ID) then
@@ -4433,7 +4542,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             end
         end,
         shouldUpdate = function(dt)
-            if shortBladeStateDirty or closeMeasureRemaining > 0 or appliedCloseMeasureAgilityBonus ~= 0 or shadowStepRefreshDue or shadowStepAbilityApplied then
+            if shortBladeStateDirty or closeMeasureRemaining > 0 or appliedCloseMeasureAgilityBonus ~= 0 or #masterOfKnivesStacks > 0 or appliedMasterOfKnivesAgilityBonus ~= 0 or appliedMasterOfKnivesLuckBonus ~= 0 or shadowStepRefreshDue or shadowStepAbilityApplied then
                 return true
             end
 
@@ -4453,7 +4562,10 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             lastShortBladeStateKey = nil
             shortBladeStateDirty = true
             appliedCloseMeasureAgilityBonus = math.max(0, math.floor(tonumber(shortBladeStorageSection:get(CLOSE_MEASURE_APPLIED_KEY)) or 0))
+            appliedMasterOfKnivesAgilityBonus = math.max(0, math.floor(tonumber(shortBladeStorageSection:get(MASTER_OF_KNIVES_AGILITY_APPLIED_KEY)) or 0))
+            appliedMasterOfKnivesLuckBonus = math.max(0, math.floor(tonumber(shortBladeStorageSection:get(MASTER_OF_KNIVES_LUCK_APPLIED_KEY)) or 0))
             clearCloseMeasureBonus()
+            clearMasterOfKnivesBonus()
             shadowStepAbilityApplied = false
             shadowStepRefreshTimer = SHADOW_STEP_REFRESH_INTERVAL
             shadowStepRefreshDue = true
@@ -4465,6 +4577,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         SkillPerkSystem_PerkStateChanged = handlePerkStateChanged,
         [CLOSE_MEASURE_TRIGGER_EVENT] = handleCloseMeasureTrigger,
+        [MASTER_OF_KNIVES_TRIGGER_EVENT] = handleMasterOfKnivesTrigger,
         SkillPerkSystem_ShortBladeStateDirty = function() markShortBladeStateDirty() end,
         UiModeChanged = function()
             markShortBladeStateDirty()
@@ -4943,7 +5056,6 @@ local function getEquippedBowOrCrossbowRecord()
 
     return record
 end
-
 
 local function resolveAgilityStat()
     local accessor = Actor ~= nil

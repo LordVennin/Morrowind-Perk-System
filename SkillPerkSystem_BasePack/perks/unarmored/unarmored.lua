@@ -12,7 +12,7 @@ return {
             x = 0,
             y = 0,
             title = "Unburdened Form",
-            description = "Placeholder perk for the Unarmored tree.",
+            description = "While you have no armor or shield equipped, gain Armor equal to your Unarmored skill / 10 (rounded down).",
         },
         {
             id = "unarmored_flowing_step",

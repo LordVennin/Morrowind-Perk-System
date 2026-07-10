@@ -2251,6 +2251,7 @@ local STEADY_WALL_PERK_ID = "block_steady_wall"
 local BULWARK_OF_LIGHT_PERK_ID = "block_bulwark_of_light"
 local AEGIS_RITE_PERK_ID = "block_aegis_rite"
 local SPEAR_LONG_GUARD_PERK_ID = "spear_long_guard"
+local UNARMORED_UNBURDENED_FORM_PERK_ID = "unarmored_unburdened_form"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2503,6 +2504,10 @@ local function spearLongGuardEnabled()
     return perkEffectEnabled(SPEAR_LONG_GUARD_PERK_ID)
 end
 
+local function unarmoredUnburdenedFormEnabled()
+    return perkEffectEnabled(UNARMORED_UNBURDENED_FORM_PERK_ID)
+end
+
 local function hasValidShieldSetup()
     local shield = getEquippedShield(pself)
     if shield == nil then
@@ -2701,6 +2706,21 @@ local function getSpearSkillBonus()
     return math.floor(spearSkill / 10)
 end
 
+local function getUnarmoredSkillBonus()
+    local unarmoredAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.unarmored
+    if type(unarmoredAccessor) ~= "function" then
+        return 0
+    end
+
+    local unarmoredStat = unarmoredAccessor(pself)
+    local unarmoredSkill = unarmoredStat ~= nil and tonumber(unarmoredStat.base) or 0
+    if unarmoredSkill <= 0 then
+        return 0
+    end
+
+    return math.floor(unarmoredSkill / 10)
+end
+
 local function getGuardiansHabitFatigueRestore()
     local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
     if type(blockAccessor) ~= "function" then
@@ -2785,6 +2805,61 @@ local function shouldApplySpearLongGuardBonus()
     return isSpearWeapon(getEquippedRightHand(pself))
 end
 
+local function isArmoredCuirassGreavesOrShield(equipped, slot)
+    if equipped == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(equipped) then
+        return false
+    end
+
+    local armorType = nil
+    if type(Armor.record) == "function" then
+        local okRecord, record = pcall(Armor.record, equipped)
+        if okRecord and record ~= nil then
+            armorType = record.type
+        end
+    end
+
+    if Armor.TYPE ~= nil then
+        if armorType == Armor.TYPE.Cuirass or armorType == Armor.TYPE.Greaves or armorType == Armor.TYPE.Shield then
+            return true
+        end
+    end
+
+    if Actor ~= nil and Actor.EQUIPMENT_SLOT ~= nil then
+        return slot == Actor.EQUIPMENT_SLOT.Cuirass
+            or slot == Actor.EQUIPMENT_SLOT.Greaves
+            or slot == Actor.EQUIPMENT_SLOT.CarriedLeft
+    end
+
+    return false
+end
+
+local function hasArmoredCuirassGreavesOrShieldEquipped()
+    if Actor == nil or type(Actor.getEquipment) ~= "function" then
+        return false
+    end
+
+    local okEquipment, equipment = pcall(Actor.getEquipment, pself)
+    if not okEquipment or type(equipment) ~= "table" then
+        return false
+    end
+
+    for slot, equipped in pairs(equipment) do
+        if isArmoredCuirassGreavesOrShield(equipped, slot) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function shouldApplyUnarmoredUnburdenedFormBonus()
+    if not unarmoredUnburdenedFormEnabled() then
+        return false
+    end
+
+    return not hasArmoredCuirassGreavesOrShieldEquipped()
+end
+
 local function getTotalPassiveArmorBonus()
     local bonus = 0
     if shouldApplyShieldFundamentalsBonus() then
@@ -2792,6 +2867,9 @@ local function getTotalPassiveArmorBonus()
     end
     if shouldApplySpearLongGuardBonus() then
         bonus = bonus + getSpearSkillBonus()
+    end
+    if shouldApplyUnarmoredUnburdenedFormBonus() then
+        bonus = bonus + getUnarmoredSkillBonus()
     end
     bonus = bonus + getMomentumArmorBonus()
     return bonus

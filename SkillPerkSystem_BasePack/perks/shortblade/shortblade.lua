@@ -49,7 +49,7 @@ return {
             x = 0,
             y = 390,
             title = "Shadow Step",
-            description = "Placeholder: nimble footwork enhances short blade follow-up attacks.",
+            description = "While a short blade is equipped, gain Dagger Sense, granting 10 points of Sanctuary.",
         },
         {
             id = "shortblade_master_of_knives",

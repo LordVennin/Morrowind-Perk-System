@@ -61,7 +61,7 @@ return {
             x = 0,
             y = 610,
             title = "Master of Knives",
-            description = "Placeholder: mastery perk for the short blade tree.",
+            description = "Vital Strike critical hits fortify Agility and Luck by 2 points for 5 seconds. This bonus stacks without limit.",
         },
     },
 }

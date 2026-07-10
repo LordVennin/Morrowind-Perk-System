@@ -35,11 +35,13 @@ local FLASH_CUT_BLEED_DAMAGE = 4.0
 local FLASH_CUT_BLEED_DAMAGE_PER_SECOND = FLASH_CUT_BLEED_DAMAGE / FLASH_CUT_BLEED_DURATION
 local FLASH_CUT_BLOOD_INTERVAL = 2.0
 local CLOSE_MEASURE_TRIGGER_EVENT = "SkillPerkSystem_CloseMeasureTriggered"
+local MASTER_OF_KNIVES_TRIGGER_EVENT = "SkillPerkSystem_MasterOfKnivesTriggered"
 
 local shortBladePlayerId = nil
 local vitalStrikeEnabled = false
 local flashCutEnabled = false
 local closeMeasureEnabled = false
+local masterOfKnivesEnabled = false
 local flashCutBleedStacks = {}
 local pendingFlashCutBleeds = {}
 
@@ -52,6 +54,7 @@ local function setShortBladeState(data)
     vitalStrikeEnabled = data.vitalStrikeEnabled == true
     flashCutEnabled = data.flashCutEnabled == true
     closeMeasureEnabled = data.closeMeasureEnabled == true
+    masterOfKnivesEnabled = data.masterOfKnivesEnabled == true
 end
 
 local function getHealth()
@@ -215,6 +218,11 @@ local function onHit(attack)
             playerId = shortBladePlayerId,
         })
     end
+    if masterOfKnivesEnabled then
+        core.sendGlobalEvent(MASTER_OF_KNIVES_TRIGGER_EVENT, {
+            playerId = shortBladePlayerId,
+        })
+    end
     core.sound.playSoundFile3d(VITAL_STRIKE_SOUND_FILE, selfObj, {
         volume = 1.0,
         pitch = 1.0,
@@ -245,6 +253,7 @@ shortBlade.engineHandlers = {
             vitalStrikeEnabled = vitalStrikeEnabled,
             flashCutEnabled = flashCutEnabled,
             closeMeasureEnabled = closeMeasureEnabled,
+            masterOfKnivesEnabled = masterOfKnivesEnabled,
             flashCutBleedStacks = flashCutBleedStacks,
         }
     end,
@@ -296,7 +305,7 @@ shortBlade.engineHandlers = {
     end,
 }
 shortBlade.hasActiveState = function()
-    return ((vitalStrikeEnabled == true or closeMeasureEnabled == true) and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= "")
+    return ((vitalStrikeEnabled == true or closeMeasureEnabled == true or masterOfKnivesEnabled == true) and type(shortBladePlayerId) == "string" and shortBladePlayerId ~= "")
         or #flashCutBleedStacks > 0
 end
 shortBlade.onHit = onHit

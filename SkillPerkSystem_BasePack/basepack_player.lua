@@ -2805,8 +2805,36 @@ local function shouldApplySpearLongGuardBonus()
     return isSpearWeapon(getEquippedRightHand(pself))
 end
 
-local function hasAnyEquippedArmorOrShield()
-    if Actor == nil or Armor == nil or type(Actor.getEquipment) ~= "function" or type(Armor.objectIsInstance) ~= "function" then
+local function isArmoredCuirassGreavesOrShield(equipped, slot)
+    if equipped == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(equipped) then
+        return false
+    end
+
+    local armorType = nil
+    if type(Armor.record) == "function" then
+        local okRecord, record = pcall(Armor.record, equipped)
+        if okRecord and record ~= nil then
+            armorType = record.type
+        end
+    end
+
+    if Armor.TYPE ~= nil then
+        if armorType == Armor.TYPE.Cuirass or armorType == Armor.TYPE.Greaves or armorType == Armor.TYPE.Shield then
+            return true
+        end
+    end
+
+    if Actor ~= nil and Actor.EQUIPMENT_SLOT ~= nil then
+        return slot == Actor.EQUIPMENT_SLOT.Cuirass
+            or slot == Actor.EQUIPMENT_SLOT.Greaves
+            or slot == Actor.EQUIPMENT_SLOT.CarriedLeft
+    end
+
+    return false
+end
+
+local function hasArmoredCuirassGreavesOrShieldEquipped()
+    if Actor == nil or type(Actor.getEquipment) ~= "function" then
         return false
     end
 
@@ -2815,8 +2843,8 @@ local function hasAnyEquippedArmorOrShield()
         return false
     end
 
-    for _, equipped in pairs(equipment) do
-        if equipped ~= nil and Armor.objectIsInstance(equipped) then
+    for slot, equipped in pairs(equipment) do
+        if isArmoredCuirassGreavesOrShield(equipped, slot) then
             return true
         end
     end
@@ -2829,7 +2857,7 @@ local function shouldApplyUnarmoredUnburdenedFormBonus()
         return false
     end
 
-    return not hasAnyEquippedArmorOrShield()
+    return not hasArmoredCuirassGreavesOrShieldEquipped()
 end
 
 local function getTotalPassiveArmorBonus()

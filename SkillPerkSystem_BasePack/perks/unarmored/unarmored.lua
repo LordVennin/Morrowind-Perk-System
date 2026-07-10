@@ -12,7 +12,7 @@ return {
             x = 0,
             y = 0,
             title = "Unburdened Form",
-            description = "While you have no armor or shield equipped, gain Armor equal to your Unarmored skill / 10 (rounded down).",
+            description = "While you have no armored cuirass, greaves, or shield equipped, gain Armor equal to your Unarmored skill / 10 (rounded down).",
         },
         {
             id = "unarmored_flowing_step",

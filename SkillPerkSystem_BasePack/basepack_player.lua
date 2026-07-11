@@ -2253,6 +2253,7 @@ local AEGIS_RITE_PERK_ID = "block_aegis_rite"
 local SPEAR_LONG_GUARD_PERK_ID = "spear_long_guard"
 local UNARMORED_UNBURDENED_FORM_PERK_ID = "unarmored_unburdened_form"
 local UNARMORED_FLOWING_STEP_PERK_ID = "unarmored_flowing_step"
+local UNARMORED_SILK_GUARD_PERK_ID = "unarmored_silk_guard"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2267,7 +2268,12 @@ local BLOCK_STATE_REFRESH_INTERVAL = 0.5
 local UNARMORED_FLOWING_STEP_AGILITY_BONUS = 5
 local UNARMORED_FLOWING_STEP_HIGH_FATIGUE_AGILITY_BONUS = 10
 local UNARMORED_FLOWING_STEP_HIGH_FATIGUE_THRESHOLD = 0.75
+local UNARMORED_SILK_GUARD_ATTRIBUTE_BONUS = 3
+local UNARMORED_SILK_GUARD_HIGH_FATIGUE_ATTRIBUTE_BONUS = 5
+local UNARMORED_SILK_GUARD_HIGH_FATIGUE_THRESHOLD = 0.75
 local UNARMORED_FLOWING_STEP_APPLIED_KEY = "unarmored.flowing_step.applied_agility_bonus"
+local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied_endurance_bonus"
+local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied_willpower_bonus"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local BULWARK_SELF_SPELL_ID = "sps_bullightself"
@@ -2286,6 +2292,8 @@ local hallowedGuardSpellBookFailureState = nil
 local blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
 local blockStateRefreshDue = false
 local appliedUnarmoredFlowingStepAgilityBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_FLOWING_STEP_APPLIED_KEY)) or 0
+local appliedUnarmoredSilkGuardEnduranceBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY)) or 0
+local appliedUnarmoredSilkGuardWillpowerBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY)) or 0
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -2517,6 +2525,10 @@ end
 
 local function unarmoredFlowingStepEnabled()
     return perkEffectEnabled(UNARMORED_FLOWING_STEP_PERK_ID)
+end
+
+local function unarmoredSilkGuardEnabled()
+    return perkEffectEnabled(UNARMORED_SILK_GUARD_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -2914,11 +2926,11 @@ local function getBlockRuntimeFatiguePercent()
     return current / maxFatigue
 end
 
-local function resolveBlockRuntimeAgilityStat()
+local function resolveBlockRuntimeAttributeStat(attributeID)
     local accessor = Actor ~= nil
         and Actor.stats ~= nil
         and Actor.stats.attributes ~= nil
-        and Actor.stats.attributes.agility
+        and Actor.stats.attributes[attributeID]
     if type(accessor) ~= "function" then
         return nil
     end
@@ -2933,7 +2945,7 @@ local function applyUnarmoredFlowingStepAgilityBonus(targetBonus)
         return
     end
 
-    local stat = resolveBlockRuntimeAgilityStat()
+    local stat = resolveBlockRuntimeAttributeStat("agility")
     if stat == nil or type(stat.modifier) ~= "number" then
         return
     end
@@ -2957,6 +2969,51 @@ end
 
 local function refreshUnarmoredFlowingStepAgilityBonus()
     applyUnarmoredFlowingStepAgilityBonus(getUnarmoredFlowingStepAgilityBonus())
+end
+
+local function applyUnarmoredSilkGuardAttributeBonus(attributeID, currentBonus, appliedKey, targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(currentBonus) or 0))
+    if desired == current then
+        return current
+    end
+
+    local stat = resolveBlockRuntimeAttributeStat(attributeID)
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return current
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    unarmoredRuntimeSection:set(appliedKey, desired)
+    return desired
+end
+
+local function getUnarmoredSilkGuardAttributeBonus()
+    if not unarmoredSilkGuardEnabled() or hasArmoredCuirassGreavesOrShieldEquipped() then
+        return 0
+    end
+
+    if getBlockRuntimeFatiguePercent() > UNARMORED_SILK_GUARD_HIGH_FATIGUE_THRESHOLD then
+        return UNARMORED_SILK_GUARD_HIGH_FATIGUE_ATTRIBUTE_BONUS
+    end
+
+    return UNARMORED_SILK_GUARD_ATTRIBUTE_BONUS
+end
+
+local function refreshUnarmoredSilkGuardAttributeBonuses()
+    local bonus = getUnarmoredSilkGuardAttributeBonus()
+    appliedUnarmoredSilkGuardEnduranceBonus = applyUnarmoredSilkGuardAttributeBonus(
+        "endurance",
+        appliedUnarmoredSilkGuardEnduranceBonus,
+        UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY,
+        bonus
+    )
+    appliedUnarmoredSilkGuardWillpowerBonus = applyUnarmoredSilkGuardAttributeBonus(
+        "willpower",
+        appliedUnarmoredSilkGuardWillpowerBonus,
+        UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY,
+        bonus
+    )
 end
 
 local function shouldApplyUnarmoredUnburdenedFormBonus()
@@ -3304,7 +3361,10 @@ local function shouldUpdateBlock(dt)
 
     local needsHallowedGuardRefresh = hallowedGuardApplied or hallowedGuardEnabled()
     local needsFlowingStepRefresh = appliedUnarmoredFlowingStepAgilityBonus ~= 0 or unarmoredFlowingStepEnabled()
-    if not needsHallowedGuardRefresh and not needsFlowingStepRefresh then
+    local needsSilkGuardRefresh = appliedUnarmoredSilkGuardEnduranceBonus ~= 0
+        or appliedUnarmoredSilkGuardWillpowerBonus ~= 0
+        or unarmoredSilkGuardEnabled()
+    if not needsHallowedGuardRefresh and not needsFlowingStepRefresh and not needsSilkGuardRefresh then
         return false
     end
 
@@ -3355,6 +3415,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             blockStateRefreshDue = false
             applyMomentumBlockModifier()
             refreshUnarmoredFlowingStepAgilityBonus()
+            refreshUnarmoredSilkGuardAttributeBonuses()
             updateHallowedGuardAbility()
         end,
         onUpdate = function(dt)
@@ -3362,6 +3423,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             pruneMomentumStacks()
             applyMomentumBlockModifier()
             refreshUnarmoredFlowingStepAgilityBonus()
+            refreshUnarmoredSilkGuardAttributeBonuses()
             blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
             if blockStateRefreshDue
                 or blockStateRefreshTimer >= BLOCK_STATE_REFRESH_INTERVAL

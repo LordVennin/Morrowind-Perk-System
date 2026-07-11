@@ -36,7 +36,7 @@ return {
             x = 180,
             y = 140,
             title = "Silk Guard",
-            description = "Placeholder perk for the Unarmored tree.",
+            description = "While you have no armored cuirass, greaves, or shield equipped, fortify Willpower and Endurance by 3. This bonus increases to 5 while you are above 75% Fatigue.",
         },
         {
             id = "unarmored_empty_mail",

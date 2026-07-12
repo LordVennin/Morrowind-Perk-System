@@ -2254,6 +2254,7 @@ local SPEAR_LONG_GUARD_PERK_ID = "spear_long_guard"
 local UNARMORED_UNBURDENED_FORM_PERK_ID = "unarmored_unburdened_form"
 local UNARMORED_FLOWING_STEP_PERK_ID = "unarmored_flowing_step"
 local UNARMORED_SILK_GUARD_PERK_ID = "unarmored_silk_guard"
+local UNARMORED_EMPTY_MAIL_PERK_ID = "unarmored_empty_mail"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2276,6 +2277,7 @@ local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied
 local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied_willpower_bonus"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
+local UNARMORED_EMPTY_MAIL_ABILITY_ID = "sps_unarmoredbuff"
 local BULWARK_SELF_SPELL_ID = "sps_bullightself"
 local AEGIS_RITE_WINDOW = 3.0
 local AEGIS_RITE_MAGICKA_COST = 5
@@ -2288,6 +2290,9 @@ local runtimeTime = 0
 local hallowedGuardApplied = false
 local hallowedGuardAddFailureLogged = false
 local hallowedGuardRemoveFailureLogged = false
+local unarmoredEmptyMailApplied = false
+local unarmoredEmptyMailAddFailureLogged = false
+local unarmoredEmptyMailRemoveFailureLogged = false
 local hallowedGuardSpellBookFailureState = nil
 local blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
 local blockStateRefreshDue = false
@@ -2531,6 +2536,10 @@ local function unarmoredSilkGuardEnabled()
     return perkEffectEnabled(UNARMORED_SILK_GUARD_PERK_ID)
 end
 
+local function unarmoredEmptyMailEnabled()
+    return perkEffectEnabled(UNARMORED_EMPTY_MAIL_PERK_ID)
+end
+
 local function hasValidShieldSetup()
     local shield = getEquippedShield(pself)
     if shield == nil then
@@ -2696,6 +2705,138 @@ local function updateHallowedGuardAbility()
         end
         hallowedGuardRemoveFailureLogged = false
         hallowedGuardApplied = false
+    end
+end
+
+local function resolveUnarmoredEmptyMailSpellRecord()
+    local okRecords, records = pcall(function()
+        return core.magic.spells.records
+    end)
+    if not okRecords or type(records) ~= "table" then
+        return nil
+    end
+
+    return records[UNARMORED_EMPTY_MAIL_ABILITY_ID]
+end
+
+local function spellBookHasUnarmoredEmptyMail(spells)
+    if spells == nil then
+        return false
+    end
+
+    if type(spells.has) == "function" then
+        local okHasById, valueById = pcall(function()
+            return spells:has(UNARMORED_EMPTY_MAIL_ABILITY_ID)
+        end)
+        if okHasById and valueById == true then
+            return true
+        end
+
+        local spellRecord = resolveUnarmoredEmptyMailSpellRecord()
+        if spellRecord ~= nil then
+            local okHasByRecord, valueByRecord = pcall(function()
+                return spells:has(spellRecord)
+            end)
+            if okHasByRecord and valueByRecord == true then
+                return true
+            end
+        end
+    end
+
+    for _, spell in pairs(spells) do
+        if type(spell) == "table" and spell.id == UNARMORED_EMPTY_MAIL_ABILITY_ID then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function addUnarmoredEmptyMailSpell(spells)
+    if type(spells.add) ~= "function" then
+        return false, "spells.add unavailable"
+    end
+
+    local okAddById, errById = pcall(function()
+        spells:add(UNARMORED_EMPTY_MAIL_ABILITY_ID)
+    end)
+    if okAddById then
+        return true, nil
+    end
+
+    local spellRecord = resolveUnarmoredEmptyMailSpellRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okAddByRecord, errByRecord = pcall(function()
+        spells:add(spellRecord)
+    end)
+    if okAddByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function removeUnarmoredEmptyMailSpell(spells)
+    if type(spells.remove) ~= "function" then
+        return false, "spells.remove unavailable"
+    end
+
+    local okRemoveById, errById = pcall(function()
+        spells:remove(UNARMORED_EMPTY_MAIL_ABILITY_ID)
+    end)
+    if okRemoveById then
+        return true, nil
+    end
+
+    local spellRecord = resolveUnarmoredEmptyMailSpellRecord()
+    if spellRecord == nil then
+        return false, errById
+    end
+
+    local okRemoveByRecord, errByRecord = pcall(function()
+        spells:remove(spellRecord)
+    end)
+    if okRemoveByRecord then
+        return true, nil
+    end
+
+    return false, tostring(errById) .. " | " .. tostring(errByRecord)
+end
+
+local function updateUnarmoredEmptyMailAbility()
+    local spells = getPlayerSpells()
+    if spells == nil then
+        return
+    end
+
+    local shouldHaveAbility = unarmoredEmptyMailEnabled()
+    local hasSpell = spellBookHasUnarmoredEmptyMail(spells)
+
+    if shouldHaveAbility and not hasSpell then
+        local okAdd, addError = addUnarmoredEmptyMailSpell(spells)
+        if not okAdd then
+            if not unarmoredEmptyMailAddFailureLogged then
+                unarmoredEmptyMailAddFailureLogged = true
+                logDebug(string.format("failed to add %s: %s", UNARMORED_EMPTY_MAIL_ABILITY_ID, tostring(addError)))
+            end
+            return
+        end
+        unarmoredEmptyMailAddFailureLogged = false
+        unarmoredEmptyMailApplied = true
+    elseif (not shouldHaveAbility) and (hasSpell or unarmoredEmptyMailApplied) then
+        local okRemove, removeError = removeUnarmoredEmptyMailSpell(spells)
+        if not okRemove then
+            if not unarmoredEmptyMailRemoveFailureLogged then
+                unarmoredEmptyMailRemoveFailureLogged = true
+                logDebug(string.format("failed to remove %s: %s", UNARMORED_EMPTY_MAIL_ABILITY_ID, tostring(removeError)))
+            end
+            return
+        end
+        unarmoredEmptyMailRemoveFailureLogged = false
+        unarmoredEmptyMailApplied = false
     end
 end
 
@@ -3364,7 +3505,8 @@ local function shouldUpdateBlock(dt)
     local needsSilkGuardRefresh = appliedUnarmoredSilkGuardEnduranceBonus ~= 0
         or appliedUnarmoredSilkGuardWillpowerBonus ~= 0
         or unarmoredSilkGuardEnabled()
-    if not needsHallowedGuardRefresh and not needsFlowingStepRefresh and not needsSilkGuardRefresh then
+    local needsEmptyMailRefresh = unarmoredEmptyMailApplied or unarmoredEmptyMailEnabled()
+    if not needsHallowedGuardRefresh and not needsFlowingStepRefresh and not needsSilkGuardRefresh and not needsEmptyMailRefresh then
         return false
     end
 
@@ -3411,12 +3553,14 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             runtimeTime = 0
             momentumExpirations = {}
             hallowedGuardApplied = false
+            unarmoredEmptyMailApplied = false
             blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
             blockStateRefreshDue = false
             applyMomentumBlockModifier()
             refreshUnarmoredFlowingStepAgilityBonus()
             refreshUnarmoredSilkGuardAttributeBonuses()
             updateHallowedGuardAbility()
+            updateUnarmoredEmptyMailAbility()
         end,
         onUpdate = function(dt)
             runtimeTime = runtimeTime + (tonumber(dt) or 0)
@@ -3428,10 +3572,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             if blockStateRefreshDue
                 or blockStateRefreshTimer >= BLOCK_STATE_REFRESH_INTERVAL
                 or hallowedGuardAddFailureLogged
-                or hallowedGuardRemoveFailureLogged then
+                or hallowedGuardRemoveFailureLogged
+                or unarmoredEmptyMailAddFailureLogged
+                or unarmoredEmptyMailRemoveFailureLogged then
                 blockStateRefreshTimer = 0
                 blockStateRefreshDue = false
                 updateHallowedGuardAbility()
+                updateUnarmoredEmptyMailAbility()
             end
         end,
         shouldUpdate = shouldUpdateBlock,

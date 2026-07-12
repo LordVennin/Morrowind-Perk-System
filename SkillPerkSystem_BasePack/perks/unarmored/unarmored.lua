@@ -48,7 +48,7 @@ return {
             x = 0,
             y = 280,
             title = "Empty Mail",
-            description = "Placeholder perk for the Unarmored tree.",
+            description = "Gain the Empty Mail ability, granting resistance to paralysis and magicka.",
         },
         {
             id = "unarmored_master_of_motion",

@@ -2286,7 +2286,6 @@ local AEGIS_RITE_WINDOW = 3.0
 local AEGIS_RITE_MAGICKA_COST = 5
 
 local configSection = storage.playerSection(CONFIG_SECTION_ID)
-local unarmoredRuntimeSection = storage.playerSection(CONFIG_SECTION_ID .. "_Unarmored")
 local baseCombatInterface = nil
 local momentumExpirations = {}
 local runtimeTime = 0
@@ -2299,9 +2298,9 @@ local unarmoredEmptyMailRemoveFailureLogged = false
 local hallowedGuardSpellBookFailureState = nil
 local blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
 local blockStateRefreshDue = false
-local appliedUnarmoredFlowingStepAgilityBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_FLOWING_STEP_APPLIED_KEY)) or 0
-local appliedUnarmoredSilkGuardEnduranceBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY)) or 0
-local appliedUnarmoredSilkGuardWillpowerBonus = tonumber(unarmoredRuntimeSection:get(UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY)) or 0
+local appliedUnarmoredFlowingStepAgilityBonus = 0
+local appliedUnarmoredSilkGuardEnduranceBonus = 0
+local appliedUnarmoredSilkGuardWillpowerBonus = 0
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -3135,7 +3134,6 @@ local function applyUnarmoredFlowingStepAgilityBonus(targetBonus)
 
     stat.modifier = stat.modifier - current + desired
     appliedUnarmoredFlowingStepAgilityBonus = desired
-    unarmoredRuntimeSection:set(UNARMORED_FLOWING_STEP_APPLIED_KEY, desired)
 end
 
 local function getUnarmoredFlowingStepAgilityBonus()
@@ -3154,7 +3152,7 @@ local function refreshUnarmoredFlowingStepAgilityBonus()
     applyUnarmoredFlowingStepAgilityBonus(getUnarmoredFlowingStepAgilityBonus())
 end
 
-local function applyUnarmoredSilkGuardAttributeBonus(attributeID, currentBonus, appliedKey, targetBonus)
+local function applyUnarmoredSilkGuardAttributeBonus(attributeID, currentBonus, targetBonus)
     local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
     local current = math.max(0, math.floor(tonumber(currentBonus) or 0))
     if desired == current then
@@ -3167,7 +3165,6 @@ local function applyUnarmoredSilkGuardAttributeBonus(attributeID, currentBonus, 
     end
 
     stat.modifier = stat.modifier - current + desired
-    unarmoredRuntimeSection:set(appliedKey, desired)
     return desired
 end
 
@@ -3188,13 +3185,11 @@ local function refreshUnarmoredSilkGuardAttributeBonuses()
     appliedUnarmoredSilkGuardEnduranceBonus = applyUnarmoredSilkGuardAttributeBonus(
         "endurance",
         appliedUnarmoredSilkGuardEnduranceBonus,
-        UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY,
         bonus
     )
     appliedUnarmoredSilkGuardWillpowerBonus = applyUnarmoredSilkGuardAttributeBonus(
         "willpower",
         appliedUnarmoredSilkGuardWillpowerBonus,
-        UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY,
         bonus
     )
 end
@@ -3530,6 +3525,26 @@ local function initializeDefaults()
     end
 end
 
+local function onLoadBlockRuntime(data)
+    appliedUnarmoredFlowingStepAgilityBonus = math.max(0, math.floor(tonumber(
+        type(data) == "table" and data[UNARMORED_FLOWING_STEP_APPLIED_KEY]
+    ) or 0))
+    appliedUnarmoredSilkGuardEnduranceBonus = math.max(0, math.floor(tonumber(
+        type(data) == "table" and data[UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY]
+    ) or 0))
+    appliedUnarmoredSilkGuardWillpowerBonus = math.max(0, math.floor(tonumber(
+        type(data) == "table" and data[UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY]
+    ) or 0))
+end
+
+local function onSaveBlockRuntime()
+    return {
+        [UNARMORED_FLOWING_STEP_APPLIED_KEY] = appliedUnarmoredFlowingStepAgilityBonus,
+        [UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY] = appliedUnarmoredSilkGuardEnduranceBonus,
+        [UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY] = appliedUnarmoredSilkGuardWillpowerBonus,
+    }
+end
+
 local function processBlockPerks(attack)
     applyGuardiansHabit(attack)
     applySteadyWallMomentum(attack)
@@ -3599,8 +3614,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
         SkillPerkSystem_TryConsumeAegisRite = onTryConsumeAegisRite,
     },
     engineHandlers = {
-        onLoad = function()
+        onLoad = function(data)
             initializeDefaults()
+            onLoadBlockRuntime(data)
             runtimeTime = 0
             momentumExpirations = {}
             hallowedGuardApplied = false
@@ -3634,6 +3650,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             end
         end,
         shouldUpdate = shouldUpdateBlock,
+        onSave = onSaveBlockRuntime,
         onInterfaceOverride = function(base)
             baseCombatInterface = base
         end,

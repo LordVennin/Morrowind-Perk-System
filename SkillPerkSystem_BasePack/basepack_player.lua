@@ -2255,6 +2255,7 @@ local UNARMORED_UNBURDENED_FORM_PERK_ID = "unarmored_unburdened_form"
 local UNARMORED_FLOWING_STEP_PERK_ID = "unarmored_flowing_step"
 local UNARMORED_SILK_GUARD_PERK_ID = "unarmored_silk_guard"
 local UNARMORED_EMPTY_MAIL_PERK_ID = "unarmored_empty_mail"
+local UNARMORED_MASTER_OF_MOTION_PERK_ID = "unarmored_master_of_motion"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2272,6 +2273,8 @@ local UNARMORED_FLOWING_STEP_HIGH_FATIGUE_THRESHOLD = 0.75
 local UNARMORED_SILK_GUARD_ATTRIBUTE_BONUS = 3
 local UNARMORED_SILK_GUARD_HIGH_FATIGUE_ATTRIBUTE_BONUS = 5
 local UNARMORED_SILK_GUARD_HIGH_FATIGUE_THRESHOLD = 0.75
+local UNARMORED_MASTER_OF_MOTION_FATIGUE_RESTORE_PER_SECOND = 1
+local UNARMORED_MASTER_OF_MOTION_MIN_FATIGUE_THRESHOLD = 0.5
 local UNARMORED_FLOWING_STEP_APPLIED_KEY = "unarmored.flowing_step.applied_agility_bonus"
 local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied_endurance_bonus"
 local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied_willpower_bonus"
@@ -2538,6 +2541,10 @@ end
 
 local function unarmoredEmptyMailEnabled()
     return perkEffectEnabled(UNARMORED_EMPTY_MAIL_PERK_ID)
+end
+
+local function unarmoredMasterOfMotionEnabled()
+    return perkEffectEnabled(UNARMORED_MASTER_OF_MOTION_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -3079,6 +3086,41 @@ local function resolveBlockRuntimeAttributeStat(attributeID)
     return accessor(pself)
 end
 
+
+local function restoreUnarmoredMasterOfMotionFatigue(dt)
+    if not unarmoredMasterOfMotionEnabled() or hasArmoredCuirassGreavesOrShieldEquipped() then
+        return
+    end
+
+    local fatigueAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return
+    end
+
+    local fatigue = fatigueAccessor(pself)
+    if fatigue == nil then
+        return
+    end
+
+    local current = tonumber(fatigue.current) or 0
+    local base = tonumber(fatigue.base) or current
+    local modifier = tonumber(fatigue.modifier) or 0
+    local maxFatigue = math.max(0, base + modifier)
+    if maxFatigue <= 0 or current <= maxFatigue * UNARMORED_MASTER_OF_MOTION_MIN_FATIGUE_THRESHOLD then
+        return
+    end
+
+    local restoreAmount = math.max(0, tonumber(dt) or 0) * UNARMORED_MASTER_OF_MOTION_FATIGUE_RESTORE_PER_SECOND
+    if restoreAmount <= 0 then
+        return
+    end
+
+    fatigue.current = math.min(maxFatigue, current + restoreAmount)
+end
+
 local function applyUnarmoredFlowingStepAgilityBonus(targetBonus)
     local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
     local current = math.max(0, math.floor(tonumber(appliedUnarmoredFlowingStepAgilityBonus) or 0))
@@ -3506,7 +3548,16 @@ local function shouldUpdateBlock(dt)
         or appliedUnarmoredSilkGuardWillpowerBonus ~= 0
         or unarmoredSilkGuardEnabled()
     local needsEmptyMailRefresh = unarmoredEmptyMailApplied or unarmoredEmptyMailEnabled()
-    if not needsHallowedGuardRefresh and not needsFlowingStepRefresh and not needsSilkGuardRefresh and not needsEmptyMailRefresh then
+    local needsMasterOfMotionRefresh = unarmoredMasterOfMotionEnabled()
+    if needsMasterOfMotionRefresh then
+        return true
+    end
+
+    if not needsHallowedGuardRefresh
+        and not needsFlowingStepRefresh
+        and not needsSilkGuardRefresh
+        and not needsEmptyMailRefresh
+        and not needsMasterOfMotionRefresh then
         return false
     end
 
@@ -3568,6 +3619,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             applyMomentumBlockModifier()
             refreshUnarmoredFlowingStepAgilityBonus()
             refreshUnarmoredSilkGuardAttributeBonuses()
+            restoreUnarmoredMasterOfMotionFatigue(dt)
             blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
             if blockStateRefreshDue
                 or blockStateRefreshTimer >= BLOCK_STATE_REFRESH_INTERVAL

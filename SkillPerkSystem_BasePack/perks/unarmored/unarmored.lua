@@ -60,7 +60,7 @@ return {
             x = 0,
             y = 440,
             title = "Master of Motion",
-            description = "Placeholder perk for the Unarmored tree.",
+            description = "While above 50% Fatigue and wearing no armored cuirass, greaves, or shield, restore 1 Fatigue per second.",
         },
     },
 }

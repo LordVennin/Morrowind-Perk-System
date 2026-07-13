@@ -11,8 +11,8 @@ return {
             cost = 1,
             x = -120,
             y = 0,
-            title = "Quick Buckle",
-            description = "Placeholder perk: light armor is fitted for faster movement and easier repositioning.",
+            title = "Fitted Harness",
+            description = "While you have a Light Armor cuirass and greaves equipped, gain Armor equal to your Light Armor skill / 10 (rounded down).",
         },
         {
             id = "lightarmor_soft_landing",

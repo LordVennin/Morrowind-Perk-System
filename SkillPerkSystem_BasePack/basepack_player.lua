@@ -2256,6 +2256,7 @@ local UNARMORED_FLOWING_STEP_PERK_ID = "unarmored_flowing_step"
 local UNARMORED_SILK_GUARD_PERK_ID = "unarmored_silk_guard"
 local UNARMORED_EMPTY_MAIL_PERK_ID = "unarmored_empty_mail"
 local UNARMORED_MASTER_OF_MOTION_PERK_ID = "unarmored_master_of_motion"
+local LIGHTARMOR_QUICK_BUCKLE_PERK_ID = "lightarmor_quick_buckle"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2544,6 +2545,10 @@ end
 
 local function unarmoredMasterOfMotionEnabled()
     return perkEffectEnabled(UNARMORED_MASTER_OF_MOTION_PERK_ID)
+end
+
+local function lightArmorQuickBuckleEnabled()
+    return perkEffectEnabled(LIGHTARMOR_QUICK_BUCKLE_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -2891,6 +2896,24 @@ local function getUnarmoredSkillBonus()
     return math.floor(unarmoredSkill / 10)
 end
 
+local function getLightArmorSkillBonus()
+    local lightArmorAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.lightarmor
+    if type(lightArmorAccessor) ~= "function" then
+        lightArmorAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.lightArmor
+    end
+    if type(lightArmorAccessor) ~= "function" then
+        return 0
+    end
+
+    local lightArmorStat = lightArmorAccessor(pself)
+    local lightArmorSkill = lightArmorStat ~= nil and tonumber(lightArmorStat.base) or 0
+    if lightArmorSkill <= 0 then
+        return 0
+    end
+
+    return math.floor(lightArmorSkill / 10)
+end
+
 local function getGuardiansHabitFatigueRestore()
     local blockAccessor = types.NPC ~= nil and types.NPC.stats ~= nil and types.NPC.stats.skills ~= nil and types.NPC.stats.skills.block
     if type(blockAccessor) ~= "function" then
@@ -2973,6 +2996,90 @@ local function shouldApplySpearLongGuardBonus()
     end
 
     return isSpearWeapon(getEquippedRightHand(pself))
+end
+
+
+local function normalizedArmorRecordText(record)
+    local parts = {}
+    if type(record.id) == "string" then parts[#parts + 1] = record.id end
+    if type(record.name) == "string" then parts[#parts + 1] = record.name end
+    if type(record.icon) == "string" then parts[#parts + 1] = record.icon end
+    if type(record.model) == "string" then parts[#parts + 1] = record.model end
+    return string.lower(table.concat(parts, " "))
+end
+
+local function isLightArmorRecord(record)
+    if record == nil then
+        return false
+    end
+
+    local armorSkill = string.lower(tostring(record.skill or record.armorSkill or record.skillId or ""))
+    if armorSkill == "lightarmor" or armorSkill == "light armor" or armorSkill == "light" then
+        return true
+    elseif armorSkill == "mediumarmor" or armorSkill == "medium armor" or armorSkill == "heavyarmor" or armorSkill == "heavy armor" then
+        return false
+    end
+
+    local recordText = normalizedArmorRecordText(record)
+    local lightArmorHints = {
+        "chitin",
+        "dreugh",
+        "glass",
+        "leather",
+        "netch",
+        "nordic fur",
+        "wolv",
+    }
+    for _, hint in ipairs(lightArmorHints) do
+        if string.find(recordText, hint, 1, true) ~= nil then
+            return true
+        end
+    end
+
+    local nonLightArmorHints = {
+        "adamantium",
+        "bonemold",
+        "chain",
+        "daedric",
+        "dwemer",
+        "ebony",
+        "her hand",
+        "ice armor",
+        "imperial chain",
+        "imperial steel",
+        "iron",
+        "nordic mail",
+        "orcish",
+        "royal guard",
+        "scale",
+        "snow bear",
+        "snow wolf",
+        "steel",
+    }
+    for _, hint in ipairs(nonLightArmorHints) do
+        if string.find(recordText, hint, 1, true) ~= nil then
+            return false
+        end
+    end
+
+    return (tonumber(record.weight) or 0) <= 10
+end
+
+local function isEquippedLightArmorOfType(slot, armorType)
+    local equipped = getEquippedItem(pself, slot)
+    if equipped == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(equipped) then
+        return false
+    end
+
+    local record = nil
+    if type(Armor.record) == "function" then
+        local okRecord, value = pcall(Armor.record, equipped)
+        if okRecord then
+            record = value
+        end
+    end
+
+    return record ~= nil and Armor.TYPE ~= nil and record.type == armorType and isLightArmorRecord(record)
 end
 
 local function isArmoredCuirassGreavesOrShield(equipped, slot)
@@ -3202,6 +3309,15 @@ local function shouldApplyUnarmoredUnburdenedFormBonus()
     return not hasArmoredCuirassGreavesOrShieldEquipped()
 end
 
+local function shouldApplyLightArmorQuickBuckleBonus()
+    if not lightArmorQuickBuckleEnabled() or Actor == nil or Actor.EQUIPMENT_SLOT == nil or Armor == nil or Armor.TYPE == nil then
+        return false
+    end
+
+    return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Cuirass, Armor.TYPE.Cuirass)
+        and isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Greaves, Armor.TYPE.Greaves)
+end
+
 local function getTotalPassiveArmorBonus()
     local bonus = 0
     if shouldApplyShieldFundamentalsBonus() then
@@ -3212,6 +3328,9 @@ local function getTotalPassiveArmorBonus()
     end
     if shouldApplyUnarmoredUnburdenedFormBonus() then
         bonus = bonus + getUnarmoredSkillBonus()
+    end
+    if shouldApplyLightArmorQuickBuckleBonus() then
+        bonus = bonus + getLightArmorSkillBonus()
     end
     bonus = bonus + getMomentumArmorBonus()
     return bonus

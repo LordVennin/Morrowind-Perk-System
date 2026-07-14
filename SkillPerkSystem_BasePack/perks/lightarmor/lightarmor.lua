@@ -24,7 +24,7 @@ return {
             x = 120,
             y = 120,
             title = "Soft Landing",
-            description = "While wearing Light Armor boots, take 20% less fall damage. Argonians and Khajiit instead gain +10 Acrobatics while wearing Light Armor greaves.",
+            description = "Fortify Acrobatics by 10 while wearing Light Armor boots. Argonians and Khajiit receive this bonus from Light Armor greaves instead.",
         },
         {
             id = "lightarmor_skirmisher_stride",

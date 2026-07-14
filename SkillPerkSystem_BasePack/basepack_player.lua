@@ -2277,7 +2277,6 @@ local UNARMORED_SILK_GUARD_HIGH_FATIGUE_ATTRIBUTE_BONUS = 5
 local UNARMORED_SILK_GUARD_HIGH_FATIGUE_THRESHOLD = 0.75
 local UNARMORED_MASTER_OF_MOTION_FATIGUE_RESTORE_PER_SECOND = 1
 local UNARMORED_MASTER_OF_MOTION_MIN_FATIGUE_THRESHOLD = 0.5
-local LIGHTARMOR_SOFT_LANDING_FALL_DAMAGE_MULTIPLIER = 0.8
 local LIGHTARMOR_SOFT_LANDING_ACROBATICS_BONUS = 10
 local UNARMORED_FLOWING_STEP_APPLIED_KEY = "unarmored.flowing_step.applied_agility_bonus"
 local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied_endurance_bonus"
@@ -3135,12 +3134,16 @@ local function hasSoftLandingLightArmorGreaves()
     return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Greaves, Armor.TYPE.Greaves)
 end
 
-local function shouldReduceSoftLandingFallDamage()
-    return lightArmorSoftLandingEnabled() and not isBeastRaceWithoutBoots() and hasSoftLandingLightArmorBoots()
-end
-
 local function shouldApplySoftLandingAcrobaticsBonus()
-    return lightArmorSoftLandingEnabled() and isBeastRaceWithoutBoots() and hasSoftLandingLightArmorGreaves()
+    if not lightArmorSoftLandingEnabled() then
+        return false
+    end
+
+    if isBeastRaceWithoutBoots() then
+        return hasSoftLandingLightArmorGreaves()
+    end
+
+    return hasSoftLandingLightArmorBoots()
 end
 
 local function isArmoredCuirassGreavesOrShield(equipped, slot)

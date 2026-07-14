@@ -2257,6 +2257,7 @@ local UNARMORED_SILK_GUARD_PERK_ID = "unarmored_silk_guard"
 local UNARMORED_EMPTY_MAIL_PERK_ID = "unarmored_empty_mail"
 local UNARMORED_MASTER_OF_MOTION_PERK_ID = "unarmored_master_of_motion"
 local LIGHTARMOR_QUICK_BUCKLE_PERK_ID = "lightarmor_quick_buckle"
+local LIGHTARMOR_SOFT_LANDING_PERK_ID = "lightarmor_soft_landing"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2276,9 +2277,11 @@ local UNARMORED_SILK_GUARD_HIGH_FATIGUE_ATTRIBUTE_BONUS = 5
 local UNARMORED_SILK_GUARD_HIGH_FATIGUE_THRESHOLD = 0.75
 local UNARMORED_MASTER_OF_MOTION_FATIGUE_RESTORE_PER_SECOND = 1
 local UNARMORED_MASTER_OF_MOTION_MIN_FATIGUE_THRESHOLD = 0.5
+local LIGHTARMOR_SOFT_LANDING_ACROBATICS_BONUS = 10
 local UNARMORED_FLOWING_STEP_APPLIED_KEY = "unarmored.flowing_step.applied_agility_bonus"
 local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied_endurance_bonus"
 local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied_willpower_bonus"
+local LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY = "lightarmor.soft_landing.applied_acrobatics_bonus"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local UNARMORED_EMPTY_MAIL_ABILITY_ID = "sps_unarmoredbuff"
@@ -2302,6 +2305,7 @@ local blockStateRefreshDue = false
 local appliedUnarmoredFlowingStepAgilityBonus = 0
 local appliedUnarmoredSilkGuardEnduranceBonus = 0
 local appliedUnarmoredSilkGuardWillpowerBonus = 0
+local appliedSoftLandingAcrobaticsBonus = 0
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -2549,6 +2553,10 @@ end
 
 local function lightArmorQuickBuckleEnabled()
     return perkEffectEnabled(LIGHTARMOR_QUICK_BUCKLE_PERK_ID)
+end
+
+local function lightArmorSoftLandingEnabled()
+    return perkEffectEnabled(LIGHTARMOR_SOFT_LANDING_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -3082,6 +3090,62 @@ local function isEquippedLightArmorOfType(slot, armorType)
     return record ~= nil and Armor.TYPE ~= nil and record.type == armorType and isLightArmorRecord(record)
 end
 
+local function getPlayerRaceId()
+    if types.NPC ~= nil and type(types.NPC.record) == "function" then
+        local okRecord, record = pcall(types.NPC.record, pself)
+        if okRecord and record ~= nil then
+            local race = record.race or record.raceId or record.raceID
+            if race ~= nil then
+                return string.lower(tostring(race))
+            end
+        end
+    end
+
+    local record = pself.record
+    if type(record) == "table" then
+        local race = record.race or record.raceId or record.raceID
+        if race ~= nil then
+            return string.lower(tostring(race))
+        end
+    end
+
+    return ""
+end
+
+local function isBeastRaceWithoutBoots()
+    local raceId = getPlayerRaceId()
+    return string.find(raceId, "argonian", 1, true) ~= nil
+        or string.find(raceId, "khajiit", 1, true) ~= nil
+end
+
+local function hasSoftLandingLightArmorBoots()
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil or Armor == nil or Armor.TYPE == nil then
+        return false
+    end
+
+    return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Boots, Armor.TYPE.Boots)
+end
+
+local function hasSoftLandingLightArmorGreaves()
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil or Armor == nil or Armor.TYPE == nil then
+        return false
+    end
+
+    return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Greaves, Armor.TYPE.Greaves)
+end
+
+local function shouldApplySoftLandingAcrobaticsBonus()
+    if not lightArmorSoftLandingEnabled() then
+        return false
+    end
+
+    if isBeastRaceWithoutBoots() then
+        return hasSoftLandingLightArmorGreaves()
+    end
+
+    return hasSoftLandingLightArmorBoots()
+end
+
 local function isArmoredCuirassGreavesOrShield(equipped, slot)
     if equipped == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(equipped) then
         return false
@@ -3299,6 +3363,42 @@ local function refreshUnarmoredSilkGuardAttributeBonuses()
         appliedUnarmoredSilkGuardWillpowerBonus,
         bonus
     )
+end
+
+local function resolveBlockRuntimeSkillStat(skillID)
+    local accessor = types.NPC ~= nil
+        and types.NPC.stats ~= nil
+        and types.NPC.stats.skills ~= nil
+        and types.NPC.stats.skills[skillID]
+    if type(accessor) ~= "function" then
+        return nil
+    end
+
+    return accessor(pself)
+end
+
+local function applySoftLandingAcrobaticsBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedSoftLandingAcrobaticsBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveBlockRuntimeSkillStat("acrobatics")
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedSoftLandingAcrobaticsBonus = desired
+end
+
+local function refreshSoftLandingAcrobaticsBonus()
+    if shouldApplySoftLandingAcrobaticsBonus() then
+        applySoftLandingAcrobaticsBonus(LIGHTARMOR_SOFT_LANDING_ACROBATICS_BONUS)
+    else
+        applySoftLandingAcrobaticsBonus(0)
+    end
 end
 
 local function shouldApplyUnarmoredUnburdenedFormBonus()
@@ -3654,6 +3754,9 @@ local function onLoadBlockRuntime(data)
     appliedUnarmoredSilkGuardWillpowerBonus = math.max(0, math.floor(tonumber(
         type(data) == "table" and data[UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY]
     ) or 0))
+    appliedSoftLandingAcrobaticsBonus = math.max(0, math.floor(tonumber(
+        type(data) == "table" and data[LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY]
+    ) or 0))
 end
 
 local function onSaveBlockRuntime()
@@ -3661,6 +3764,7 @@ local function onSaveBlockRuntime()
         [UNARMORED_FLOWING_STEP_APPLIED_KEY] = appliedUnarmoredFlowingStepAgilityBonus,
         [UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY] = appliedUnarmoredSilkGuardEnduranceBonus,
         [UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY] = appliedUnarmoredSilkGuardWillpowerBonus,
+        [LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY] = appliedSoftLandingAcrobaticsBonus,
     }
 end
 
@@ -3683,6 +3787,7 @@ local function shouldUpdateBlock(dt)
         or unarmoredSilkGuardEnabled()
     local needsEmptyMailRefresh = unarmoredEmptyMailApplied or unarmoredEmptyMailEnabled()
     local needsMasterOfMotionRefresh = unarmoredMasterOfMotionEnabled()
+    local needsSoftLandingRefresh = appliedSoftLandingAcrobaticsBonus ~= 0 or lightArmorSoftLandingEnabled()
     if needsMasterOfMotionRefresh then
         return true
     end
@@ -3691,7 +3796,8 @@ local function shouldUpdateBlock(dt)
         and not needsFlowingStepRefresh
         and not needsSilkGuardRefresh
         and not needsEmptyMailRefresh
-        and not needsMasterOfMotionRefresh then
+        and not needsMasterOfMotionRefresh
+        and not needsSoftLandingRefresh then
         return false
     end
 
@@ -3745,6 +3851,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             applyMomentumBlockModifier()
             refreshUnarmoredFlowingStepAgilityBonus()
             refreshUnarmoredSilkGuardAttributeBonuses()
+            refreshSoftLandingAcrobaticsBonus()
             updateHallowedGuardAbility()
             updateUnarmoredEmptyMailAbility()
         end,
@@ -3754,6 +3861,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             applyMomentumBlockModifier()
             refreshUnarmoredFlowingStepAgilityBonus()
             refreshUnarmoredSilkGuardAttributeBonuses()
+            refreshSoftLandingAcrobaticsBonus()
             restoreUnarmoredMasterOfMotionFatigue(dt)
             blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
             if blockStateRefreshDue

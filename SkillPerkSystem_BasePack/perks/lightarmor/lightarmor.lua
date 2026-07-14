@@ -24,7 +24,7 @@ return {
             x = 120,
             y = 120,
             title = "Soft Landing",
-            description = "Placeholder perk: flexible padding helps absorb impacts and recover balance.",
+            description = "While wearing Light Armor boots, take 20% less fall damage. Argonians and Khajiit instead gain +10 Acrobatics while wearing Light Armor greaves.",
         },
         {
             id = "lightarmor_skirmisher_stride",

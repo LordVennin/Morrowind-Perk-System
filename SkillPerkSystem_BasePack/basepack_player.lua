@@ -3768,7 +3768,31 @@ local function onSaveBlockRuntime()
     }
 end
 
+local function applySoftLandingFallDamageReduction(attack)
+    if not shouldReduceSoftLandingFallDamage() or type(attack) ~= "table" or type(attack.damage) ~= "table" then
+        return
+    end
+
+    local healthDamage = tonumber(attack.damage.health) or 0
+    if healthDamage <= 0 then
+        return
+    end
+
+    local sourceType = tostring(attack.sourceType or "")
+    local isFallDamage = attack.attacker == nil
+        and (sourceType == "" or sourceType == "Unspecified" or (interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil and sourceType == tostring(interfaces.Combat.ATTACK_SOURCE_TYPES.Unspecified)))
+        and attack.weapon == nil
+        and attack.ammo == nil
+
+    if not isFallDamage then
+        return
+    end
+
+    attack.damage.health = healthDamage * LIGHTARMOR_SOFT_LANDING_FALL_DAMAGE_MULTIPLIER
+end
+
 local function processBlockPerks(attack)
+    applySoftLandingFallDamageReduction(attack)
     applyGuardiansHabit(attack)
     applySteadyWallMomentum(attack)
     primeAegisRite(attack)

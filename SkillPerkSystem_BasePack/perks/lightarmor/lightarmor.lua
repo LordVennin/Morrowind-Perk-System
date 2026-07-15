@@ -36,7 +36,7 @@ return {
             x = -240,
             y = 220,
             title = "Skirmisher Stride",
-            description = "Restore 10 Fatigue when you are hit by an attack.",
+            description = "Restore 10 Fatigue when you are hit by an attack while wearing a Light Armor cuirass.",
         },
         {
             id = "lightarmor_glancing_angle",

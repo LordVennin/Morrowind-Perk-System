@@ -3140,6 +3140,14 @@ local function hasSoftLandingLightArmorGreaves()
     return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Greaves, Armor.TYPE.Greaves)
 end
 
+local function hasSkirmisherStrideLightArmorCuirass()
+    if Actor == nil or Actor.EQUIPMENT_SLOT == nil or Armor == nil or Armor.TYPE == nil then
+        return false
+    end
+
+    return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Cuirass, Armor.TYPE.Cuirass)
+end
+
 local function shouldApplySoftLandingAcrobaticsBonus()
     if not lightArmorSoftLandingEnabled() then
         return false
@@ -3803,6 +3811,10 @@ local function restoreSkirmisherStrideFatigue(attack)
     end
 
     if attack.attacker == nil or attack.successful == false then
+        return
+    end
+
+    if not hasSkirmisherStrideLightArmorCuirass() then
         return
     end
 

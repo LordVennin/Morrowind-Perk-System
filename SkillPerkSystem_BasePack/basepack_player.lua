@@ -3826,6 +3826,49 @@ local function restoreSkirmisherStrideFatigue(attack)
     fatigueStat.current = math.min(maxFatigue, current + LIGHTARMOR_SKIRMISHER_STRIDE_FATIGUE_RESTORE)
 end
 
+local function restoreSkirmisherStrideFatigue(attack)
+    if not lightArmorSkirmisherStrideEnabled() or type(attack) ~= "table" then
+        return
+    end
+
+    if attack.attacker == nil or attack.successful == false then
+        return
+    end
+
+    if not hasSkirmisherStrideLightArmorCuirass() then
+        return
+    end
+
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    local totalDamage = (tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)
+    if totalDamage <= 0 then
+        return
+    end
+
+    local fatigueAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return
+    end
+
+    local fatigueStat = fatigueAccessor(pself)
+    if fatigueStat == nil then
+        return
+    end
+
+    local current = tonumber(fatigueStat.current) or 0
+    local base = tonumber(fatigueStat.base) or current
+    local modifier = tonumber(fatigueStat.modifier) or 0
+    local maxFatigue = math.max(0, base + modifier)
+    if maxFatigue <= 0 then
+        return
+    end
+
+    fatigueStat.current = math.min(maxFatigue, current + LIGHTARMOR_SKIRMISHER_STRIDE_FATIGUE_RESTORE)
+end
+
 local function processBlockPerks(attack)
     restoreSkirmisherStrideFatigue(attack)
     applyGuardiansHabit(attack)

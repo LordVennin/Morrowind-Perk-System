@@ -3160,6 +3160,7 @@ local function shouldApplySoftLandingAcrobaticsBonus()
     return hasSoftLandingLightArmorBoots()
 end
 
+
 local function isArmoredCuirassGreavesOrShield(equipped, slot)
     if equipped == nil or Armor == nil or type(Armor.objectIsInstance) ~= "function" or not Armor.objectIsInstance(equipped) then
         return false
@@ -3782,27 +3783,47 @@ local function onSaveBlockRuntime()
     }
 end
 
-local function applySoftLandingFallDamageReduction(attack)
-    if not shouldReduceSoftLandingFallDamage() or type(attack) ~= "table" or type(attack.damage) ~= "table" then
+local function restoreSkirmisherStrideFatigue(attack)
+    if not lightArmorSkirmisherStrideEnabled() or type(attack) ~= "table" then
         return
     end
 
-    local healthDamage = tonumber(attack.damage.health) or 0
-    if healthDamage <= 0 then
+    if attack.attacker == nil or attack.successful == false then
         return
     end
 
-    local sourceType = tostring(attack.sourceType or "")
-    local isFallDamage = attack.attacker == nil
-        and (sourceType == "" or sourceType == "Unspecified" or (interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil and sourceType == tostring(interfaces.Combat.ATTACK_SOURCE_TYPES.Unspecified)))
-        and attack.weapon == nil
-        and attack.ammo == nil
-
-    if not isFallDamage then
+    if not hasSkirmisherStrideLightArmorCuirass() then
         return
     end
 
-    attack.damage.health = healthDamage * LIGHTARMOR_SOFT_LANDING_FALL_DAMAGE_MULTIPLIER
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    local totalDamage = (tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)
+    if totalDamage <= 0 then
+        return
+    end
+
+    local fatigueAccessor = types.Actor ~= nil
+        and types.Actor.stats ~= nil
+        and types.Actor.stats.dynamic ~= nil
+        and types.Actor.stats.dynamic.fatigue
+    if type(fatigueAccessor) ~= "function" then
+        return
+    end
+
+    local fatigueStat = fatigueAccessor(pself)
+    if fatigueStat == nil then
+        return
+    end
+
+    local current = tonumber(fatigueStat.current) or 0
+    local base = tonumber(fatigueStat.base) or current
+    local modifier = tonumber(fatigueStat.modifier) or 0
+    local maxFatigue = math.max(0, base + modifier)
+    if maxFatigue <= 0 then
+        return
+    end
+
+    fatigueStat.current = math.min(maxFatigue, current + LIGHTARMOR_SKIRMISHER_STRIDE_FATIGUE_RESTORE)
 end
 
 local function restoreSkirmisherStrideFatigue(attack)
@@ -3849,7 +3870,6 @@ local function restoreSkirmisherStrideFatigue(attack)
 end
 
 local function processBlockPerks(attack)
-    applySoftLandingFallDamageReduction(attack)
     restoreSkirmisherStrideFatigue(attack)
     applyGuardiansHabit(attack)
     applySteadyWallMomentum(attack)

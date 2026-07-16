@@ -2475,6 +2475,7 @@ local FLOWING_COUNTER_HEAVY_HEALTH_DAMAGE_MIN = 5
 local FLOWING_COUNTER_HEAVY_HEALTH_DAMAGE_MAX = 10
 
 local playerId = nil
+local openPalmEnabled = false
 local ironKnucklesEnabled = false
 local breakingFistEnabled = false
 local flowingCounterMode = "none"
@@ -2493,6 +2494,7 @@ local function setState(data)
     end
 
     playerId = type(data.playerId) == "string" and data.playerId or nil
+    openPalmEnabled = data.openPalmEnabled == true
     ironKnucklesEnabled = data.ironKnucklesEnabled == true
     breakingFistEnabled = data.breakingFistEnabled == true
     flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
@@ -2635,7 +2637,7 @@ handToHand.eventHandlers = {
     SkillPerkSystem_HandToHandRefresh = setState,
 }
 handToHand.hasActiveState = function()
-    return ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none" or emptyBodyMasteryEnabled
+    return openPalmEnabled or ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none" or emptyBodyMasteryEnabled
 end
 
 handToHand.engineHandlers = {
@@ -2652,6 +2654,7 @@ handToHand.engineHandlers = {
     onSave = function()
         return {
             playerId = playerId,
+            openPalmEnabled = openPalmEnabled,
             ironKnucklesEnabled = ironKnucklesEnabled,
             breakingFistEnabled = breakingFistEnabled,
             flowingCounterMode = flowingCounterMode,

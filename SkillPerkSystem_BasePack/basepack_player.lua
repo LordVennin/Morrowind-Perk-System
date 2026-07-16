@@ -2259,6 +2259,7 @@ local UNARMORED_MASTER_OF_MOTION_PERK_ID = "unarmored_master_of_motion"
 local LIGHTARMOR_QUICK_BUCKLE_PERK_ID = "lightarmor_quick_buckle"
 local LIGHTARMOR_SOFT_LANDING_PERK_ID = "lightarmor_soft_landing"
 local LIGHTARMOR_SKIRMISHER_STRIDE_PERK_ID = "lightarmor_skirmisher_stride"
+local LIGHTARMOR_GLANCING_ANGLE_PERK_ID = "lightarmor_glancing_angle"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2280,10 +2281,15 @@ local UNARMORED_MASTER_OF_MOTION_FATIGUE_RESTORE_PER_SECOND = 1
 local UNARMORED_MASTER_OF_MOTION_MIN_FATIGUE_THRESHOLD = 0.5
 local LIGHTARMOR_SOFT_LANDING_ACROBATICS_BONUS = 10
 local LIGHTARMOR_SKIRMISHER_STRIDE_FATIGUE_RESTORE = 10
+local LIGHTARMOR_GLANCING_ANGLE_MAX_STACKS = 3
+local LIGHTARMOR_GLANCING_ANGLE_DURATION = 5.0
+local LIGHTARMOR_GLANCING_ANGLE_AGILITY_PER_STACK = 5
 local UNARMORED_FLOWING_STEP_APPLIED_KEY = "unarmored.flowing_step.applied_agility_bonus"
 local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied_endurance_bonus"
 local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied_willpower_bonus"
 local LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY = "lightarmor.soft_landing.applied_acrobatics_bonus"
+local LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY = "lightarmor.glancing_angle.applied_agility_bonus"
+local LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY = "lightarmor.glancing_angle.stack_remaining_times"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local UNARMORED_EMPTY_MAIL_ABILITY_ID = "sps_unarmoredbuff"
@@ -2308,6 +2314,8 @@ local appliedUnarmoredFlowingStepAgilityBonus = 0
 local appliedUnarmoredSilkGuardEnduranceBonus = 0
 local appliedUnarmoredSilkGuardWillpowerBonus = 0
 local appliedSoftLandingAcrobaticsBonus = 0
+local appliedGlancingAngleAgilityBonus = 0
+local glancingAngleExpirations = {}
 
 local function logDebug(message)
     if configSection:get(DEBUG_LOGGING_KEY) == true then
@@ -2563,6 +2571,10 @@ end
 
 local function lightArmorSkirmisherStrideEnabled()
     return perkEffectEnabled(LIGHTARMOR_SKIRMISHER_STRIDE_PERK_ID)
+end
+
+local function lightArmorGlancingAngleEnabled()
+    return perkEffectEnabled(LIGHTARMOR_GLANCING_ANGLE_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -3140,12 +3152,16 @@ local function hasSoftLandingLightArmorGreaves()
     return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Greaves, Armor.TYPE.Greaves)
 end
 
-local function hasSkirmisherStrideLightArmorCuirass()
+local function hasLightArmorCuirassEquipped()
     if Actor == nil or Actor.EQUIPMENT_SLOT == nil or Armor == nil or Armor.TYPE == nil then
         return false
     end
 
     return isEquippedLightArmorOfType(Actor.EQUIPMENT_SLOT.Cuirass, Armor.TYPE.Cuirass)
+end
+
+local function hasSkirmisherStrideLightArmorCuirass()
+    return hasLightArmorCuirassEquipped()
 end
 
 local function shouldApplySoftLandingAcrobaticsBonus()
@@ -3390,6 +3406,46 @@ local function resolveBlockRuntimeSkillStat(skillID)
     end
 
     return accessor(pself)
+end
+
+local function pruneGlancingAngleStacks()
+    local kept = {}
+    for _, expiresAt in ipairs(glancingAngleExpirations) do
+        if expiresAt > runtimeTime then
+            kept[#kept + 1] = expiresAt
+        end
+    end
+    glancingAngleExpirations = kept
+end
+
+local function getGlancingAngleStackCount()
+    if not lightArmorGlancingAngleEnabled() or not hasLightArmorCuirassEquipped() then
+        glancingAngleExpirations = {}
+        return 0
+    end
+
+    pruneGlancingAngleStacks()
+    return #glancingAngleExpirations
+end
+
+local function applyGlancingAngleAgilityBonus(targetBonus)
+    local desired = math.max(0, math.floor(tonumber(targetBonus) or 0))
+    local current = math.max(0, math.floor(tonumber(appliedGlancingAngleAgilityBonus) or 0))
+    if desired == current then
+        return
+    end
+
+    local stat = resolveBlockRuntimeAttributeStat("agility")
+    if stat == nil or type(stat.modifier) ~= "number" then
+        return
+    end
+
+    stat.modifier = stat.modifier - current + desired
+    appliedGlancingAngleAgilityBonus = desired
+end
+
+local function refreshGlancingAngleAgilityBonus()
+    applyGlancingAngleAgilityBonus(getGlancingAngleStackCount() * LIGHTARMOR_GLANCING_ANGLE_AGILITY_PER_STACK)
 end
 
 local function applySoftLandingAcrobaticsBonus(targetBonus)
@@ -3759,6 +3815,35 @@ local function initializeDefaults()
     end
 end
 
+local function loadGlancingAngleExpirations(data)
+    glancingAngleExpirations = {}
+    if type(data) ~= "table" or type(data[LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY]) ~= "table" then
+        return
+    end
+
+    for _, remainingTime in ipairs(data[LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY]) do
+        local duration = tonumber(remainingTime) or 0
+        if duration > 0 then
+            glancingAngleExpirations[#glancingAngleExpirations + 1] = runtimeTime + math.min(duration, LIGHTARMOR_GLANCING_ANGLE_DURATION)
+            if #glancingAngleExpirations >= LIGHTARMOR_GLANCING_ANGLE_MAX_STACKS then
+                return
+            end
+        end
+    end
+end
+
+local function getGlancingAngleRemainingTimesForSave()
+    pruneGlancingAngleStacks()
+    local remainingTimes = {}
+    for _, expiresAt in ipairs(glancingAngleExpirations) do
+        local remainingTime = math.max(0, (tonumber(expiresAt) or 0) - runtimeTime)
+        if remainingTime > 0 then
+            remainingTimes[#remainingTimes + 1] = math.min(remainingTime, LIGHTARMOR_GLANCING_ANGLE_DURATION)
+        end
+    end
+    return remainingTimes
+end
+
 local function onLoadBlockRuntime(data)
     appliedUnarmoredFlowingStepAgilityBonus = math.max(0, math.floor(tonumber(
         type(data) == "table" and data[UNARMORED_FLOWING_STEP_APPLIED_KEY]
@@ -3772,6 +3857,10 @@ local function onLoadBlockRuntime(data)
     appliedSoftLandingAcrobaticsBonus = math.max(0, math.floor(tonumber(
         type(data) == "table" and data[LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY]
     ) or 0))
+    appliedGlancingAngleAgilityBonus = math.max(0, math.floor(tonumber(
+        type(data) == "table" and data[LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY]
+    ) or 0))
+    loadGlancingAngleExpirations(data)
 end
 
 local function onSaveBlockRuntime()
@@ -3780,7 +3869,50 @@ local function onSaveBlockRuntime()
         [UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY] = appliedUnarmoredSilkGuardEnduranceBonus,
         [UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY] = appliedUnarmoredSilkGuardWillpowerBonus,
         [LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY] = appliedSoftLandingAcrobaticsBonus,
+        [LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY] = appliedGlancingAngleAgilityBonus,
+        [LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY] = getGlancingAngleRemainingTimesForSave(),
     }
+end
+
+local function isDamagingIncomingHit(attack)
+    if type(attack) ~= "table" then
+        return false
+    end
+
+    if attack.attacker == nil or attack.successful == false then
+        return false
+    end
+
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    local totalDamage = (tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)
+    return totalDamage > 0
+end
+
+local function addGlancingAngleStack(attack)
+    if not lightArmorGlancingAngleEnabled() or not isDamagingIncomingHit(attack) then
+        return
+    end
+
+    if not hasLightArmorCuirassEquipped() then
+        return
+    end
+
+    pruneGlancingAngleStacks()
+    local expiresAt = runtimeTime + LIGHTARMOR_GLANCING_ANGLE_DURATION
+    if #glancingAngleExpirations < LIGHTARMOR_GLANCING_ANGLE_MAX_STACKS then
+        glancingAngleExpirations[#glancingAngleExpirations + 1] = expiresAt
+    else
+        local oldestIndex = 1
+        local oldestTime = glancingAngleExpirations[1]
+        for i = 2, #glancingAngleExpirations do
+            if glancingAngleExpirations[i] < oldestTime then
+                oldestTime = glancingAngleExpirations[i]
+                oldestIndex = i
+            end
+        end
+        glancingAngleExpirations[oldestIndex] = expiresAt
+    end
+    refreshGlancingAngleAgilityBonus()
 end
 
 local function restoreSkirmisherStrideFatigue(attack)
@@ -3871,6 +4003,7 @@ end
 
 local function processBlockPerks(attack)
     restoreSkirmisherStrideFatigue(attack)
+    addGlancingAngleStack(attack)
     applyGuardiansHabit(attack)
     applySteadyWallMomentum(attack)
     primeAegisRite(attack)
@@ -3878,7 +4011,7 @@ local function processBlockPerks(attack)
 end
 
 local function shouldUpdateBlock(dt)
-    if #momentumExpirations > 0 or hallowedGuardAddFailureLogged or hallowedGuardRemoveFailureLogged then
+    if #momentumExpirations > 0 or #glancingAngleExpirations > 0 or hallowedGuardAddFailureLogged or hallowedGuardRemoveFailureLogged then
         return true
     end
 
@@ -3890,6 +4023,7 @@ local function shouldUpdateBlock(dt)
     local needsEmptyMailRefresh = unarmoredEmptyMailApplied or unarmoredEmptyMailEnabled()
     local needsMasterOfMotionRefresh = unarmoredMasterOfMotionEnabled()
     local needsSoftLandingRefresh = appliedSoftLandingAcrobaticsBonus ~= 0 or lightArmorSoftLandingEnabled()
+    local needsGlancingAngleRefresh = appliedGlancingAngleAgilityBonus ~= 0 or lightArmorGlancingAngleEnabled()
     if needsMasterOfMotionRefresh then
         return true
     end
@@ -3899,7 +4033,8 @@ local function shouldUpdateBlock(dt)
         and not needsSilkGuardRefresh
         and not needsEmptyMailRefresh
         and not needsMasterOfMotionRefresh
-        and not needsSoftLandingRefresh then
+        and not needsSoftLandingRefresh
+        and not needsGlancingAngleRefresh then
         return false
     end
 
@@ -3943,9 +4078,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onLoad = function(data)
             initializeDefaults()
-            onLoadBlockRuntime(data)
             runtimeTime = 0
             momentumExpirations = {}
+            onLoadBlockRuntime(data)
             hallowedGuardApplied = false
             unarmoredEmptyMailApplied = false
             blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL
@@ -3954,6 +4089,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             refreshUnarmoredFlowingStepAgilityBonus()
             refreshUnarmoredSilkGuardAttributeBonuses()
             refreshSoftLandingAcrobaticsBonus()
+            refreshGlancingAngleAgilityBonus()
             updateHallowedGuardAbility()
             updateUnarmoredEmptyMailAbility()
         end,
@@ -3964,6 +4100,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             refreshUnarmoredFlowingStepAgilityBonus()
             refreshUnarmoredSilkGuardAttributeBonuses()
             refreshSoftLandingAcrobaticsBonus()
+            refreshGlancingAngleAgilityBonus()
             restoreUnarmoredMasterOfMotionFatigue(dt)
             blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
             if blockStateRefreshDue

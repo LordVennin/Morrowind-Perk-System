@@ -10412,11 +10412,13 @@ local function updateOpenPalm(dt)
 end
 
 local function refreshHandToHandState(force)
+    local openPalmEnabled = hasEnabledPerk(OPEN_PALM_PERK_ID)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
     local emptyBodyMasteryEnabled = hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID)
     local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and cachedFlowingCounterMode() or "none"
-    local stateKey = tostring(ironKnucklesEnabled) .. ":"
+    local stateKey = tostring(openPalmEnabled) .. ":"
+        .. tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
         .. tostring(emptyBodyMasteryEnabled) .. ":"
         .. tostring(flowingCounterMode)
@@ -10428,6 +10430,7 @@ local function refreshHandToHandState(force)
     core.sendGlobalEvent(HAND_TO_HAND_STATE_EVENT, {
         player = pself,
         playerId = pself.id,
+        openPalmEnabled = openPalmEnabled,
         ironKnucklesEnabled = ironKnucklesEnabled,
         breakingFistEnabled = breakingFistEnabled,
         emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,

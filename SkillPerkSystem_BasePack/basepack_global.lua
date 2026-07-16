@@ -2659,6 +2659,7 @@ local WATCHER_REFRESH_INTERVAL = 1.0
 local refreshTimer = 0
 local handToHandState = {
     playerId = nil,
+    openPalmEnabled = false,
     ironKnucklesEnabled = false,
     breakingFistEnabled = false,
     flowingCounterMode = "none",
@@ -2694,7 +2695,8 @@ local function sendState(actor)
 end
 
 local function handToHandTargetStateActive()
-    return handToHandState.ironKnucklesEnabled
+    return handToHandState.openPalmEnabled
+        or handToHandState.ironKnucklesEnabled
         or handToHandState.breakingFistEnabled
         or handToHandState.flowingCounterMode ~= "none"
         or handToHandState.emptyBodyMasteryEnabled
@@ -2711,6 +2713,7 @@ local function onHandToHandState(data)
 
     handToHandState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
+        openPalmEnabled = data.openPalmEnabled == true,
         ironKnucklesEnabled = data.ironKnucklesEnabled == true,
         breakingFistEnabled = data.breakingFistEnabled == true,
         flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",

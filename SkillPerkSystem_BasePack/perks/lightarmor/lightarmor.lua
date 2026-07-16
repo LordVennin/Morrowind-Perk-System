@@ -49,7 +49,7 @@ return {
             x = 40,
             y = 340,
             title = "Glancing Angle",
-            description = "Placeholder perk: angled plates and quick turns turn solid blows into glancing hits.",
+            description = "While wearing a Light Armor cuirass, being hit fortifies Agility by 5 for 5 seconds, stacking up to 3 times.",
         },
         {
             id = "lightarmor_second_skin",

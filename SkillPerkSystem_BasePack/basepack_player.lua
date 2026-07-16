@@ -2289,6 +2289,7 @@ local UNARMORED_SILK_GUARD_ENDURANCE_APPLIED_KEY = "unarmored.silk_guard.applied
 local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied_willpower_bonus"
 local LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY = "lightarmor.soft_landing.applied_acrobatics_bonus"
 local LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY = "lightarmor.glancing_angle.applied_agility_bonus"
+local LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY = "lightarmor.glancing_angle.stack_remaining_times"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local UNARMORED_EMPTY_MAIL_ABILITY_ID = "sps_unarmoredbuff"
@@ -3814,6 +3815,35 @@ local function initializeDefaults()
     end
 end
 
+local function loadGlancingAngleExpirations(data)
+    glancingAngleExpirations = {}
+    if type(data) ~= "table" or type(data[LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY]) ~= "table" then
+        return
+    end
+
+    for _, remainingTime in ipairs(data[LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY]) do
+        local duration = tonumber(remainingTime) or 0
+        if duration > 0 then
+            glancingAngleExpirations[#glancingAngleExpirations + 1] = runtimeTime + math.min(duration, LIGHTARMOR_GLANCING_ANGLE_DURATION)
+            if #glancingAngleExpirations >= LIGHTARMOR_GLANCING_ANGLE_MAX_STACKS then
+                return
+            end
+        end
+    end
+end
+
+local function getGlancingAngleRemainingTimesForSave()
+    pruneGlancingAngleStacks()
+    local remainingTimes = {}
+    for _, expiresAt in ipairs(glancingAngleExpirations) do
+        local remainingTime = math.max(0, (tonumber(expiresAt) or 0) - runtimeTime)
+        if remainingTime > 0 then
+            remainingTimes[#remainingTimes + 1] = math.min(remainingTime, LIGHTARMOR_GLANCING_ANGLE_DURATION)
+        end
+    end
+    return remainingTimes
+end
+
 local function onLoadBlockRuntime(data)
     appliedUnarmoredFlowingStepAgilityBonus = math.max(0, math.floor(tonumber(
         type(data) == "table" and data[UNARMORED_FLOWING_STEP_APPLIED_KEY]
@@ -3830,7 +3860,7 @@ local function onLoadBlockRuntime(data)
     appliedGlancingAngleAgilityBonus = math.max(0, math.floor(tonumber(
         type(data) == "table" and data[LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY]
     ) or 0))
-    glancingAngleExpirations = {}
+    loadGlancingAngleExpirations(data)
 end
 
 local function onSaveBlockRuntime()
@@ -3840,6 +3870,7 @@ local function onSaveBlockRuntime()
         [UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY] = appliedUnarmoredSilkGuardWillpowerBonus,
         [LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY] = appliedSoftLandingAcrobaticsBonus,
         [LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY] = appliedGlancingAngleAgilityBonus,
+        [LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY] = getGlancingAngleRemainingTimesForSave(),
     }
 end
 
@@ -4047,10 +4078,9 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
     engineHandlers = {
         onLoad = function(data)
             initializeDefaults()
-            onLoadBlockRuntime(data)
             runtimeTime = 0
             momentumExpirations = {}
-            glancingAngleExpirations = {}
+            onLoadBlockRuntime(data)
             hallowedGuardApplied = false
             unarmoredEmptyMailApplied = false
             blockStateRefreshTimer = BLOCK_STATE_REFRESH_INTERVAL

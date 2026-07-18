@@ -61,7 +61,7 @@ return {
             x = -120,
             y = 500,
             title = "Second Skin",
-            description = "Placeholder perk: mastery makes light armor move as naturally as clothing.",
+            description = "Equipped Light Armor is weightless and does not affect your encumbrance.",
         },
     },
 }

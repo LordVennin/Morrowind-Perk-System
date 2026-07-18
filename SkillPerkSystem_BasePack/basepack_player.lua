@@ -2260,6 +2260,7 @@ local LIGHTARMOR_QUICK_BUCKLE_PERK_ID = "lightarmor_quick_buckle"
 local LIGHTARMOR_SOFT_LANDING_PERK_ID = "lightarmor_soft_landing"
 local LIGHTARMOR_SKIRMISHER_STRIDE_PERK_ID = "lightarmor_skirmisher_stride"
 local LIGHTARMOR_GLANCING_ANGLE_PERK_ID = "lightarmor_glancing_angle"
+local LIGHTARMOR_SECOND_SKIN_PERK_ID = "lightarmor_second_skin"
 
 local CONFIG_SECTION_ID = "SkillPerkSystem_BasePack_BlockEnchant"
 local DEBUG_LOGGING_KEY = "block.enchant.debug"
@@ -2290,6 +2291,7 @@ local UNARMORED_SILK_GUARD_WILLPOWER_APPLIED_KEY = "unarmored.silk_guard.applied
 local LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY = "lightarmor.soft_landing.applied_acrobatics_bonus"
 local LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY = "lightarmor.glancing_angle.applied_agility_bonus"
 local LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY = "lightarmor.glancing_angle.stack_remaining_times"
+local LIGHTARMOR_SECOND_SKIN_FEATHER_APPLIED_KEY = "lightarmor.second_skin.applied_feather_bonus"
 
 local HALLOWED_GUARD_ABILITY_ID = "sps_hallowedguard"
 local UNARMORED_EMPTY_MAIL_ABILITY_ID = "sps_unarmoredbuff"
@@ -2315,6 +2317,7 @@ local appliedUnarmoredSilkGuardEnduranceBonus = 0
 local appliedUnarmoredSilkGuardWillpowerBonus = 0
 local appliedSoftLandingAcrobaticsBonus = 0
 local appliedGlancingAngleAgilityBonus = 0
+local appliedSecondSkinFeatherBonus = 0
 local glancingAngleExpirations = {}
 
 local function logDebug(message)
@@ -2575,6 +2578,10 @@ end
 
 local function lightArmorGlancingAngleEnabled()
     return perkEffectEnabled(LIGHTARMOR_GLANCING_ANGLE_PERK_ID)
+end
+
+local function lightArmorSecondSkinEnabled()
+    return perkEffectEnabled(LIGHTARMOR_SECOND_SKIN_PERK_ID)
 end
 
 local function hasValidShieldSetup()
@@ -3106,6 +3113,69 @@ local function isEquippedLightArmorOfType(slot, armorType)
     end
 
     return record ~= nil and Armor.TYPE ~= nil and record.type == armorType and isLightArmorRecord(record)
+end
+
+local function getEquippedLightArmorWeight()
+    if Actor == nil or type(Actor.getEquipment) ~= "function" or Armor == nil or type(Armor.objectIsInstance) ~= "function" then
+        return 0
+    end
+
+    local okEquipment, equipment = pcall(Actor.getEquipment, pself)
+    if not okEquipment or type(equipment) ~= "table" then
+        return 0
+    end
+
+    local totalWeight = 0
+    for _, equipped in pairs(equipment) do
+        if equipped ~= nil and Armor.objectIsInstance(equipped) then
+            local record = nil
+            if type(Armor.record) == "function" then
+                local okRecord, value = pcall(Armor.record, equipped)
+                if okRecord then
+                    record = value
+                end
+            end
+            if record ~= nil and isLightArmorRecord(record) then
+                totalWeight = totalWeight + math.max(0, tonumber(record.weight) or 0)
+            end
+        end
+    end
+
+    return totalWeight
+end
+
+local function modifyFeatherEffect(delta)
+    if Actor == nil or type(Actor.activeEffects) ~= "function" then
+        return false
+    end
+
+    local effectType = core.magic and core.magic.EFFECT_TYPE and core.magic.EFFECT_TYPE.Feather
+    if effectType == nil then
+        return false
+    end
+
+    local okEffects, activeEffects = pcall(Actor.activeEffects, pself)
+    if not okEffects or activeEffects == nil or type(activeEffects.modify) ~= "function" then
+        return false
+    end
+
+    return pcall(activeEffects.modify, activeEffects, delta, effectType)
+end
+
+local function refreshSecondSkinFeatherBonus()
+    local targetBonus = 0
+    if lightArmorSecondSkinEnabled() then
+        targetBonus = getEquippedLightArmorWeight()
+    end
+
+    if targetBonus == appliedSecondSkinFeatherBonus then
+        return
+    end
+
+    local delta = targetBonus - appliedSecondSkinFeatherBonus
+    if modifyFeatherEffect(delta) then
+        appliedSecondSkinFeatherBonus = targetBonus
+    end
 end
 
 local function getPlayerRaceId()
@@ -3860,6 +3930,9 @@ local function onLoadBlockRuntime(data)
     appliedGlancingAngleAgilityBonus = math.max(0, math.floor(tonumber(
         type(data) == "table" and data[LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY]
     ) or 0))
+    appliedSecondSkinFeatherBonus = math.max(0, tonumber(
+        type(data) == "table" and data[LIGHTARMOR_SECOND_SKIN_FEATHER_APPLIED_KEY]
+    ) or 0)
     loadGlancingAngleExpirations(data)
 end
 
@@ -3871,6 +3944,7 @@ local function onSaveBlockRuntime()
         [LIGHTARMOR_SOFT_LANDING_ACROBATICS_APPLIED_KEY] = appliedSoftLandingAcrobaticsBonus,
         [LIGHTARMOR_GLANCING_ANGLE_AGILITY_APPLIED_KEY] = appliedGlancingAngleAgilityBonus,
         [LIGHTARMOR_GLANCING_ANGLE_STACKS_SAVE_KEY] = getGlancingAngleRemainingTimesForSave(),
+        [LIGHTARMOR_SECOND_SKIN_FEATHER_APPLIED_KEY] = appliedSecondSkinFeatherBonus,
     }
 end
 
@@ -4024,6 +4098,7 @@ local function shouldUpdateBlock(dt)
     local needsMasterOfMotionRefresh = unarmoredMasterOfMotionEnabled()
     local needsSoftLandingRefresh = appliedSoftLandingAcrobaticsBonus ~= 0 or lightArmorSoftLandingEnabled()
     local needsGlancingAngleRefresh = appliedGlancingAngleAgilityBonus ~= 0 or lightArmorGlancingAngleEnabled()
+    local needsSecondSkinRefresh = appliedSecondSkinFeatherBonus ~= 0 or lightArmorSecondSkinEnabled()
     if needsMasterOfMotionRefresh then
         return true
     end
@@ -4034,7 +4109,8 @@ local function shouldUpdateBlock(dt)
         and not needsEmptyMailRefresh
         and not needsMasterOfMotionRefresh
         and not needsSoftLandingRefresh
-        and not needsGlancingAngleRefresh then
+        and not needsGlancingAngleRefresh
+        and not needsSecondSkinRefresh then
         return false
     end
 
@@ -4090,6 +4166,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             refreshUnarmoredSilkGuardAttributeBonuses()
             refreshSoftLandingAcrobaticsBonus()
             refreshGlancingAngleAgilityBonus()
+            refreshSecondSkinFeatherBonus()
             updateHallowedGuardAbility()
             updateUnarmoredEmptyMailAbility()
         end,
@@ -4101,6 +4178,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             refreshUnarmoredSilkGuardAttributeBonuses()
             refreshSoftLandingAcrobaticsBonus()
             refreshGlancingAngleAgilityBonus()
+            refreshSecondSkinFeatherBonus()
             restoreUnarmoredMasterOfMotionFatigue(dt)
             blockStateRefreshTimer = blockStateRefreshTimer + (tonumber(dt) or 0)
             if blockStateRefreshDue

@@ -12,7 +12,7 @@ local __basepack_repair_tool_state = {
 ----------------------------------------------------------------------
 -- steady hands logic (from steady_hands_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initSteadyHands()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -820,11 +820,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initSteadyHands()
 
 ----------------------------------------------------------------------
 -- tumbler sense logic (from tumbler_sense_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initTumblerSense()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -1444,6 +1445,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initTumblerSense()
 
 ----------------------------------------------------------------------
 -- quick pick logic (from quick_pick_runtime.lua)
@@ -1555,7 +1557,7 @@ local function registerBasepackAnimationHandler(handler)
     __basepack_animation_handlers[#__basepack_animation_handlers + 1] = handler
 end
 
-do
+local function __basepack_initQuickPick()
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
@@ -1670,11 +1672,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initQuickPick()
 
 ----------------------------------------------------------------------
 -- lucky find player logic (from lucky_find_player_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initLuckyFind()
 local pself = require("openmw.self")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -1919,11 +1922,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initLuckyFind()
 
 ----------------------------------------------------------------------
 -- unseen hand player logic (from unseen_hand_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initUnseenHand()
 local interfaces = require("openmw.interfaces")
 local core = require("openmw.core")
 local pself = require("openmw.self")
@@ -2223,11 +2227,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initUnseenHand()
 
 ----------------------------------------------------------------------
 -- block runtime logic (from block_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initBlockRuntime()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -4202,11 +4207,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initBlockRuntime()
 
 ----------------------------------------------------------------------
 -- longblade runtime logic (from longblade_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initLongblade()
 local interfaces = require("openmw.interfaces")
 local ui = require("openmw.ui")
 local pself = require("openmw.self")
@@ -5090,12 +5096,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initLongblade()
 
 
 ----------------------------------------------------------------------
 -- short blade runtime logic
 ----------------------------------------------------------------------
-do
+local function __basepack_initShortblade()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -5598,12 +5605,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initShortblade()
 
 
 ----------------------------------------------------------------------
 -- axe runtime logic (from axe_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initAxe()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -5903,11 +5911,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initAxe()
 
 ----------------------------------------------------------------------
 -- marksman runtime logic (from marksman_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initMarksman()
 local core = require("openmw.core")
 local input = require("openmw.input")
 local interfaces = require("openmw.interfaces")
@@ -6304,11 +6313,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initMarksman()
 
 ----------------------------------------------------------------------
 -- spear runtime logic
 ----------------------------------------------------------------------
-do
+local function __basepack_initSpear()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -6837,11 +6847,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initSpear()
 
 ----------------------------------------------------------------------
 -- blunt weapon runtime logic (from bluntweapon_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initBluntWeapon()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -7215,11 +7226,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initBluntWeapon()
 
 ----------------------------------------------------------------------
 -- block reactive local logic (from block_reactive_local.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initBlockReactive()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local selfObj = require("openmw.self")
@@ -7474,11 +7486,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initBlockReactive()
 
 ----------------------------------------------------------------------
 -- apprentice hammer runtime logic (from apprentice_hammer_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initApprenticeHammer()
 local async = require("openmw.async")
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
@@ -9296,11 +9309,12 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initApprenticeHammer()
 
 ----------------------------------------------------------------------
 -- careful repairs runtime logic (from careful_repairs_runtime.lua)
 ----------------------------------------------------------------------
-do
+local function __basepack_initCarefulRepairs()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -9893,12 +9907,13 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initCarefulRepairs()
 
 
 ----------------------------------------------------------------------
 -- hand-to-hand runtime logic
 ----------------------------------------------------------------------
-do
+local function __basepack_initHandToHand()
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
@@ -10895,6 +10910,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
 }
 
 end
+__basepack_initHandToHand()
 
 ----------------------------------------------------------------------
 -- combined eventHandlers

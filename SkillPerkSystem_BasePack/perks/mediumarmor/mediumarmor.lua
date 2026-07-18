@@ -48,7 +48,7 @@ return {
             x = -180,
             y = 400,
             title = "Armored Poise",
-            description = "While wearing a Medium Armor cuirass, gain the Armored Poise ability.",
+            description = "While wearing a Medium Armor cuirass, gain the Armored Poise ability. Granting slight resistance to normal weapons and magicka",
         },
         {
             id = "mediumarmor_battle_ready",

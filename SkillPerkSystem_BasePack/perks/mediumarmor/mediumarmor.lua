@@ -12,7 +12,7 @@ return {
             x = -300,
             y = 40,
             title = "Balanced Fit",
-            description = "Placeholder perk for the Medium Armor tree.",
+            description = "While wearing both a Medium Armor cuirass and Medium Armor greaves, fortify Athletics and Speed by 5.",
         },
         {
             id = "mediumarmor_layered_padding",
@@ -24,7 +24,7 @@ return {
             x = -60,
             y = 160,
             title = "Layered Padding",
-            description = "Placeholder perk for the Medium Armor tree.",
+            description = "Increase Armor Rating by 1 for each equipped piece of Medium Armor.",
         },
         {
             id = "mediumarmor_steady_guard",
@@ -36,7 +36,7 @@ return {
             x = 220,
             y = 260,
             title = "Steady Guard",
-            description = "Placeholder perk for the Medium Armor tree.",
+            description = "When you are hit by an attack, fortify Medium Armor by 3 for 10 seconds. Stacks up to 5 times, and each new stack refreshes all stacks.",
         },
         {
             id = "mediumarmor_tempered_stride",
@@ -47,8 +47,8 @@ return {
             cost = 1,
             x = -180,
             y = 400,
-            title = "Tempered Stride",
-            description = "Placeholder perk for the Medium Armor tree.",
+            title = "Armored Poise",
+            description = "While wearing a Medium Armor cuirass, gain the Armored Poise ability.",
         },
         {
             id = "mediumarmor_battle_ready",
@@ -60,7 +60,7 @@ return {
             x = 260,
             y = 540,
             title = "Battle Ready",
-            description = "Placeholder perk for the Medium Armor tree.",
+            description = "While wearing a Medium Armor cuirass and greaves with Fatigue above 70%, fortify Medium Armor by 20.",
         },
     },
 }

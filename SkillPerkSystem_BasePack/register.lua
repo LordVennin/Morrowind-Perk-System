@@ -123,6 +123,10 @@ local modules = {
         data = require("scripts.SkillPerkSystem_BasePack.perks.lightarmor.lightarmor"),
     },
     {
+        source = "scripts.SkillPerkSystem_BasePack.perks.mediumarmor.mediumarmor",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.mediumarmor.mediumarmor"),
+    },
+    {
         source = "scripts.SkillPerkSystem_BasePack.perks.spear.spear",
         data = require("scripts.SkillPerkSystem_BasePack.perks.spear.spear"),
     },

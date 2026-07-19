@@ -138,6 +138,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.unarmored.unarmored",
         data = require("scripts.SkillPerkSystem_BasePack.perks.unarmored.unarmored"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.destruction.destruction",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.destruction.destruction"),
+    },
 }
 
 

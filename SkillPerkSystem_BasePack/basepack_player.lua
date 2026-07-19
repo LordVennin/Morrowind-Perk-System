@@ -2612,6 +2612,7 @@ local state = {
     shockSkill = 0,
     shockRemaining = 0,
     shockFatigueRemaining = 0,
+    recentCombatSignalUntil = 0,
     anvilStacks = {},
     anvilEndurance = 0,
     anvilSkill = 0,
@@ -2727,6 +2728,9 @@ local function restoreFatigue(amount)
 end
 
 local function inCombat()
+    if state.recentCombatSignalUntil > state.runtimeTime then
+        return true
+    end
     if AI ~= nil then
         if type(AI.getActiveTarget) == "function" then
             local ok, target = pcall(AI.getActiveTarget, "Combat")
@@ -2748,6 +2752,7 @@ local function sendHeavyArmorTargetState()
     core.sendGlobalEvent("SkillPerkSystem_HeavyArmorState", {
         playerId = pself.id,
         shockPaddingEnabled = enabled(C.SHOCK_PADDING),
+        juggernautEnabled = enabled(C.JUGGERNAUT),
     })
 end
 
@@ -2809,8 +2814,10 @@ local function onHit(attack)
     local damage = type(attack.damage) == "table" and attack.damage or {}
     local damaged = ((tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)) > 0
     if attack.attacker == pself then
+        state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25)
         triggerShockPadding()
     elseif attack.attacker ~= nil and damaged and enabled(C.ANVIL_STANCE) and hasHeavyCuirass() then
+        state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25)
         pruneAnvil()
         local expiresAt = state.runtimeTime + C.ANVIL_DURATION
         for i = 1, #state.anvilStacks do state.anvilStacks[i] = expiresAt end
@@ -2822,17 +2829,17 @@ end
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then addOnHitHandler(onHit) end
 
-registerBasepackAnimationHandler(function(event)
-    if event.groupLower ~= nil and (event.groupLower:find("spell", 1, true) ~= nil or event.groupLower:find("cast", 1, true) ~= nil) then
-        triggerShockPadding()
-    end
-end)
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         UiModeChanged = function() state.refreshTimer = C.UPDATE_INTERVAL end,
         SkillPerkSystem_PerkStateChanged = function() state.refreshTimer = C.UPDATE_INTERVAL; sendHeavyArmorTargetState() end,
-        SkillPerkSystem_HeavyArmorShockPaddingTriggered = function() triggerShockPadding() end,
+        SkillPerkSystem_HeavyArmorShockPaddingTriggered = function() state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25); triggerShockPadding() end,
+        SkillPerkSystem_HeavyArmorCombatState = function(data)
+            if type(data) == "table" and data.active == true then
+                state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25)
+            end
+        end,
         MagicCasted = function() triggerShockPadding() end,
         SpellCasted = function() triggerShockPadding() end,
     },
@@ -2874,6 +2881,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             state.anvilEndurance = math.max(0, math.floor(tonumber(type(data) == "table" and data.heavyarmorAnvilEndurance) or 0))
             state.anvilSkill = math.max(0, math.floor(tonumber(type(data) == "table" and data.heavyarmorAnvilSkill) or 0))
             state.juggernautStrength = math.max(0, math.floor(tonumber(type(data) == "table" and data.heavyarmorJuggernautStrength) or 0))
+            state.recentCombatSignalUntil = 0
             state.anvilStacks = {}
             local savedStacks = type(data) == "table" and data.heavyarmorAnvilStacks or nil
             if type(savedStacks) == "table" then

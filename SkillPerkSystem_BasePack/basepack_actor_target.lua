@@ -2671,6 +2671,8 @@ end
 -- 7c. heavy armor target hit triggers
 local heavyArmorPlayerId = nil
 local heavyArmorShockPaddingEnabled = false
+local heavyArmorJuggernautEnabled = false
+local heavyArmorCombatReportTimer = 0
 
 local function setHeavyArmorState(data)
     if type(data) ~= "table" then
@@ -2678,6 +2680,7 @@ local function setHeavyArmorState(data)
     end
     heavyArmorPlayerId = type(data.playerId) == "string" and data.playerId or nil
     heavyArmorShockPaddingEnabled = data.shockPaddingEnabled == true
+    heavyArmorJuggernautEnabled = data.juggernautEnabled == true
 end
 
 local function isSuccessfulPlayerWeaponHit(attack)
@@ -2694,6 +2697,51 @@ local function isSuccessfulPlayerWeaponHit(attack)
         end
     end
     return true
+end
+
+local function heavyArmorActorIsTargetingPlayer()
+    if not heavyArmorJuggernautEnabled or type(heavyArmorPlayerId) ~= "string" or heavyArmorPlayerId == "" then
+        return false
+    end
+    local AI = interfaces.AI
+    if AI == nil then
+        return false
+    end
+    if type(AI.getActiveTarget) == "function" then
+        local ok, target = pcall(AI.getActiveTarget, "Combat")
+        if ok and target ~= nil and target.id == heavyArmorPlayerId then
+            return true
+        end
+    end
+    if type(AI.getTargets) == "function" then
+        local ok, targets = pcall(AI.getTargets, "Combat")
+        if ok and type(targets) == "table" then
+            for _, target in ipairs(targets) do
+                if target ~= nil and target.id == heavyArmorPlayerId then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function heavyArmorReportCombatState(dt)
+    if not heavyArmorJuggernautEnabled then
+        return
+    end
+    heavyArmorCombatReportTimer = heavyArmorCombatReportTimer + (tonumber(dt) or 0)
+    if heavyArmorCombatReportTimer < 0.25 then
+        return
+    end
+    heavyArmorCombatReportTimer = 0
+    if heavyArmorActorIsTargetingPlayer() then
+        local world = require("openmw.world")
+        local player = world.players ~= nil and world.players[1] or nil
+        if player ~= nil and player.id == heavyArmorPlayerId and type(player.sendEvent) == "function" then
+            player:sendEvent("SkillPerkSystem_HeavyArmorCombatState", { active = true })
+        end
+    end
 end
 
 local function heavyArmorOnHit(attack)
@@ -2723,11 +2771,13 @@ heavyArmor.engineHandlers = {
         return {
             playerId = heavyArmorPlayerId,
             shockPaddingEnabled = heavyArmorShockPaddingEnabled,
+            juggernautEnabled = heavyArmorJuggernautEnabled,
         }
     end,
+    onUpdate = heavyArmorReportCombatState,
 }
 heavyArmor.hasActiveState = function()
-    return heavyArmorShockPaddingEnabled == true and type(heavyArmorPlayerId) == "string" and heavyArmorPlayerId ~= ""
+    return (heavyArmorShockPaddingEnabled == true or heavyArmorJuggernautEnabled == true) and type(heavyArmorPlayerId) == "string" and heavyArmorPlayerId ~= ""
 end
 heavyArmor.onHit = heavyArmorOnHit
 

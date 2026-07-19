@@ -182,10 +182,11 @@ subsystems.shared_target_watcher = {
 local heavyArmorState = {
     playerId = nil,
     shockPaddingEnabled = false,
+    juggernautEnabled = false,
 }
 
 local function heavyArmorTargetStateActive()
-    return heavyArmorState.shockPaddingEnabled == true and type(heavyArmorState.playerId) == "string" and heavyArmorState.playerId ~= ""
+    return (heavyArmorState.shockPaddingEnabled == true or heavyArmorState.juggernautEnabled == true) and type(heavyArmorState.playerId) == "string" and heavyArmorState.playerId ~= ""
 end
 
 local function sendHeavyArmorState(actor)
@@ -201,6 +202,7 @@ local function onHeavyArmorState(data)
     heavyArmorState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         shockPaddingEnabled = data.shockPaddingEnabled == true,
+        juggernautEnabled = data.juggernautEnabled == true,
     }
     onTargetWatcherProviderStateChanged("heavyarmor", heavyArmorTargetStateActive())
 end

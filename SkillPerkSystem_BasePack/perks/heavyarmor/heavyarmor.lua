@@ -11,8 +11,8 @@ return {
             cost = 1,
             x = -260,
             y = 0,
-            title = "Locked Frame",
-            description = "Placeholder: while wearing a Heavy Armor cuirass and greaves, gain added stability against incoming blows.",
+            title = "Heavy Skin",
+            description = "While wearing a Heavy Armor cuirass, gain +2 Armor Rating for every complete 10 points of Heavy Armor skill.",
         },
         {
             id = "heavyarmor_iron_tread",
@@ -24,7 +24,7 @@ return {
             x = -40,
             y = 115,
             title = "Iron Tread",
-            description = "Placeholder: heavy boots help you keep footing and reduce the penalties of moving under load.",
+            description = "If you can wear boots, equipped Heavy Armor boots count as only half their weight for encumbrance. Argonian and Khajiit characters instead gain +10 Speed while wearing Heavy Armor greaves.",
         },
         {
             id = "heavyarmor_shock_padding",
@@ -36,7 +36,7 @@ return {
             x = -300,
             y = 255,
             title = "Shock Padding",
-            description = "Placeholder: layered plates dampen part of the force from weapon hits while you are fully armored.",
+            description = "While wearing a Heavy Armor cuirass, successful attacks or spell casts activate Shock Padding for 3 seconds, fortifying Heavy Armor by 5. Retriggering refreshes the duration.",
         },
         {
             id = "heavyarmor_anvil_stance",
@@ -48,7 +48,7 @@ return {
             x = 190,
             y = 315,
             title = "Anvil Stance",
-            description = "Placeholder: standing your ground in Heavy Armor builds defensive momentum during sustained combat.",
+            description = "While wearing a Heavy Armor cuirass, each successful incoming attack grants +3 Endurance and +3 Heavy Armor for 10 seconds, stacking up to five times. New stacks refresh all Anvil Stance durations.",
         },
         {
             id = "heavyarmor_dreadnought",
@@ -60,7 +60,7 @@ return {
             x = -230,
             y = 520,
             title = "Dreadnought",
-            description = "Placeholder capstone: specialize in becoming an immovable bulwark with exceptional protection in Heavy Armor.",
+            description = "Upgrades Shock Padding: while it is active, it fortifies Heavy Armor by 10 instead of 5 and restores 20 Fatigue gradually over its 3-second duration.",
         },
         {
             id = "heavyarmor_juggernaut_charge",
@@ -71,8 +71,8 @@ return {
             cost = 2,
             x = 230,
             y = 520,
-            title = "Juggernaut Charge",
-            description = "Placeholder capstone: specialize in turning Heavy Armor mass into relentless forward pressure.",
+            title = "Juggernaut Stance",
+            description = "While in combat and wearing a Heavy Armor cuirass, restore 2 Fatigue per second and gain +10 Strength.",
         },
     },
 }

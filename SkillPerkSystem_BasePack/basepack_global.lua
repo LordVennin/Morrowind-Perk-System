@@ -177,6 +177,46 @@ subsystems.shared_target_watcher = {
     },
 }
 
+
+-- 4b. heavy armor target watcher
+local heavyArmorState = {
+    playerId = nil,
+    shockPaddingEnabled = false,
+}
+
+local function heavyArmorTargetStateActive()
+    return heavyArmorState.shockPaddingEnabled == true and type(heavyArmorState.playerId) == "string" and heavyArmorState.playerId ~= ""
+end
+
+local function sendHeavyArmorState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_HeavyArmorRefresh", heavyArmorState)
+    end
+end
+
+local function onHeavyArmorState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    heavyArmorState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        shockPaddingEnabled = data.shockPaddingEnabled == true,
+    }
+    onTargetWatcherProviderStateChanged("heavyarmor", heavyArmorTargetStateActive())
+end
+
+registerTargetWatcherProvider("heavyarmor", {
+    isActive = heavyArmorTargetStateActive,
+    sendState = sendHeavyArmorState,
+})
+
+subsystems.heavyarmor = {
+    eventHandlers = {
+        SkillPerkSystem_HeavyArmorState = onHeavyArmorState,
+    },
+    engineHandlers = {},
+}
+
 -- 4. security global hooks
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/global.lua
@@ -4020,6 +4060,7 @@ local eventHandlers = {
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,
     SkillPerkSystem_HandToHandState = function(data) dispatchEvent("handtohand", "SkillPerkSystem_HandToHandState", data) end,
+    SkillPerkSystem_HeavyArmorState = function(data) dispatchEvent("heavyarmor", "SkillPerkSystem_HeavyArmorState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,
     SkillPerkSystem_ApplyHeavyHitterShieldDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyHeavyHitterShieldDamage", data) end,
@@ -4040,6 +4081,7 @@ local engineOrder = {
     "treasure_sense",
     "lucky_find",
     "unseen_hand",
+    "heavyarmor",
     "shortblade",
     "axe",
     "spear",

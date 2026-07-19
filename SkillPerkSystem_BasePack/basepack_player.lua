@@ -2583,6 +2583,7 @@ local types = require("openmw.types")
 
 local Actor = types.Actor
 local Armor = types.Armor
+local AI = interfaces.AI
 local NPC = types.NPC
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local C = {
@@ -2726,14 +2727,28 @@ local function restoreFatigue(amount)
 end
 
 local function inCombat()
-    if Actor == nil then return false end
-    for _, name in ipairs({ "isInCombat", "isFighting" }) do
-        if type(Actor[name]) == "function" then
-            local ok, value = pcall(Actor[name], pself)
-            if ok then return value == true end
+    if AI ~= nil then
+        if type(AI.getActiveTarget) == "function" then
+            local ok, target = pcall(AI.getActiveTarget, "Combat")
+            if ok and target ~= nil then return true end
+        end
+        if type(AI.getTargets) == "function" then
+            local ok, targets = pcall(AI.getTargets, "Combat")
+            if ok and type(targets) == "table" and #targets > 0 then return true end
+        end
+        if type(AI.getActivePackage) == "function" then
+            local ok, package = pcall(AI.getActivePackage)
+            if ok and type(package) == "table" and package.type == "Combat" then return true end
         end
     end
     return false
+end
+
+local function sendHeavyArmorTargetState()
+    core.sendGlobalEvent("SkillPerkSystem_HeavyArmorState", {
+        playerId = pself.id,
+        shockPaddingEnabled = enabled(C.SHOCK_PADDING),
+    })
 end
 
 __basepack_shared.getHeavyArmorArmorBonus = function()
@@ -2807,11 +2822,17 @@ end
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
 if type(addOnHitHandler) == "function" then addOnHitHandler(onHit) end
 
+registerBasepackAnimationHandler(function(event)
+    if event.groupLower ~= nil and (event.groupLower:find("spell", 1, true) ~= nil or event.groupLower:find("cast", 1, true) ~= nil) then
+        triggerShockPadding()
+    end
+end)
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
         UiModeChanged = function() state.refreshTimer = C.UPDATE_INTERVAL end,
-        SkillPerkSystem_PerkStateChanged = function() state.refreshTimer = C.UPDATE_INTERVAL end,
+        SkillPerkSystem_PerkStateChanged = function() state.refreshTimer = C.UPDATE_INTERVAL; sendHeavyArmorTargetState() end,
+        SkillPerkSystem_HeavyArmorShockPaddingTriggered = function() triggerShockPadding() end,
         MagicCasted = function() triggerShockPadding() end,
         SpellCasted = function() triggerShockPadding() end,
     },
@@ -2833,6 +2854,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             if state.refreshTimer >= C.UPDATE_INTERVAL or state.shockRemaining <= 0 or #state.anvilStacks > 0 then
                 state.refreshTimer = 0
                 refreshStaticBonuses()
+                sendHeavyArmorTargetState()
             end
         end,
         shouldUpdate = function(dt)
@@ -2863,6 +2885,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             end
             for i = 1, #state.anvilStacks do state.anvilStacks[i] = state.runtimeTime + state.anvilStacks[i] end
             refreshStaticBonuses()
+            sendHeavyArmorTargetState()
         end,
         onSave = function()
             refreshStaticBonuses()

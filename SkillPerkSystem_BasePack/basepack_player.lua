@@ -2603,10 +2603,12 @@ local C = {
     ANVIL_PER_STACK = 3,
     JUGGERNAUT_STRENGTH = 10,
     JUGGERNAUT_FATIGUE_PER_SECOND = 2,
+    COMBAT_ACTIVITY_DURATION = 5.0,
 }
 local state = {
     runtimeTime = 0,
     refreshTimer = C.UPDATE_INTERVAL,
+    ironTreadNextCheck = 0,
     ironFeather = 0,
     ironSpeed = 0,
     shockSkill = 0,
@@ -2727,32 +2729,45 @@ local function restoreFatigue(amount)
     fatigue.current = math.min(maxFatigue, fatigue.current + amount)
 end
 
-local function inCombat()
-    if state.recentCombatSignalUntil > state.runtimeTime then
-        return true
-    end
-    if AI ~= nil then
-        if type(AI.getActiveTarget) == "function" then
-            local ok, target = pcall(AI.getActiveTarget, "Combat")
-            if ok and target ~= nil then return true end
-        end
-        if type(AI.getTargets) == "function" then
-            local ok, targets = pcall(AI.getTargets, "Combat")
-            if ok and type(targets) == "table" and #targets > 0 then return true end
-        end
-        if type(AI.getActivePackage) == "function" then
-            local ok, package = pcall(AI.getActivePackage)
-            if ok and type(package) == "table" and package.type == "Combat" then return true end
+local function simulationTime()
+    if type(core.getSimulationTime) == "function" then
+        local ok, value = pcall(core.getSimulationTime)
+        if ok and type(value) == "number" then
+            return value
         end
     end
-    return false
+    return state.runtimeTime
 end
 
-local function sendHeavyArmorTargetState()
+local function requestIronTreadRefresh()
+    state.ironTreadNextCheck = 0
+end
+
+local function markCombatActivity()
+    state.recentCombatSignalUntil = math.max(
+        state.recentCombatSignalUntil,
+        state.runtimeTime + C.COMBAT_ACTIVITY_DURATION
+    )
+    -- Ensure the next dispatcher pass applies Juggernaut immediately instead of
+    -- waiting for the normal half-second equipment refresh.
+    state.refreshTimer = C.UPDATE_INTERVAL
+end
+
+local function inCombat()
+    -- Player scripts do not have useful AI Combat packages to query. Track
+    -- recent player combat activity instead: attacks, spell casts, and hits
+    -- refresh this window.
+    return state.recentCombatSignalUntil > state.runtimeTime
+end
+
+local function disableLegacyHeavyArmorTargetWatcher()
+    -- Heavy Armor perks are now entirely player-side. Sending an inactive state
+    -- lets the global watcher disable and remove actor-target scripts left over
+    -- in existing saves.
     core.sendGlobalEvent("SkillPerkSystem_HeavyArmorState", {
         playerId = pself.id,
-        shockPaddingEnabled = enabled(C.SHOCK_PADDING),
-        juggernautEnabled = enabled(C.JUGGERNAUT),
+        shockPaddingEnabled = false,
+        juggernautEnabled = false,
     })
 end
 
@@ -2775,6 +2790,15 @@ local function triggerShockPadding()
     state.shockFatigueRemaining = enabled(C.DREADNOUGHT) and C.DREADNOUGHT_FATIGUE or 0
     state.shockSkill = setModifier(skillStat("heavyarmor"), state.shockSkill, enabled(C.DREADNOUGHT) and C.DREADNOUGHT_SKILL or C.SHOCK_SKILL)
 end
+
+local function handleHeavyArmorAnimation(event)
+    if type(event) ~= "table" or event.isWeaponAttackWindup ~= true then
+        return
+    end
+    markCombatActivity()
+    triggerShockPadding()
+end
+registerBasepackAnimationHandler(handleHeavyArmorAnimation)
 
 local function pruneAnvil()
     local kept = {}
@@ -2807,6 +2831,11 @@ local function refreshStaticBonuses()
 
     local juggernaut = enabled(C.JUGGERNAUT) and hasHeavyCuirass() and inCombat()
     state.juggernautStrength = setModifier(attributeStat("strength"), state.juggernautStrength, juggernaut and C.JUGGERNAUT_STRENGTH or 0)
+
+    -- Iron Tread only needs equipment polling. Schedule the next check using
+    -- simulation time so a persistent Feather/Speed modifier does not keep this
+    -- entire subsystem active every frame.
+    state.ironTreadNextCheck = simulationTime() + C.UPDATE_INTERVAL
 end
 
 local function onHit(attack)
@@ -2814,15 +2843,17 @@ local function onHit(attack)
     local damage = type(attack.damage) == "table" and attack.damage or {}
     local damaged = ((tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)) > 0
     if attack.attacker == pself then
-        state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25)
+        markCombatActivity()
         triggerShockPadding()
-    elseif attack.attacker ~= nil and damaged and enabled(C.ANVIL_STANCE) and hasHeavyCuirass() then
-        state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25)
-        pruneAnvil()
-        local expiresAt = state.runtimeTime + C.ANVIL_DURATION
-        for i = 1, #state.anvilStacks do state.anvilStacks[i] = expiresAt end
-        if #state.anvilStacks < C.ANVIL_MAX_STACKS then state.anvilStacks[#state.anvilStacks + 1] = expiresAt end
-        refreshStaticBonuses()
+    elseif attack.attacker ~= nil and damaged then
+        markCombatActivity()
+        if enabled(C.ANVIL_STANCE) and hasHeavyCuirass() then
+            pruneAnvil()
+            local expiresAt = state.runtimeTime + C.ANVIL_DURATION
+            for i = 1, #state.anvilStacks do state.anvilStacks[i] = expiresAt end
+            if #state.anvilStacks < C.ANVIL_MAX_STACKS then state.anvilStacks[#state.anvilStacks + 1] = expiresAt end
+            refreshStaticBonuses()
+        end
     end
 end
 
@@ -2832,16 +2863,34 @@ if type(addOnHitHandler) == "function" then addOnHitHandler(onHit) end
 
 __basepack_subsystems[#__basepack_subsystems + 1] = {
     eventHandlers = {
-        UiModeChanged = function() state.refreshTimer = C.UPDATE_INTERVAL end,
-        SkillPerkSystem_PerkStateChanged = function() state.refreshTimer = C.UPDATE_INTERVAL; sendHeavyArmorTargetState() end,
-        SkillPerkSystem_HeavyArmorShockPaddingTriggered = function() state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25); triggerShockPadding() end,
+        UiModeChanged = function()
+            state.refreshTimer = C.UPDATE_INTERVAL
+            requestIronTreadRefresh()
+        end,
+        SkillPerkSystem_PerkStateChanged = function()
+            state.refreshTimer = C.UPDATE_INTERVAL
+            requestIronTreadRefresh()
+            disableLegacyHeavyArmorTargetWatcher()
+        end,
+        -- Compatibility handlers for saves/scripts created by the older
+        -- target-watcher implementation.
+        SkillPerkSystem_HeavyArmorShockPaddingTriggered = function()
+            markCombatActivity()
+            triggerShockPadding()
+        end,
         SkillPerkSystem_HeavyArmorCombatState = function(data)
             if type(data) == "table" and data.active == true then
-                state.recentCombatSignalUntil = math.max(state.recentCombatSignalUntil, state.runtimeTime + 1.25)
+                markCombatActivity()
             end
         end,
-        MagicCasted = function() triggerShockPadding() end,
-        SpellCasted = function() triggerShockPadding() end,
+        MagicCasted = function()
+            markCombatActivity()
+            triggerShockPadding()
+        end,
+        SpellCasted = function()
+            markCombatActivity()
+            triggerShockPadding()
+        end,
     },
     engineHandlers = {
         onUpdate = function(dt)
@@ -2861,18 +2910,34 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             if state.refreshTimer >= C.UPDATE_INTERVAL or state.shockRemaining <= 0 or #state.anvilStacks > 0 then
                 state.refreshTimer = 0
                 refreshStaticBonuses()
-                sendHeavyArmorTargetState()
             end
         end,
         shouldUpdate = function(dt)
-            if state.ironFeather ~= 0 or state.ironSpeed ~= 0 or state.shockSkill ~= 0 or state.shockRemaining > 0 or #state.anvilStacks > 0 or state.anvilEndurance ~= 0 or state.anvilSkill ~= 0 or state.juggernautStrength ~= 0 then return true end
-            state.refreshTimer = state.refreshTimer + (tonumber(dt) or 0)
-            if state.refreshTimer < C.UPDATE_INTERVAL then return false end
-            return enabled(C.HEAVY_SKIN) or enabled(C.IRON_TREAD) or enabled(C.SHOCK_PADDING) or enabled(C.ANVIL_STANCE) or enabled(C.JUGGERNAUT)
+            -- Timed effects still need continuous updates while active.
+            if state.shockSkill ~= 0
+                or state.shockRemaining > 0
+                or #state.anvilStacks > 0
+                or state.anvilEndurance ~= 0
+                or state.anvilSkill ~= 0
+                or state.juggernautStrength ~= 0
+                or (enabled(C.JUGGERNAUT) and inCombat())
+            then
+                return true
+            end
+
+            -- Iron Tread is a persistent equipment modifier, not a timed effect.
+            -- Poll equipment twice per second instead of treating the active
+            -- Feather/Speed bonus as a reason to run every player update.
+            if enabled(C.IRON_TREAD) or state.ironFeather ~= 0 or state.ironSpeed ~= 0 then
+                return simulationTime() >= state.ironTreadNextCheck
+            end
+
+            return false
         end,
         onLoad = function(data)
             state.runtimeTime = 0
             state.refreshTimer = C.UPDATE_INTERVAL
+            state.ironTreadNextCheck = 0
             state.ironFeather = math.max(0, tonumber(type(data) == "table" and data.heavyarmorIronTreadFeather) or 0)
             state.ironSpeed = math.max(0, math.floor(tonumber(type(data) == "table" and data.heavyarmorIronTreadSpeed) or 0))
             state.shockSkill = math.max(0, math.floor(tonumber(type(data) == "table" and data.heavyarmorShockPaddingSkill) or 0))
@@ -2893,7 +2958,7 @@ __basepack_subsystems[#__basepack_subsystems + 1] = {
             end
             for i = 1, #state.anvilStacks do state.anvilStacks[i] = state.runtimeTime + state.anvilStacks[i] end
             refreshStaticBonuses()
-            sendHeavyArmorTargetState()
+            disableLegacyHeavyArmorTargetWatcher()
         end,
         onSave = function()
             refreshStaticBonuses()

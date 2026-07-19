@@ -178,7 +178,10 @@ subsystems.shared_target_watcher = {
 }
 
 
--- 4b. heavy armor target watcher
+-- 4b. legacy heavy armor target-watcher cleanup
+-- Shock Padding and Juggernaut Stance are handled entirely by the player
+-- runtime. Keep an inactive provider only so existing saves can receive a
+-- disabled refresh and remove old actor-target script state.
 local heavyArmorState = {
     playerId = nil,
     shockPaddingEnabled = false,
@@ -186,7 +189,7 @@ local heavyArmorState = {
 }
 
 local function heavyArmorTargetStateActive()
-    return (heavyArmorState.shockPaddingEnabled == true or heavyArmorState.juggernautEnabled == true) and type(heavyArmorState.playerId) == "string" and heavyArmorState.playerId ~= ""
+    return false
 end
 
 local function sendHeavyArmorState(actor)
@@ -196,15 +199,14 @@ local function sendHeavyArmorState(actor)
 end
 
 local function onHeavyArmorState(data)
-    if type(data) ~= "table" then
-        return
-    end
     heavyArmorState = {
-        playerId = type(data.playerId) == "string" and data.playerId or nil,
-        shockPaddingEnabled = data.shockPaddingEnabled == true,
-        juggernautEnabled = data.juggernautEnabled == true,
+        playerId = type(data) == "table" and type(data.playerId) == "string" and data.playerId or nil,
+        shockPaddingEnabled = false,
+        juggernautEnabled = false,
     }
-    onTargetWatcherProviderStateChanged("heavyarmor", heavyArmorTargetStateActive())
+    -- The false transition pushes the disabled state to scripts already
+    -- attached by older versions; it never requests a new actor scan.
+    onTargetWatcherProviderStateChanged("heavyarmor", false)
 end
 
 registerTargetWatcherProvider("heavyarmor", {

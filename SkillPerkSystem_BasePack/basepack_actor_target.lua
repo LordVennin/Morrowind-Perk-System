@@ -2675,12 +2675,12 @@ local heavyArmorJuggernautEnabled = false
 local heavyArmorCombatReportTimer = 0
 
 local function setHeavyArmorState(data)
-    if type(data) ~= "table" then
-        return
-    end
-    heavyArmorPlayerId = type(data.playerId) == "string" and data.playerId or nil
-    heavyArmorShockPaddingEnabled = data.shockPaddingEnabled == true
-    heavyArmorJuggernautEnabled = data.juggernautEnabled == true
+    -- Heavy Armor no longer uses actor-target scripts. Preserve the player id
+    -- only for save compatibility and force all legacy target-side state off.
+    heavyArmorPlayerId = type(data) == "table" and type(data.playerId) == "string" and data.playerId or nil
+    heavyArmorShockPaddingEnabled = false
+    heavyArmorJuggernautEnabled = false
+    heavyArmorCombatReportTimer = 0
 end
 
 local function isSuccessfulPlayerWeaponHit(attack)
@@ -2777,7 +2777,7 @@ heavyArmor.engineHandlers = {
     onUpdate = heavyArmorReportCombatState,
 }
 heavyArmor.hasActiveState = function()
-    return (heavyArmorShockPaddingEnabled == true or heavyArmorJuggernautEnabled == true) and type(heavyArmorPlayerId) == "string" and heavyArmorPlayerId ~= ""
+    return false
 end
 heavyArmor.onHit = heavyArmorOnHit
 

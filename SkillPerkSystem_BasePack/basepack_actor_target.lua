@@ -12,6 +12,7 @@ local blunt = {}
 local duelistTempo = {}
 local aegisRite = {}
 local handToHand = {}
+local heavyArmor = {}
 local TARGET_SCRIPT_IDLE_EVENT = "SkillPerkSystem_BasePack_TargetScriptIdle"
 
 -- 2. shared actor/stat/weapon/combat helpers
@@ -2666,6 +2667,70 @@ handToHand.onHit = onHit
 
 end
 
+
+-- 7c. heavy armor target hit triggers
+local heavyArmorPlayerId = nil
+local heavyArmorShockPaddingEnabled = false
+
+local function setHeavyArmorState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    heavyArmorPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    heavyArmorShockPaddingEnabled = data.shockPaddingEnabled == true
+end
+
+local function isSuccessfulPlayerWeaponHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if attack.attacker == nil or attack.attacker.id ~= heavyArmorPlayerId or type(attack.attacker.sendEvent) ~= "function" then
+        return false
+    end
+    local sourceTypes = interfaces.Combat ~= nil and interfaces.Combat.ATTACK_SOURCE_TYPES or nil
+    if sourceTypes ~= nil then
+        if attack.sourceType ~= sourceTypes.Melee and attack.sourceType ~= sourceTypes.Ranged then
+            return false
+        end
+    end
+    return true
+end
+
+local function heavyArmorOnHit(attack)
+    if not heavyArmorShockPaddingEnabled then
+        return
+    end
+    if isSuccessfulPlayerWeaponHit(attack) then
+        attack.attacker:sendEvent("SkillPerkSystem_HeavyArmorShockPaddingTriggered", {
+            target = require("openmw.self"),
+        })
+    end
+end
+
+heavyArmor.eventHandlers = {
+    SkillPerkSystem_HeavyArmorRefresh = setHeavyArmorState,
+}
+heavyArmor.engineHandlers = {
+    onInit = setHeavyArmorState,
+    onLoad = function(savedData, initData)
+        if type(savedData) == "table" and savedData.playerId ~= nil then
+            setHeavyArmorState(savedData)
+        else
+            setHeavyArmorState(initData)
+        end
+    end,
+    onSave = function()
+        return {
+            playerId = heavyArmorPlayerId,
+            shockPaddingEnabled = heavyArmorShockPaddingEnabled,
+        }
+    end,
+}
+heavyArmor.hasActiveState = function()
+    return heavyArmorShockPaddingEnabled == true and type(heavyArmorPlayerId) == "string" and heavyArmorPlayerId ~= ""
+end
+heavyArmor.onHit = heavyArmorOnHit
+
 copyEventHandlers(shortBlade.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
@@ -2673,6 +2738,7 @@ copyEventHandlers(blunt.eventHandlers)
 copyEventHandlers(duelistTempo.eventHandlers)
 copyEventHandlers(aegisRite.eventHandlers)
 copyEventHandlers(handToHand.eventHandlers)
+copyEventHandlers(heavyArmor.eventHandlers)
 
 local function combinedOnHit(attack)
     shortBlade.onHit(attack)
@@ -2682,6 +2748,7 @@ local function combinedOnHit(attack)
     blunt.onHit(attack)
     duelistTempo.onHit(attack)
     aegisRite.onHit(attack)
+    heavyArmor.onHit(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -2709,6 +2776,7 @@ local function hasAnyActiveTargetState()
         or subsystemHasActiveState(duelistTempo)
         or subsystemHasActiveState(aegisRite)
         or subsystemHasActiveState(handToHand)
+        or subsystemHasActiveState(heavyArmor)
 end
 
 local function requestRemovalIfIdle()
@@ -2737,6 +2805,7 @@ return {
             callEngineHandler(duelistTempo, "onInit", initData)
             callEngineHandler(aegisRite, "onInit", initData)
             callEngineHandler(handToHand, "onInit", initData)
+            callEngineHandler(heavyArmor, "onInit", initData)
         end,
         onLoad = function(savedData, initData)
             local shortBladeData = type(savedData) == "table" and type(savedData.shortBlade) == "table" and savedData.shortBlade or savedData
@@ -2746,6 +2815,7 @@ return {
             local duelistTempoData = type(savedData) == "table" and type(savedData.duelistTempo) == "table" and savedData.duelistTempo or savedData
             local aegisRiteData = type(savedData) == "table" and type(savedData.aegisRite) == "table" and savedData.aegisRite or savedData
             local handToHandData = type(savedData) == "table" and type(savedData.handToHand) == "table" and savedData.handToHand or savedData
+            local heavyArmorData = type(savedData) == "table" and type(savedData.heavyArmor) == "table" and savedData.heavyArmor or savedData
 
             callEngineHandler(shortBlade, "onLoad", shortBladeData, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
@@ -2754,6 +2824,7 @@ return {
             callEngineHandler(duelistTempo, "onLoad", duelistTempoData, initData)
             callEngineHandler(aegisRite, "onLoad", aegisRiteData, initData)
             callEngineHandler(handToHand, "onLoad", handToHandData, initData)
+            callEngineHandler(heavyArmor, "onLoad", heavyArmorData, initData)
         end,
         onSave = function()
             return {
@@ -2764,6 +2835,7 @@ return {
                 duelistTempo = type(duelistTempo.engineHandlers.onSave) == "function" and duelistTempo.engineHandlers.onSave() or nil,
                 aegisRite = type(aegisRite.engineHandlers.onSave) == "function" and aegisRite.engineHandlers.onSave() or nil,
                 handToHand = type(handToHand.engineHandlers.onSave) == "function" and handToHand.engineHandlers.onSave() or nil,
+                heavyArmor = type(heavyArmor.engineHandlers.onSave) == "function" and heavyArmor.engineHandlers.onSave() or nil,
             }
         end,
         onUpdate = function(dt)
@@ -2774,6 +2846,7 @@ return {
             callActiveUpdate(duelistTempo, dt)
             callActiveUpdate(aegisRite, dt)
             callActiveUpdate(handToHand, dt)
+            callActiveUpdate(heavyArmor, dt)
             requestRemovalIfIdle()
         end,
     },

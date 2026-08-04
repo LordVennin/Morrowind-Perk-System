@@ -13,6 +13,7 @@ local duelistTempo = {}
 local aegisRite = {}
 local handToHand = {}
 local heavyArmor = {}
+local dualDistillation = {}
 local TARGET_SCRIPT_IDLE_EVENT = "SkillPerkSystem_BasePack_TargetScriptIdle"
 
 -- 2. shared actor/stat/weapon/combat helpers
@@ -2781,6 +2782,26 @@ heavyArmor.hasActiveState = function()
 end
 heavyArmor.onHit = heavyArmorOnHit
 
+do
+local selfObj=require("openmw.self")
+local active,playerId,coatingId,weapon,weaponRecordId=false,nil,nil,nil,nil
+local function setState(data)
+    if type(data)~="table" or data.active~=true then active,playerId,coatingId,weapon,weaponRecordId=false,nil,nil,nil,nil; return end
+    active=true; playerId=type(data.playerId)=="string" and data.playerId or nil; coatingId=data.coatingId; weapon=data.weapon; weaponRecordId=data.weaponRecordId
+    if not playerId or type(coatingId)~="string" or not weapon then active=false end
+end
+local function onHit(attack)
+    if not active or type(attack)~="table" or attack.successful~=true or not attack.attacker or attack.attacker.id~=playerId or not attack.weapon or attack.weapon~=weapon then return end
+    local source=interfaces.Combat and interfaces.Combat.ATTACK_SOURCE_TYPES
+    if source and attack.sourceType~=source.Melee and attack.sourceType~=source.Ranged then return end
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_DualDistillationHitRequest",{coatingId=coatingId,attacker=attack.attacker,weapon=attack.weapon,target=selfObj,sourceType=attack.sourceType})
+end
+dualDistillation.eventHandlers={SkillPerkSystem_BasePack_DualDistillationState=setState}
+dualDistillation.engineHandlers={onInit=setState,onLoad=function(_,initData) setState(initData) end}
+dualDistillation.hasActiveState=function() return active end
+dualDistillation.onHit=onHit
+end
+
 copyEventHandlers(shortBlade.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
@@ -2789,6 +2810,7 @@ copyEventHandlers(duelistTempo.eventHandlers)
 copyEventHandlers(aegisRite.eventHandlers)
 copyEventHandlers(handToHand.eventHandlers)
 copyEventHandlers(heavyArmor.eventHandlers)
+copyEventHandlers(dualDistillation.eventHandlers)
 
 local function combinedOnHit(attack)
     shortBlade.onHit(attack)
@@ -2799,6 +2821,7 @@ local function combinedOnHit(attack)
     duelistTempo.onHit(attack)
     aegisRite.onHit(attack)
     heavyArmor.onHit(attack)
+    dualDistillation.onHit(attack)
 end
 
 local addOnHitHandler = interfaces.Combat ~= nil and interfaces.Combat.addOnHitHandler
@@ -2827,6 +2850,7 @@ local function hasAnyActiveTargetState()
         or subsystemHasActiveState(aegisRite)
         or subsystemHasActiveState(handToHand)
         or subsystemHasActiveState(heavyArmor)
+        or subsystemHasActiveState(dualDistillation)
 end
 
 local function requestRemovalIfIdle()
@@ -2856,6 +2880,7 @@ return {
             callEngineHandler(aegisRite, "onInit", initData)
             callEngineHandler(handToHand, "onInit", initData)
             callEngineHandler(heavyArmor, "onInit", initData)
+            callEngineHandler(dualDistillation, "onInit", initData)
         end,
         onLoad = function(savedData, initData)
             local shortBladeData = type(savedData) == "table" and type(savedData.shortBlade) == "table" and savedData.shortBlade or savedData
@@ -2875,6 +2900,7 @@ return {
             callEngineHandler(aegisRite, "onLoad", aegisRiteData, initData)
             callEngineHandler(handToHand, "onLoad", handToHandData, initData)
             callEngineHandler(heavyArmor, "onLoad", heavyArmorData, initData)
+            callEngineHandler(dualDistillation, "onLoad", nil, initData)
         end,
         onSave = function()
             return {

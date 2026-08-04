@@ -12,7 +12,7 @@ return {
             x = -180,
             y = 0,
             title = "Ingredient Lore",
-            description = "Placeholder: Eating an ingredient reveals its next unknown alchemical effect.",
+            description = "Eating an ingredient always activates one randomly selected effect from that ingredient, even if the effect has not been identified.",
         },
         {
             id = "alchemy_careful_measure",
@@ -24,7 +24,7 @@ return {
             x = 180,
             y = 0,
             title = "Careful Measure",
-            description = "Placeholder: Failed brewing attempts sometimes preserve one of their ingredients.",
+            description = "Failed brewing attempts sometimes preserve one of the selected ingredients.",
         },
         {
             id = "alchemy_balanced_formula",
@@ -35,8 +35,8 @@ return {
             cost = 1,
             x = 0,
             y = 140,
-            title = "Balanced Formula",
-            description = "Placeholder: Potions brewed with a complete apparatus have more consistent magnitudes and durations.",
+            title = "Dual Distillation",
+            description = "With a complete set of alchemy tools, opening the Alchemy menu lets you brew normal potions or prepare newly brewed mixtures as weapon poisons. A poison applies its harmful effects on the next successful hit with your equipped weapon.",
         },
         {
             id = "alchemy_concentrated_draught",
@@ -48,7 +48,7 @@ return {
             x = -220,
             y = 280,
             title = "Concentrated Draught",
-            description = "Placeholder: Beneficial potions you brew gain increased magnitude.",
+            description = "Beneficial effects from potions you brew gain increased magnitude.",
         },
         {
             id = "alchemy_purified_toxins",
@@ -59,8 +59,8 @@ return {
             cost = 1,
             x = 220,
             y = 280,
-            title = "Purified Toxins",
-            description = "Placeholder: Harmful potions you brew gain increased duration.",
+            title = "Lingering Toxins",
+            description = "Harmful effects from weapon poisons you prepare gain increased duration.",
         },
         {
             id = "alchemy_master_distillation",
@@ -72,7 +72,7 @@ return {
             x = 0,
             y = 420,
             title = "Master Distillation",
-            description = "Placeholder: Brewing a potion has a chance to produce an additional dose.",
+            description = "Brewing a potion or preparing a weapon poison has a chance to produce an additional dose.",
         },
         {
             id = "alchemy_philosophers_crucible",
@@ -84,7 +84,7 @@ return {
             x = 0,
             y = 580,
             title = "Philosopher's Crucible",
-            description = "Placeholder: Master-crafted potions retain their beneficial effects longer and suppress unwanted side effects.",
+            description = "Potions you brew suppress harmful effects and retain beneficial effects longer, while weapon poisons suppress beneficial effects and retain harmful effects longer.",
         },
     },
 }

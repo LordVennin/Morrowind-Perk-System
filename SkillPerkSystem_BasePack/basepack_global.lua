@@ -4056,6 +4056,8 @@ local eventHandlers = {
         dispatchEvent("lucky_find", "SkillPerkSystem_BasePack_FortunesHabit_Toggle", data)
     end,
     SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
+    SkillPerkSystem_BasePack_IngredientLoreApply = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_IngredientLoreApply", data) end,
+    SkillPerkSystem_BasePack_AlchemyRefundIngredient = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_AlchemyRefundIngredient", data) end,
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
@@ -4077,8 +4079,197 @@ local eventHandlers = {
     [TARGET_SCRIPT_IDLE_EVENT] = function(data) dispatchEvent("shared_target_watcher", TARGET_SCRIPT_IDLE_EVENT, data) end,
 }
 
+-- Alchemy restricted global bridges (Ingredient Lore and Careful Measure only)
+local function __basepack_initAlchemyGlobal()
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+local INGREDIENT_LORE_TIERS = {
+    { minimumAlchemy = 80, magnitude = 8, duration = 12 },
+    { minimumAlchemy = 60, magnitude = 6, duration = 8 },
+    { minimumAlchemy = 40, magnitude = 4, duration = 5 },
+    { minimumAlchemy = 0, magnitude = 2, duration = 3 },
+}
+local LORE_RESULT_EVENT = "SkillPerkSystem_BasePack_IngredientLoreResult"
+local REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_AlchemyRefundResult"
+local LOG_TAG = "[SkillPerkSystem_BasePack][Alchemy][Global]"
+local ingredientLoreSpellCache = {}
+
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+local function validPlayer(player)
+    if player == nil or type(player.sendEvent) ~= "function" then return false end
+    if type(player.isValid) == "function" and not player:isValid() then return false end
+    for _, candidate in pairs(world.players or {}) do if candidate == player then return true end end
+    return false
+end
+local function ingredientRecord(recordId)
+    if type(recordId) ~= "string" or recordId == "" then return nil end
+    local ok, record = pcall(types.Ingredient.record, recordId)
+    return ok and record or nil
+end
+local function spellRecord(recordId)
+    if type(recordId) ~= "string" or recordId == "" then return nil end
+    local ok, record = pcall(types.Spell.record, recordId)
+    return ok and record or nil
+end
+local function sendResult(player, eventName, result)
+    if player ~= nil and type(player.sendEvent) == "function" then player:sendEvent(eventName, result) end
+end
+local function failLore(data, reason)
+    log("Ingredient Lore rejected: " .. tostring(reason))
+    sendResult(data and data.player, LORE_RESULT_EVENT, {
+        requestId = data and data.requestId, success = false,
+        ingredientRecordId = data and data.ingredientRecordId,
+        sourceEffectIndex = data and data.sourceEffectIndex, failureReason = reason,
+    })
+end
+local function effectRecord(effectId)
+    if type(effectId) ~= "string" or effectId == "" then return nil end
+    local ok, record = pcall(types.MagicEffect.record, effectId)
+    return ok and record or nil
+end
+local function validatedTierIndex(player)
+    local modified = 0
+    local ok = pcall(function() modified = tonumber(types.NPC.stats.skills.alchemy(player).modified) or 0 end)
+    if not ok then return nil end
+    for index, tier in ipairs(INGREDIENT_LORE_TIERS) do
+        if modified >= tier.minimumAlchemy then return index end
+    end
+    return #INGREDIENT_LORE_TIERS
+end
+local function normalizeEffect(source, tier)
+    local effectId = source and source.id
+    local magic = effectRecord(effectId)
+    if magic == nil then return nil, "invalid magic effect" end
+    local magnitude = tier.magnitude
+    local duration = tier.duration
+    if magic.hasMagnitude == false then magnitude = 1 end
+    if magic.hasDuration == false or magic.isAppliedOnce == true or magic.appliedOnce == true then duration = 1 end
+    local affectedAttribute = source.affectedAttribute
+    local affectedSkill = source.affectedSkill
+    return {
+        id = effectId, affectedAttribute = affectedAttribute, affectedSkill = affectedSkill,
+        minMagnitude = magnitude, maxMagnitude = magnitude, duration = duration, area = 0,
+        range = types.Spell.RANGE and types.Spell.RANGE.Self or "self",
+    }, magic
+end
+local function signatureFor(effect)
+    return table.concat({ tostring(effect.id or ""), tostring(effect.affectedAttribute or ""),
+        tostring(effect.affectedSkill or ""), tostring(effect.minMagnitude or 0),
+        tostring(effect.duration or 0) }, "|")
+end
+local function createSpell(effect, magic)
+    if type(types.Spell.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+        return nil, "dynamic Spell records unavailable"
+    end
+    local name = "Ingredient Lore: " .. tostring(magic.name or effect.id)
+    local spellType = types.Spell.TYPE and (types.Spell.TYPE.Spell or types.Spell.TYPE.spell) or nil
+    local okDraft, draft = pcall(types.Spell.createRecordDraft, {
+        name = name, type = spellType, cost = 0, effects = { effect },
+        isAlwaysSucceeds = true, canBeAbsorbed = false, canBeReflected = false,
+    })
+    if not okDraft then return nil, "Spell draft failed: " .. tostring(draft) end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then return nil, "Spell creation failed: " .. tostring(record) end
+    return record
+end
+local function onIngredientLoreApply(data)
+    if type(data) ~= "table" or not validPlayer(data.player) then return failLore(data, "invalid player") end
+    local ingredient = ingredientRecord(data.ingredientRecordId)
+    if ingredient == nil or ingredient.effects == nil then return failLore(data, "invalid Ingredient record") end
+    local sourceIndex = math.floor(tonumber(data.sourceEffectIndex) or -1)
+    if sourceIndex < 0 then return failLore(data, "invalid effect index") end
+    local source = ingredient.effects[sourceIndex + 1]
+    if source == nil then return failLore(data, "effect index out of range") end
+    local requestedTierIndex = math.floor(tonumber(data.powerTier) or 0)
+    local tierIndex = validatedTierIndex(data.player)
+    if tierIndex == nil or INGREDIENT_LORE_TIERS[requestedTierIndex] == nil then
+        return failLore(data, "invalid power tier")
+    end
+    if requestedTierIndex ~= tierIndex then
+        log(string.format("power tier corrected requested=%s validated=%s", tostring(requestedTierIndex), tostring(tierIndex)))
+    end
+    local tier = INGREDIENT_LORE_TIERS[tierIndex]
+    local effect, magicOrReason = normalizeEffect(source, tier)
+    if effect == nil then return failLore(data, magicOrReason) end
+    local magic = magicOrReason
+    local signature = signatureFor(effect)
+    local recordId = ingredientLoreSpellCache[signature]
+    local record = recordId and spellRecord(recordId) or nil
+    local cached = record ~= nil
+    log("signature=" .. signature .. " cache " .. (cached and "hit" or "miss"))
+    if recordId ~= nil and record == nil then
+        log("stale cache record=" .. tostring(recordId)); ingredientLoreSpellCache[signature] = nil
+    end
+    if record == nil then
+        local reason
+        record, reason = createSpell(effect, magic)
+        if record == nil then return failLore(data, reason) end
+        recordId = record.id
+        ingredientLoreSpellCache[signature] = recordId
+        log("created Spell record=" .. tostring(recordId))
+    end
+    local ok, reason = pcall(function()
+        Actor.activeSpells(data.player):add({ id = recordId, effects = { 0 }, caster = data.player, stackable = true })
+    end)
+    if not ok then return failLore(data, "application failed: " .. tostring(reason)) end
+    log("application success ingredient=" .. tostring(data.ingredientRecordId))
+    sendResult(data.player, LORE_RESULT_EVENT, {
+        requestId = data.requestId, success = true, ingredientRecordId = data.ingredientRecordId,
+        sourceEffectIndex = sourceIndex, effectId = effect.id,
+        effectName = magic.name or effect.id, cached = cached,
+        newlyCreated = not cached, generatedSpellRecordId = recordId,
+    })
+end
+local function onRefundIngredient(data)
+    local result = { requestId = type(data) == "table" and data.requestId or nil, success = false,
+        ingredientRecordId = type(data) == "table" and data.ingredientRecordId or nil }
+    if type(data) ~= "table" or not validPlayer(data.player) then result.failureReason = "invalid player"
+    elseif data.reason ~= "careful_measure" then result.failureReason = "invalid reason"
+    elseif tonumber(data.count) ~= 1 then result.failureReason = "count must equal one"
+    else
+        local ingredient = ingredientRecord(data.ingredientRecordId)
+        if ingredient == nil then result.failureReason = "invalid Ingredient record"
+        else
+            local ok, created = pcall(world.createObject, data.ingredientRecordId, 1)
+            if ok and created ~= nil then
+                local moved, moveReason = pcall(function() created:moveInto(types.Actor.inventory(data.player)) end)
+                if moved then
+                    result.success = true; result.ingredientName = ingredient.name
+                    log("refunded ingredient=" .. tostring(data.ingredientRecordId))
+                else result.failureReason = "inventory delivery failed: " .. tostring(moveReason) end
+            else result.failureReason = "item creation failed" end
+        end
+    end
+    if not result.success then log("Careful Measure delivery rejected: " .. tostring(result.failureReason)) end
+    sendResult(type(data) == "table" and data.player or nil, REFUND_RESULT_EVENT, result)
+end
+subsystems.alchemy = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_IngredientLoreApply = onIngredientLoreApply,
+        SkillPerkSystem_BasePack_AlchemyRefundIngredient = onRefundIngredient,
+    },
+    engineHandlers = {
+        onSave = function() return { ingredientLoreSpellCache = ingredientLoreSpellCache } end,
+        onLoad = function(data)
+            ingredientLoreSpellCache = {}
+            local saved = type(data) == "table" and data.ingredientLoreSpellCache or nil
+            if type(saved) == "table" then
+                for signature, recordId in pairs(saved) do
+                    if type(signature) == "string" and type(recordId) == "string" then
+                        ingredientLoreSpellCache[signature] = recordId
+                    end
+                end
+            end
+        end,
+    },
+}
+end
+__basepack_initAlchemyGlobal()
+
 -- 14. combined engineHandlers
 local engineOrder = {
+    "alchemy",
     "security_global",
     "shared_target_watcher",
     "handtohand",

@@ -4081,6 +4081,7 @@ local eventHandlers = {
 
 -- Alchemy restricted global bridges (Ingredient Lore and Careful Measure only)
 local function __basepack_initAlchemyGlobal()
+local core = require("openmw.core")
 local types = require("openmw.types")
 local world = require("openmw.world")
 local Actor = types.Actor
@@ -4109,7 +4110,7 @@ local function ingredientRecord(recordId)
 end
 local function spellRecord(recordId)
     if type(recordId) ~= "string" or recordId == "" then return nil end
-    local ok, record = pcall(types.Spell.record, recordId)
+    local ok, record = pcall(function() return core.magic.spells.records[recordId] end)
     return ok and record or nil
 end
 local function sendResult(player, eventName, result)
@@ -4125,7 +4126,7 @@ local function failLore(data, reason)
 end
 local function effectRecord(effectId)
     if type(effectId) ~= "string" or effectId == "" then return nil end
-    local ok, record = pcall(types.MagicEffect.record, effectId)
+    local ok, record = pcall(function() return core.magic.effects.records[effectId] end)
     return ok and record or nil
 end
 local function validatedTierIndex(player)
@@ -4144,29 +4145,33 @@ local function normalizeEffect(source, tier)
     local magnitude = tier.magnitude
     local duration = tier.duration
     if magic.hasMagnitude == false then magnitude = 1 end
-    if magic.hasDuration == false or magic.isAppliedOnce == true or magic.appliedOnce == true then duration = 1 end
+    if magic.hasDuration == false or magic.isAppliedOnce == true then duration = 1 end
     local affectedAttribute = source.affectedAttribute
     local affectedSkill = source.affectedSkill
     return {
         id = effectId, affectedAttribute = affectedAttribute, affectedSkill = affectedSkill,
-        minMagnitude = magnitude, maxMagnitude = magnitude, duration = duration, area = 0,
-        range = types.Spell.RANGE and types.Spell.RANGE.Self or "self",
+        magnitudeMin = magnitude, magnitudeMax = magnitude, duration = duration, area = 0,
+        range = core.magic.RANGE.Self,
     }, magic
 end
 local function signatureFor(effect)
     return table.concat({ tostring(effect.id or ""), tostring(effect.affectedAttribute or ""),
-        tostring(effect.affectedSkill or ""), tostring(effect.minMagnitude or 0),
+        tostring(effect.affectedSkill or ""), tostring(effect.magnitudeMin or 0),
         tostring(effect.duration or 0) }, "|")
 end
 local function createSpell(effect, magic)
-    if type(types.Spell.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
+    if type(core.magic.spells.createRecordDraft) ~= "function" or type(world.createRecord) ~= "function" then
         return nil, "dynamic Spell records unavailable"
     end
     local name = "Ingredient Lore: " .. tostring(magic.name or effect.id)
-    local spellType = types.Spell.TYPE and (types.Spell.TYPE.Spell or types.Spell.TYPE.spell) or nil
-    local okDraft, draft = pcall(types.Spell.createRecordDraft, {
-        name = name, type = spellType, cost = 0, effects = { effect },
-        isAlwaysSucceeds = true, canBeAbsorbed = false, canBeReflected = false,
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = name,
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        effects = { effect },
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        starterSpellFlag = false,
     })
     if not okDraft then return nil, "Spell draft failed: " .. tostring(draft) end
     local okCreate, record = pcall(world.createRecord, draft)
@@ -4210,7 +4215,15 @@ local function onIngredientLoreApply(data)
         log("created Spell record=" .. tostring(recordId))
     end
     local ok, reason = pcall(function()
-        Actor.activeSpells(data.player):add({ id = recordId, effects = { 0 }, caster = data.player, stackable = true })
+        Actor.activeSpells(data.player):add({
+            id = recordId,
+            effects = { 0 },
+            caster = data.player,
+            stackable = true,
+            ignoreSpellAbsorption = true,
+            ignoreReflect = true,
+            ignoreResistances = false,
+        })
     end)
     if not ok then return failLore(data, "application failed: " .. tostring(reason)) end
     log("application success ingredient=" .. tostring(data.ingredientRecordId))

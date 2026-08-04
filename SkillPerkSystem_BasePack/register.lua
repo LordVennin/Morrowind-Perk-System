@@ -142,6 +142,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.destruction.destruction",
         data = require("scripts.SkillPerkSystem_BasePack.perks.destruction.destruction"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.alchemy.alchemy",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.alchemy.alchemy"),
+    },
 }
 
 

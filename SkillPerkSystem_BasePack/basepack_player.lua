@@ -11675,6 +11675,271 @@ end
 __basepack_initHandToHand()
 
 ----------------------------------------------------------------------
+-- Alchemy runtime (Ingredient Lore and Careful Measure only)
+----------------------------------------------------------------------
+local function __basepack_initAlchemy()
+local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
+local pself = require("openmw.self")
+local types = require("openmw.types")
+local ui = require("openmw.ui")
+
+local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local INGREDIENT_LORE_PERK_ID = "alchemy_ingredient_lore"
+local CAREFUL_MEASURE_PERK_ID = "alchemy_careful_measure"
+local CAREFUL_MEASURE_CHANCE = 0.25
+local SETTLEMENT_FRAMES = 2
+local INGREDIENT_LORE_TIERS = {
+    { minimumAlchemy = 80, magnitude = 8, duration = 12 },
+    { minimumAlchemy = 60, magnitude = 6, duration = 8 },
+    { minimumAlchemy = 40, magnitude = 4, duration = 5 },
+    { minimumAlchemy = 0, magnitude = 2, duration = 3 },
+}
+local LORE_REQUEST_EVENT = "SkillPerkSystem_BasePack_IngredientLoreApply"
+local LORE_RESULT_EVENT = "SkillPerkSystem_BasePack_IngredientLoreResult"
+local REFUND_REQUEST_EVENT = "SkillPerkSystem_BasePack_AlchemyRefundIngredient"
+local REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_AlchemyRefundResult"
+local LOG_TAG = "[SkillPerkSystem_BasePack][Alchemy][Player]"
+
+local alchemyMenuOpen = false
+local closingSession = false
+local ingredientCounts = {}
+local pendingBatch = nil
+local successfulBrewsPending = 0
+local requestSerial = 0
+local pendingLoreRequests = {}
+local pendingRefundRequests = {}
+
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+local function hasEnabledPerk(perkId)
+    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
+    if playerApi == nil or type(playerApi.hasPerk) ~= "function" then return false end
+    if not playerApi.hasPerk(perkId) then return false end
+    if type(playerApi.isPerkEffectEnabled) == "function" then
+        return playerApi.isPerkEffectEnabled(perkId)
+    end
+    return true
+end
+local function nextRequestId(prefix)
+    requestSerial = requestSerial + 1
+    return prefix .. tostring(requestSerial)
+end
+local function clearCarefulMeasure()
+    alchemyMenuOpen = false
+    closingSession = false
+    ingredientCounts = {}
+    pendingBatch = nil
+    successfulBrewsPending = 0
+    pendingRefundRequests = {}
+end
+local function ingredientRecord(recordId)
+    if type(recordId) ~= "string" or recordId == "" then return nil end
+    local ok, record = pcall(types.Ingredient.record, recordId)
+    return ok and record or nil
+end
+local function snapshotIngredients()
+    local counts = {}
+    local ok, items = pcall(function()
+        return types.Actor.inventory(pself):getAll(types.Ingredient)
+    end)
+    if not ok or items == nil then return counts end
+    for _, item in pairs(items) do
+        local recordId = item.recordId
+        local count = math.max(0, math.floor(tonumber(item.count) or 1))
+        if type(recordId) == "string" then counts[recordId] = (counts[recordId] or 0) + count end
+    end
+    return counts
+end
+local function rejectBatch(reason)
+    if pendingBatch ~= nil then log("ambiguous batch rejected: " .. tostring(reason)) end
+    pendingBatch = nil
+end
+local function compareIngredientCounts()
+    local current = snapshotIngredients()
+    local decreased, ids, inferred = {}, {}, 0
+    for recordId, oldCount in pairs(ingredientCounts) do
+        local amount = oldCount - (current[recordId] or 0)
+        if amount > 0 then
+            decreased[recordId] = amount
+            ids[#ids + 1] = recordId
+            inferred = math.max(inferred, amount)
+        end
+    end
+    ingredientCounts = current
+    if #ids == 0 then return end
+    table.sort(ids)
+    log("ingredient decreases=" .. table.concat(ids, ",") .. " inferred attempts=" .. tostring(inferred))
+    if pendingBatch ~= nil then
+        rejectBatch("overlapping inventory decreases")
+        return
+    end
+    if inferred <= 0 then log("ambiguous batch rejected: invalid inferred attempt count") return end
+    for _, recordId in ipairs(ids) do
+        if decreased[recordId] ~= inferred then
+            log("ambiguous batch rejected: unequal decreases suggest mixed inventory activity")
+            return
+        end
+    end
+    pendingBatch = { ids = ids, decreases = decreased, inferredAttempts = inferred, frames = SETTLEMENT_FRAMES }
+end
+local function requestRefund(recordId)
+    local requestId = nextRequestId("CarefulMeasure_")
+    pendingRefundRequests[requestId] = recordId
+    core.sendGlobalEvent(REFUND_REQUEST_EVENT, {
+        player = pself, ingredientRecordId = recordId, count = 1,
+        requestId = requestId, reason = "careful_measure",
+    })
+end
+local function resolveBatch()
+    local batch = pendingBatch
+    pendingBatch = nil
+    if batch == nil then return end
+    if not hasEnabledPerk(CAREFUL_MEASURE_PERK_ID) then log("ambiguous batch rejected: perk disabled") return end
+    if successfulBrewsPending > batch.inferredAttempts then
+        successfulBrewsPending = 0
+        log("ambiguous batch rejected: excess success signals")
+        return
+    end
+    local matched = math.min(successfulBrewsPending, batch.inferredAttempts)
+    successfulBrewsPending = successfulBrewsPending - matched
+    local failed = math.max(0, math.min(batch.inferredAttempts, batch.inferredAttempts - matched))
+    log("failed-attempt count=" .. tostring(failed))
+    for _ = 1, failed do
+        local preserved = math.random() < CAREFUL_MEASURE_CHANCE
+        log("preservation roll=" .. tostring(preserved))
+        if preserved and #batch.ids > 0 then requestRefund(batch.ids[math.random(#batch.ids)]) end
+    end
+end
+local function shouldFrame()
+    return (alchemyMenuOpen and hasEnabledPerk(CAREFUL_MEASURE_PERK_ID))
+        or pendingBatch ~= nil or next(pendingRefundRequests) ~= nil
+end
+local function onFrame()
+    if alchemyMenuOpen then compareIngredientCounts() end
+    if pendingBatch ~= nil then
+        pendingBatch.frames = pendingBatch.frames - 1
+        if pendingBatch.frames <= 0 then resolveBatch() end
+    end
+    if closingSession and pendingBatch == nil then
+        if successfulBrewsPending > 0 then log("ambiguous batch rejected: unmatched success signals") end
+        ingredientCounts = {}; successfulBrewsPending = 0; closingSession = false
+    end
+end
+local function modeIsAlchemy(mode) return tostring(mode or ""):lower() == "alchemy" end
+local function onUiModeChanged(data)
+    data = type(data) == "table" and data or {}
+    local entering = modeIsAlchemy(data.newMode) and not modeIsAlchemy(data.oldMode)
+    local leaving = modeIsAlchemy(data.oldMode) and not modeIsAlchemy(data.newMode)
+    if entering then
+        clearCarefulMeasure()
+        if hasEnabledPerk(CAREFUL_MEASURE_PERK_ID) then
+            alchemyMenuOpen = true
+            ingredientCounts = snapshotIngredients()
+            log("Alchemy session opened")
+        end
+    elseif leaving and alchemyMenuOpen then
+        compareIngredientCounts()
+        alchemyMenuOpen = false
+        closingSession = pendingBatch ~= nil
+        if pendingBatch == nil then ingredientCounts = {}; successfulBrewsPending = 0 end
+        log("Alchemy session closed")
+    end
+end
+local function alchemyTier()
+    local modified = 0
+    pcall(function() modified = tonumber(types.NPC.stats.skills.alchemy(pself).modified) or 0 end)
+    for index, tier in ipairs(INGREDIENT_LORE_TIERS) do
+        if modified >= tier.minimumAlchemy then return index, tier end
+    end
+    return #INGREDIENT_LORE_TIERS, INGREDIENT_LORE_TIERS[#INGREDIENT_LORE_TIERS]
+end
+local function onConsume(item)
+    if not hasEnabledPerk(INGREDIENT_LORE_PERK_ID) then return end
+    local recordId = item and item.recordId
+    local record = ingredientRecord(recordId)
+    if record == nil or record.effects == nil then return end
+    local valid = {}
+    for index, effect in ipairs(record.effects) do
+        if effect ~= nil and type(effect.id) == "string" and effect.id ~= "" then
+            valid[#valid + 1] = { index = index - 1, effectId = effect.id }
+        end
+    end
+    if #valid == 0 then log("rejected consumed ingredient " .. tostring(recordId) .. ": no valid effects") return end
+    local selected = valid[math.random(#valid)]
+    local tierIndex = alchemyTier()
+    local requestId = nextRequestId("IngredientLore_")
+    pendingLoreRequests[requestId] = true
+    log(string.format("consumed=%s effectIndex=%d effectId=%s tier=%d", recordId, selected.index, selected.effectId, tierIndex))
+    core.sendGlobalEvent(LORE_REQUEST_EVENT, {
+        player = pself, ingredientRecordId = recordId, sourceEffectIndex = selected.index,
+        powerTier = tierIndex, requestId = requestId,
+    })
+end
+local function onLoreResult(data)
+    if type(data) ~= "table" or pendingLoreRequests[data.requestId] == nil then return end
+    pendingLoreRequests[data.requestId] = nil
+    if data.success then
+        ui.showMessage("Ingredient Lore reveals: " .. tostring(data.effectName or data.effectId or "Unknown Effect") .. ".", { showInDialogue = false })
+    else log("Ingredient Lore application failed: " .. tostring(data.failureReason)) end
+end
+local function onRefundResult(data)
+    if type(data) ~= "table" or pendingRefundRequests[data.requestId] == nil then return end
+    pendingRefundRequests[data.requestId] = nil
+    if data.success then
+        ui.showMessage("Careful Measure preserves " .. tostring(data.ingredientName or data.ingredientRecordId or "an ingredient") .. ".", { showInDialogue = false })
+        log("refunded ingredient=" .. tostring(data.ingredientRecordId))
+    else log("refund delivery failed: " .. tostring(data.failureReason)) end
+end
+local function onPerkStateChanged(data)
+    if type(data) ~= "table" then return end
+    local perkId = data.perkId or data.id
+    if perkId == INGREDIENT_LORE_PERK_ID and not hasEnabledPerk(INGREDIENT_LORE_PERK_ID) then pendingLoreRequests = {} end
+    if perkId == CAREFUL_MEASURE_PERK_ID and not hasEnabledPerk(CAREFUL_MEASURE_PERK_ID) then clearCarefulMeasure() end
+end
+local function recordSuccessfulBrew(eventOrSkillId, params)
+    local skillId, eventParams = eventOrSkillId, params
+    if type(eventOrSkillId) == "table" then
+        skillId = eventOrSkillId.skillId or eventOrSkillId.skill
+        eventParams = eventOrSkillId.params or eventOrSkillId
+    end
+    local progression = interfaces.SkillProgression
+    local expected = progression and progression.SKILL_USE_TYPES and progression.SKILL_USE_TYPES.Alchemy_CreatePotion
+    if skillId == "alchemy" and type(eventParams) == "table" and eventParams.useType == expected
+            and (alchemyMenuOpen or closingSession) then
+        successfulBrewsPending = successfulBrewsPending + 1
+        log("successful-brew signal=" .. tostring(successfulBrewsPending))
+    end
+end
+local progression = interfaces.SkillProgression
+if progression ~= nil then
+    if type(progression.addSkillUseHandler) == "function" then
+        progression.addSkillUseHandler("alchemy", function(first, second)
+            if second ~= nil then recordSuccessfulBrew(first, second) else recordSuccessfulBrew("alchemy", first) end
+        end)
+    elseif type(progression.registerSkillUseHandler) == "function" then
+        progression.registerSkillUseHandler({ id = "SkillPerkSystem_BasePack_Alchemy", skill = "alchemy", handler = recordSuccessfulBrew })
+    end
+end
+
+__basepack_subsystems[#__basepack_subsystems + 1] = {
+    engineHandlers = {
+        onConsume = onConsume,
+        onFrame = onFrame,
+        shouldFrame = shouldFrame,
+        onSave = function() return {} end,
+        onLoad = function() clearCarefulMeasure(); pendingLoreRequests = {} end,
+    },
+    eventHandlers = {
+        UiModeChanged = onUiModeChanged,
+        SkillPerkSystem_PerkStateChanged = onPerkStateChanged,
+        [LORE_RESULT_EVENT] = onLoreResult,
+        [REFUND_RESULT_EVENT] = onRefundResult,
+    },
+}
+end
+__basepack_initAlchemy()
+
+----------------------------------------------------------------------
 -- combined eventHandlers
 ----------------------------------------------------------------------
 local __combinedEventHandlers = {}

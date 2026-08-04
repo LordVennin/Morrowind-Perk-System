@@ -4257,10 +4257,73 @@ local function onRefundIngredient(data)
     if not result.success then log("Careful Measure delivery rejected: " .. tostring(result.failureReason)) end
     sendResult(type(data) == "table" and data.player or nil, REFUND_RESULT_EVENT, result)
 end
+local COAT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationCoatResult"
+local HIT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationHitResult"
+local coating, coatingSerial
+local function validObject(object) if object==nil then return false end; if type(object.isValid)=="function" then local ok,v=pcall(object.isValid,object); return ok and v end; return true end
+local function potionHarm(recordId)
+    local ok,record=pcall(types.Potion.record,recordId); if not ok or not record then return nil,{},{} end
+    local indices,names={},{}; for index,effect in ipairs(record.effects or {}) do local okMagic,magic=pcall(function() return core.magic.effects.records[effect.id] end); if okMagic and magic and magic.harmful==true then indices[#indices+1]=index-1; names[#names+1]=magic.name or effect.id end end
+    return record,indices,names
+end
+local function weaponName(weapon) local ok,r=pcall(types.Weapon.record,weapon); return ok and r and (r.name or weapon.recordId) or weapon.recordId end
+local function sendCoat(player,data) sendResult(player,COAT_RESULT_EVENT,data) end
+local function watcherState(target)
+    if type(target.sendEvent)~="function" then return end
+    if coating and coating.charges==1 then target:sendEvent("SkillPerkSystem_BasePack_DualDistillationState",{active=true,playerId=coating.playerId,coatingId=coating.coatingId,weapon=coating.weapon,weaponRecordId=coating.weaponRecordId})
+    else target:sendEvent("SkillPerkSystem_BasePack_DualDistillationState",{active=false}) end
+end
+registerTargetWatcherProvider("dual_distillation",{isActive=function() return coating~=nil and coating.charges==1 end,sendState=watcherState})
+local function clearCoating(reason)
+    if coating then log("coating cleared reason="..tostring(reason)); coating=nil; onTargetWatcherProviderStateChanged("dual_distillation",false) end
+end
+local function equippedRight(player) local ok,item=pcall(Actor.getEquipment,player,Actor.EQUIPMENT_SLOT.CarriedRight); return ok and item or nil end
+local function matchingPotion(player,id)
+    local ok,items=pcall(function() return Actor.inventory(player):getAll(types.Potion) end); if not ok then return nil end
+    for _,item in pairs(items or {}) do if item.recordId==id and (tonumber(item.count) or 1)>0 and validObject(item) then return item end end
+end
+local function onCoat(data)
+    local player=type(data)=="table" and data.player; local result={requestId=data and data.requestId,success=false}
+    local weapon=data and data.weapon; local record,indices,names=potionHarm(data and data.potionRecordId)
+    local failure
+    if not validPlayer(player) then failure="invalid player" elseif not validObject(weapon) or not types.Weapon.objectIsInstance(weapon) then failure="invalid weapon" elseif equippedRight(player)~=weapon then failure="weapon is not equipped" elseif not record or #indices==0 then failure="Potion has no harmful effects" elseif coating and data.replaceExisting~=true then failure="replacement was not approved" end
+    local potion=not failure and matchingPotion(player,data.potionRecordId) or nil; if not failure and not potion then failure="Potion is no longer available" end
+    if failure then result.failureReason=failure; log("coating request rejected="..failure); return sendCoat(player,result) end
+    local removed,why=pcall(potion.remove,potion,1); if not removed then result.failureReason="Potion removal failed: "..tostring(why); log(result.failureReason); return sendCoat(player,result) end
+    local replaced=coating~=nil; coatingSerial=(coatingSerial or 0)+1; local id=tostring(player.id)..":dual:"..tostring(coatingSerial)
+    coating={coatingId=id,player=player,playerId=player.id,weapon=weapon,weaponRecordId=weapon.recordId,weaponName=weaponName(weapon),potionRecordId=data.potionRecordId,potionName=record.name or data.potionRecordId,harmfulEffectIndices=indices,charges=1,triggerInProgress=false}
+    result={requestId=data.requestId,success=true,coatingId=id,weapon=weapon,weaponRecordId=weapon.recordId,weaponName=coating.weaponName,potionRecordId=coating.potionRecordId,potionName=coating.potionName,harmfulEffectNames=names}
+    log((replaced and "coating replaced " or "coating created ")..id); onTargetWatcherProviderStateChanged("dual_distillation",true); sendCoat(player,result)
+end
+local function onRestore(data)
+    local player=type(data)=="table" and data.player; local saved=data and data.coating; local weapon=data and data.weapon; local record,indices=potionHarm(saved and saved.potionRecordId)
+    if not validPlayer(player) or type(saved)~="table" or not validObject(weapon) or not types.Weapon.objectIsInstance(weapon) or equippedRight(player)~=weapon or weapon.recordId~=saved.weaponRecordId or not record or #indices==0 then return sendCoat(player,{success=false,failureReason="saved coating could not be restored"}) end
+    coating={coatingId=saved.coatingId,player=player,playerId=player.id,weapon=weapon,weaponRecordId=weapon.recordId,weaponName=saved.weaponName or weaponName(weapon),potionRecordId=saved.potionRecordId,potionName=saved.potionName or record.name,harmfulEffectIndices=indices,charges=1,triggerInProgress=false}
+    log("coating restored="..tostring(coating.coatingId)); onTargetWatcherProviderStateChanged("dual_distillation",true); sendCoat(player,{success=true,coatingId=coating.coatingId,weapon=weapon,weaponRecordId=weapon.recordId,weaponName=coating.weaponName,potionRecordId=coating.potionRecordId,potionName=coating.potionName})
+end
+local function onClear(data) if type(data)=="table" and validPlayer(data.player) and (data.coatingId==nil or coating==nil or coating.coatingId==data.coatingId) then clearCoating(data.reason or "player request") end end
+local function onHit(data)
+    local c=coating; local reason
+    if not c then reason="no active coating" elseif type(data)~="table" or data.coatingId~=c.coatingId then reason="coating mismatch" elseif data.attacker~=c.player then reason="attacker mismatch" elseif data.weapon~=c.weapon then reason="weapon mismatch" elseif not validObject(data.target) or not Actor.objectIsInstance(data.target) or Actor.isDead(data.target) then reason="invalid target" elseif c.charges~=1 or c.triggerInProgress then reason="charge unavailable" end
+    if reason then log("poison hit rejected="..reason); return end
+    local record,indices=potionHarm(c.potionRecordId); if not record or #indices==0 then log("poison hit rejected=invalid Potion"); return end
+    c.triggerInProgress=true; local ok,why=pcall(function() Actor.activeSpells(data.target):add({id=c.potionRecordId,effects=indices,caster=c.player,stackable=true,name="Weapon Poison: "..c.potionName,ignoreSpellAbsorption=true,ignoreReflect=true,ignoreResistances=false}) end)
+    if not ok then c.triggerInProgress=false; log("poison application failed="..tostring(why)); return end
+    c.charges=0; local player,id,potionName=c.player,c.coatingId,c.potionName; local targetName=data.target.recordId; pcall(function() targetName=Actor.record(data.target).name end); coating=nil; onTargetWatcherProviderStateChanged("dual_distillation",false); log("poison application success; coating charge consumed"); sendResult(player,HIT_RESULT_EVENT,{success=true,coatingId=id,potionName=potionName,targetName=targetName})
+end
+local function registerApparatusCapture()
+    local itemUsage=require("openmw.interfaces").ItemUsage; if not itemUsage or type(itemUsage.addHandlerForType)~="function" then return end
+    itemUsage.addHandlerForType(types.Apparatus,function(item,actor) if validObject(item) and actor and type(actor.sendEvent)=="function" then actor:sendEvent("SkillPerkSystem_RecordAlchemyApparatus",{item=item,recordId=item.recordId}); log("apparatus captured="..tostring(item.recordId)) end end); log("registered apparatus capture handler")
+end
+registerApparatusCapture()
 subsystems.alchemy = {
     eventHandlers = {
         SkillPerkSystem_BasePack_IngredientLoreApply = onIngredientLoreApply,
         SkillPerkSystem_BasePack_AlchemyRefundIngredient = onRefundIngredient,
+        SkillPerkSystem_BasePack_DualDistillationCoatRequest = onCoat,
+        SkillPerkSystem_BasePack_DualDistillationRestoreCoating = onRestore,
+        SkillPerkSystem_BasePack_DualDistillationClearCoating = onClear,
+        SkillPerkSystem_BasePack_DualDistillationHitRequest = onHit,
     },
     engineHandlers = {
         onSave = function() return { ingredientLoreSpellCache = ingredientLoreSpellCache } end,

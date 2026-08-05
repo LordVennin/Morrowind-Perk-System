@@ -4058,6 +4058,12 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
     SkillPerkSystem_BasePack_IngredientLoreApply = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_IngredientLoreApply", data) end,
     SkillPerkSystem_BasePack_AlchemyRefundIngredient = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_AlchemyRefundIngredient", data) end,
+    SkillPerkSystem_BasePack_DualDistillationCoatRequest = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationCoatRequest", data) end,
+    SkillPerkSystem_BasePack_DualDistillationRestoreCoating = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationRestoreCoating", data) end,
+    SkillPerkSystem_BasePack_DualDistillationClearCoating = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationClearCoating", data) end,
+    SkillPerkSystem_BasePack_DualDistillationHitRequest = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationHitRequest", data) end,
+    SkillPerkSystem_BasePack_DualDistillationConvertPoisons = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationConvertPoisons", data) end,
+    SkillPerkSystem_BasePack_DualDistillationDrinkPoison = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationDrinkPoison", data) end,
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,

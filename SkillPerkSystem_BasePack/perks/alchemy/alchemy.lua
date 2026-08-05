@@ -36,7 +36,7 @@ return {
             x = 0,
             y = 140,
             title = "Dual Distillation",
-            description = "With a complete set of alchemy tools, opening the Alchemy menu lets you brew normal potions or prepare newly brewed mixtures as weapon poisons. A poison applies its harmful effects on the next successful hit with your equipped weapon.",
+            description = "With a complete set of alchemy tools, choose to brew normal potions or weapon poisons. Poisons are labeled \"Poison:\" and can be applied to your equipped weapon, causing their harmful effects on the next successful hit.",
         },
         {
             id = "alchemy_concentrated_draught",

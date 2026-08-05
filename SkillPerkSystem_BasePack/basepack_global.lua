@@ -4058,6 +4058,12 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_UnseenHand_PlayerToggle = function(data) dispatchEvent("unseen_hand", "SkillPerkSystem_BasePack_UnseenHand_PlayerToggle", data) end,
     SkillPerkSystem_BasePack_IngredientLoreApply = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_IngredientLoreApply", data) end,
     SkillPerkSystem_BasePack_AlchemyRefundIngredient = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_AlchemyRefundIngredient", data) end,
+    SkillPerkSystem_BasePack_DualDistillationCoatRequest = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationCoatRequest", data) end,
+    SkillPerkSystem_BasePack_DualDistillationRestoreCoating = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationRestoreCoating", data) end,
+    SkillPerkSystem_BasePack_DualDistillationClearCoating = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationClearCoating", data) end,
+    SkillPerkSystem_BasePack_DualDistillationHitRequest = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationHitRequest", data) end,
+    SkillPerkSystem_BasePack_DualDistillationConvertPoisons = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationConvertPoisons", data) end,
+    SkillPerkSystem_BasePack_DualDistillationDrinkPoison = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationDrinkPoison", data) end,
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
@@ -4079,7 +4085,7 @@ local eventHandlers = {
     [TARGET_SCRIPT_IDLE_EVENT] = function(data) dispatchEvent("shared_target_watcher", TARGET_SCRIPT_IDLE_EVENT, data) end,
 }
 
--- Alchemy restricted global bridges (Ingredient Lore and Careful Measure only)
+-- Alchemy restricted global bridges (Ingredient Lore, Careful Measure, and Dual Distillation)
 local function __basepack_initAlchemyGlobal()
 local core = require("openmw.core")
 local types = require("openmw.types")
@@ -4257,20 +4263,401 @@ local function onRefundIngredient(data)
     if not result.success then log("Careful Measure delivery rejected: " .. tostring(result.failureReason)) end
     sendResult(type(data) == "table" and data.player or nil, REFUND_RESULT_EVENT, result)
 end
+local COAT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationCoatResult"
+local HIT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationHitResult"
+local CONVERT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationConvertResult"
+local MAX_POISON_CONVERSION_COUNT = 100
+local poisonRecordCache = {}
+local poisonRegistry = {}
+local coating = nil
+local coatingSerial = 0
+local drinkBypass = nil
+local itemUsageRegistered = false
+
+local function validObject(object)
+    if object == nil then return false end
+    if type(object.isValid) == "function" then
+        local ok, valid = pcall(object.isValid, object)
+        return ok and valid
+    end
+    return true
+end
+
+local function potionRecord(recordId)
+    if type(recordId) ~= "string" or recordId == "" then return nil end
+    local ok, record = pcall(types.Potion.record, recordId)
+    return ok and record or nil
+end
+
+local function harmfulPotion(recordId)
+    local record = potionRecord(recordId)
+    if record == nil then return nil, {}, {} end
+    local indices, names = {}, {}
+    for index, effect in ipairs(record.effects or {}) do
+        local magic = effectRecord(effect.id)
+        if magic ~= nil and magic.harmful == true then
+            indices[#indices + 1] = index - 1
+            names[#names + 1] = magic.name or effect.id
+        end
+    end
+    return record, indices, names
+end
+
+local function inventoryPotion(player, recordId, exactObject)
+    local ok, items = pcall(function() return Actor.inventory(player):getAll(types.Potion) end)
+    if not ok then return nil, 0 end
+    local count, matched = 0, nil
+    for _, item in pairs(items or {}) do
+        if validObject(item) and item.recordId == recordId then
+            count = count + math.max(0, math.floor(tonumber(item.count) or 1))
+            if exactObject == nil or item == exactObject then matched = item end
+        end
+    end
+    return matched, count
+end
+
+local function poisonNameFor(sourceRecord)
+    local name = tostring(sourceRecord.name or "Mixture")
+    if name:sub(1, 7) == "Poison:" then return name end
+    return "Poison: " .. name
+end
+
+local function generatedPoison(sourceRecordId, sourceRecord)
+    local cachedId = poisonRecordCache[sourceRecordId]
+    local cached = potionRecord(cachedId)
+    if cached ~= nil then
+        poisonRegistry[cachedId] = {
+            sourcePotionRecordId = sourceRecordId,
+            poisonName = cached.name or poisonNameFor(sourceRecord),
+        }
+        log("poison record cache hit source=" .. sourceRecordId .. " generated=" .. cachedId)
+        return cached
+    end
+    if cachedId ~= nil then
+        poisonRecordCache[sourceRecordId] = nil
+        poisonRegistry[cachedId] = nil
+    end
+    log("poison record cache miss source=" .. sourceRecordId)
+    local okDraft, draft = pcall(types.Potion.createRecordDraft, {
+        template = sourceRecord,
+        name = poisonNameFor(sourceRecord),
+    })
+    if not okDraft or draft == nil then return nil, "Potion draft creation failed: " .. tostring(draft) end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then return nil, "Potion record creation failed: " .. tostring(record) end
+    poisonRecordCache[sourceRecordId] = record.id
+    poisonRegistry[record.id] = {
+        sourcePotionRecordId = sourceRecordId,
+        poisonName = record.name or poisonNameFor(sourceRecord),
+    }
+    log("created generated poison record=" .. tostring(record.id))
+    return record
+end
+
+local function sendConversionResult(player, result)
+    sendResult(player, CONVERT_RESULT_EVENT, result)
+end
+
+local function convertPoisons(data)
+    local player = type(data) == "table" and data.player or nil
+    local sourceId = type(data) == "table" and data.sourcePotionRecordId or nil
+    local requested = tonumber(type(data) == "table" and data.count or nil)
+    local result = {
+        requestId = type(data) == "table" and data.requestId or nil,
+        success = false,
+        sourcePotionRecordId = sourceId,
+        requestedCount = requested,
+        convertedCount = 0,
+    }
+    local source, harmful = harmfulPotion(sourceId)
+    local available = 0
+    if validPlayer(player) then local _; _, available = inventoryPotion(player, sourceId) end
+    local failure
+    if not validPlayer(player) then failure = "invalid player"
+    elseif source == nil then failure = "invalid source Potion"
+    elseif poisonRegistry[sourceId] ~= nil then failure = "registered poisons cannot be converted"
+    elseif #harmful == 0 then failure = "source Potion has no harmful effects"
+    elseif requested == nil or requested ~= math.floor(requested) or requested < 1 then failure = "invalid conversion count"
+    elseif requested > MAX_POISON_CONVERSION_COUNT then failure = "conversion count exceeds safety limit"
+    elseif requested > available then failure = "insufficient source Potion quantity" end
+    if failure ~= nil then
+        result.failureReason = failure
+        log("conversion failure source=" .. tostring(sourceId) .. " reason=" .. failure)
+        return sendConversionResult(player, result)
+    end
+    local generated, generationFailure = generatedPoison(sourceId, source)
+    if generated == nil then
+        result.failureReason = generationFailure
+        log("conversion failure source=" .. sourceId .. " reason=" .. tostring(generationFailure))
+        return sendConversionResult(player, result)
+    end
+    result.poisonPotionRecordId = generated.id
+    result.poisonName = generated.name
+    local inventory = Actor.inventory(player)
+    for _ = 1, requested do
+        local sourceObject = inventoryPotion(player, sourceId)
+        if sourceObject == nil then result.failureReason = "source Potion disappeared"; break end
+        local okCreate, poisonObject = pcall(world.createObject, generated.id, 1)
+        if not okCreate or poisonObject == nil then result.failureReason = "poison object creation failed"; break end
+        local delivered, deliveryFailure = pcall(function() poisonObject:moveInto(inventory) end)
+        if not delivered then
+            pcall(poisonObject.remove, poisonObject)
+            result.failureReason = "generated poison delivery failed: " .. tostring(deliveryFailure)
+            break
+        end
+        local removed, removalFailure = pcall(sourceObject.remove, sourceObject, 1)
+        if not removed then
+            pcall(poisonObject.remove, poisonObject, 1)
+            result.failureReason = "source Potion removal failed: " .. tostring(removalFailure)
+            break
+        end
+        result.convertedCount = result.convertedCount + 1
+        log("source Potion removed=" .. sourceId .. "; generated poison delivered=" .. generated.id)
+    end
+    result.success = result.convertedCount > 0
+    if result.convertedCount < requested then
+        log("partial conversion source=" .. sourceId .. " converted=" .. result.convertedCount .. "/" .. requested)
+    end
+    sendConversionResult(player, result)
+end
+
+local function watcherState(target)
+    if type(target.sendEvent) ~= "function" then return end
+    if coating ~= nil and coating.charges == 1 then
+        target:sendEvent("SkillPerkSystem_BasePack_DualDistillationState", {
+            active = true, playerId = coating.playerId, coatingId = coating.coatingId,
+            weapon = coating.weapon, weaponRecordId = coating.weaponRecordId,
+        })
+    else
+        target:sendEvent("SkillPerkSystem_BasePack_DualDistillationState", { active = false })
+    end
+end
+registerTargetWatcherProvider("dual_distillation", {
+    isActive = function() return coating ~= nil and coating.charges == 1 end,
+    sendState = watcherState,
+})
+
+local function clearCoating(reason)
+    if coating == nil then return end
+    log("coating cleared reason=" .. tostring(reason))
+    coating = nil
+    onTargetWatcherProviderStateChanged("dual_distillation", false)
+end
+
+local function equippedRight(player)
+    local ok, item = pcall(Actor.getEquipment, player, Actor.EQUIPMENT_SLOT.CarriedRight)
+    return ok and item or nil
+end
+
+local function weaponName(weapon)
+    local ok, record = pcall(types.Weapon.record, weapon)
+    return ok and record and (record.name or weapon.recordId) or weapon.recordId
+end
+
+local function onCoat(data)
+    local player = type(data) == "table" and data.player or nil
+    local potion = type(data) == "table" and data.potion or nil
+    local potionId = type(data) == "table" and data.potionRecordId or nil
+    local weapon = type(data) == "table" and data.weapon or nil
+    local result = { requestId = type(data) == "table" and data.requestId or nil, success = false }
+    local record, harmful, harmfulNames = harmfulPotion(potionId)
+    local exactPotion = validPlayer(player) and inventoryPotion(player, potionId, potion) or nil
+    local failure
+    if not validPlayer(player) then failure = "invalid player"
+    elseif not validObject(weapon) or not types.Weapon.objectIsInstance(weapon) then failure = "invalid weapon"
+    elseif equippedRight(player) ~= weapon then failure = "weapon is not equipped"
+    elseif poisonRegistry[potionId] == nil then failure = "item is not a registered poison"
+    elseif not validObject(potion) or exactPotion ~= potion then failure = "exact poison item is unavailable"
+    elseif record == nil or #harmful == 0 then failure = "poison has no harmful effects"
+    elseif coating ~= nil and data.replaceExisting ~= true then failure = "replacement was not approved" end
+    if failure ~= nil then
+        result.failureReason = failure
+        log("coating request rejected=" .. failure)
+        return sendResult(player, COAT_RESULT_EVENT, result)
+    end
+    local removed, removalFailure = pcall(potion.remove, potion, 1)
+    if not removed then
+        result.failureReason = "poison removal failed: " .. tostring(removalFailure)
+        return sendResult(player, COAT_RESULT_EVENT, result)
+    end
+    local replaced = coating ~= nil
+    coatingSerial = coatingSerial + 1
+    local coatingId = tostring(player.id) .. ":dual:" .. tostring(coatingSerial)
+    coating = {
+        coatingId = coatingId, player = player, playerId = player.id,
+        weapon = weapon, weaponRecordId = weapon.recordId, weaponName = weaponName(weapon),
+        potionRecordId = potionId, potionName = record.name or potionId,
+        harmfulEffectIndices = harmful, charges = 1, triggerInProgress = false,
+    }
+    log((replaced and "coating replaced=" or "coating created=") .. coatingId)
+    onTargetWatcherProviderStateChanged("dual_distillation", true)
+    sendResult(player, COAT_RESULT_EVENT, {
+        requestId = result.requestId, success = true, coatingId = coatingId, weapon = weapon,
+        weaponRecordId = weapon.recordId, weaponName = coating.weaponName,
+        potionRecordId = potionId, potionName = coating.potionName, harmfulEffectNames = harmfulNames,
+    })
+end
+
+local function onRestore(data)
+    local player = type(data) == "table" and data.player or nil
+    local saved = type(data) == "table" and data.coating or nil
+    local weapon = type(data) == "table" and data.weapon or nil
+    local record, harmful = harmfulPotion(saved and saved.potionRecordId)
+    if not validPlayer(player) or type(saved) ~= "table" or not validObject(weapon)
+            or not types.Weapon.objectIsInstance(weapon) or equippedRight(player) ~= weapon
+            or weapon.recordId ~= saved.weaponRecordId or record == nil or #harmful == 0 then
+        return sendResult(player, COAT_RESULT_EVENT, { success = false, restore = true,
+            failureReason = "saved coating could not be restored" })
+    end
+    coating = {
+        coatingId = saved.coatingId, player = player, playerId = player.id,
+        weapon = weapon, weaponRecordId = weapon.recordId,
+        weaponName = saved.weaponName or weaponName(weapon), potionRecordId = saved.potionRecordId,
+        potionName = saved.potionName or record.name, harmfulEffectIndices = harmful,
+        charges = 1, triggerInProgress = false,
+    }
+    log("coating restored=" .. tostring(coating.coatingId))
+    onTargetWatcherProviderStateChanged("dual_distillation", true)
+    sendResult(player, COAT_RESULT_EVENT, {
+        success = true, restore = true, coatingId = coating.coatingId, weapon = weapon,
+        weaponRecordId = weapon.recordId, weaponName = coating.weaponName,
+        potionRecordId = coating.potionRecordId, potionName = coating.potionName,
+    })
+end
+
+local function onClear(data)
+    if type(data) == "table" and validPlayer(data.player)
+            and (data.coatingId == nil or coating == nil or coating.coatingId == data.coatingId) then
+        clearCoating(data.reason or "player request")
+    end
+end
+
+local function onHit(data)
+    local current = coating
+    local reason
+    if current == nil then reason = "no active coating"
+    elseif type(data) ~= "table" or data.coatingId ~= current.coatingId then reason = "coating mismatch"
+    elseif data.attacker ~= current.player then reason = "attacker mismatch"
+    elseif data.weapon ~= current.weapon then reason = "weapon mismatch"
+    elseif not validObject(data.target) or not Actor.objectIsInstance(data.target) or Actor.isDead(data.target) then reason = "invalid target"
+    elseif current.charges ~= 1 or current.triggerInProgress then reason = "charge unavailable" end
+    if reason ~= nil then log("poison hit rejected=" .. reason); return end
+    local record, harmful = harmfulPotion(current.potionRecordId)
+    if record == nil or #harmful == 0 then log("poison hit rejected=invalid Potion"); return end
+    current.triggerInProgress = true
+    local ok, failure = pcall(function()
+        Actor.activeSpells(data.target):add({
+            id = current.potionRecordId, effects = harmful, caster = current.player,
+            stackable = true, name = "Weapon Poison: " .. current.potionName,
+            ignoreSpellAbsorption = true, ignoreReflect = true, ignoreResistances = false,
+        })
+    end)
+    if not ok then current.triggerInProgress = false; log("poison application failed=" .. tostring(failure)); return end
+    current.charges = 0
+    local player, coatingId, name = current.player, current.coatingId, current.potionName
+    local targetName = data.target.recordId
+    pcall(function() targetName = Actor.record(data.target).name end)
+    coating = nil
+    onTargetWatcherProviderStateChanged("dual_distillation", false)
+    log("poison application success; coating charge consumed")
+    sendResult(player, HIT_RESULT_EVENT, { success = true, coatingId = coatingId,
+        potionName = name, targetName = targetName })
+end
+
+local function drinkPoison(data)
+    local player = type(data) == "table" and data.player or nil
+    local potion = type(data) == "table" and data.potion or nil
+    local potionId = potion and potion.recordId or nil
+    local exact = validPlayer(player) and inventoryPotion(player, potionId, potion) or nil
+    if not validPlayer(player) or poisonRegistry[potionId] == nil or not validObject(potion) or exact ~= potion then
+        log("drink poison validation failure")
+        return
+    end
+    drinkBypass = { player = player, potion = potion, expiresAt = core.getRealTime() + 1.0 }
+    log("drink bypass activated=" .. potionId)
+    core.sendGlobalEvent("UseItem", { object = potion, actor = player })
+end
+
+local function registerItemUsageHandlers()
+    if itemUsageRegistered then return end
+    local itemUsage = require("openmw.interfaces").ItemUsage
+    if itemUsage == nil or type(itemUsage.addHandlerForType) ~= "function" then return end
+    itemUsage.addHandlerForType(types.Apparatus, function(item, actor)
+        if validObject(item) and actor ~= nil and type(actor.sendEvent) == "function" then
+            actor:sendEvent("SkillPerkSystem_RecordAlchemyApparatus", { item = item, recordId = item.recordId })
+            log("apparatus captured=" .. tostring(item.recordId))
+        end
+    end)
+    itemUsage.addHandlerForType(types.Potion, function(potion, actor)
+        if poisonRegistry[potion and potion.recordId] == nil or not validPlayer(actor) then return end
+        if drinkBypass ~= nil and core.getRealTime() > drinkBypass.expiresAt then drinkBypass = nil end
+        if drinkBypass ~= nil and drinkBypass.player == actor and drinkBypass.potion == potion then
+            drinkBypass = nil
+            log("drink bypass consumed=" .. tostring(potion.recordId))
+            return
+        end
+        if validObject(potion) and actor ~= nil and type(actor.sendEvent) == "function" then
+            actor:sendEvent("SkillPerkSystem_BasePack_DualDistillationPoisonUsed", {
+                potion = potion, potionRecordId = potion.recordId,
+            })
+            log("registered poison Potion intercepted=" .. tostring(potion.recordId))
+            return false
+        end
+    end)
+    itemUsageRegistered = true
+    log("registered Alchemy ItemUsage handlers")
+end
+registerItemUsageHandlers()
 subsystems.alchemy = {
     eventHandlers = {
         SkillPerkSystem_BasePack_IngredientLoreApply = onIngredientLoreApply,
         SkillPerkSystem_BasePack_AlchemyRefundIngredient = onRefundIngredient,
+        SkillPerkSystem_BasePack_DualDistillationCoatRequest = onCoat,
+        SkillPerkSystem_BasePack_DualDistillationRestoreCoating = onRestore,
+        SkillPerkSystem_BasePack_DualDistillationClearCoating = onClear,
+        SkillPerkSystem_BasePack_DualDistillationHitRequest = onHit,
+        SkillPerkSystem_BasePack_DualDistillationConvertPoisons = convertPoisons,
+        SkillPerkSystem_BasePack_DualDistillationDrinkPoison = drinkPoison,
     },
     engineHandlers = {
-        onSave = function() return { ingredientLoreSpellCache = ingredientLoreSpellCache } end,
+        onSave = function()
+            return {
+                ingredientLoreSpellCache = ingredientLoreSpellCache,
+                poisonRecordCache = poisonRecordCache,
+                poisonRegistry = poisonRegistry,
+            }
+        end,
         onLoad = function(data)
+            clearCoating("global load")
             ingredientLoreSpellCache = {}
+            poisonRecordCache = {}
+            poisonRegistry = {}
+            drinkBypass = nil
             local saved = type(data) == "table" and data.ingredientLoreSpellCache or nil
             if type(saved) == "table" then
                 for signature, recordId in pairs(saved) do
                     if type(signature) == "string" and type(recordId) == "string" then
                         ingredientLoreSpellCache[signature] = recordId
+                    end
+                end
+            end
+            local savedCache = type(data) == "table" and data.poisonRecordCache or nil
+            if type(savedCache) == "table" then
+                for sourceId, generatedId in pairs(savedCache) do
+                    if type(sourceId) == "string" and type(generatedId) == "string" then
+                        poisonRecordCache[sourceId] = generatedId
+                    end
+                end
+            end
+            local savedRegistry = type(data) == "table" and data.poisonRegistry or nil
+            if type(savedRegistry) == "table" then
+                for generatedId, entry in pairs(savedRegistry) do
+                    if type(generatedId) == "string" and type(entry) == "table"
+                            and type(entry.sourcePotionRecordId) == "string" then
+                        poisonRegistry[generatedId] = {
+                            sourcePotionRecordId = entry.sourcePotionRecordId,
+                            poisonName = type(entry.poisonName) == "string" and entry.poisonName or generatedId,
+                        }
                     end
                 end
             end

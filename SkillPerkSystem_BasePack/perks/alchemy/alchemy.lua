@@ -48,7 +48,7 @@ return {
             x = -220,
             y = 280,
             title = "Concentrated Draught",
-            description = "Beneficial effects from potions you brew gain increased magnitude.",
+            description = "Beneficial effects from potions you brew gain +25% magnitude.",
         },
         {
             id = "alchemy_purified_toxins",
@@ -60,7 +60,7 @@ return {
             x = 220,
             y = 280,
             title = "Lingering Toxins",
-            description = "Harmful effects from weapon poisons you prepare gain increased duration.",
+            description = "Harmful effects from weapon poisons you prepare gain +50% duration.",
         },
         {
             id = "alchemy_master_distillation",
@@ -72,7 +72,7 @@ return {
             x = 0,
             y = 420,
             title = "Master Distillation",
-            description = "Brewing a potion or preparing a weapon poison has a chance to produce an additional dose.",
+            description = "Each potion or weapon poison dose you produce has a 25% chance to yield an additional dose.",
         },
         {
             id = "alchemy_philosophers_crucible",
@@ -84,7 +84,7 @@ return {
             x = 0,
             y = 580,
             title = "Philosopher's Crucible",
-            description = "Potions you brew suppress harmful effects and retain beneficial effects longer, while weapon poisons suppress beneficial effects and retain harmful effects longer.",
+            description = "Potions you brew lose their harmful effects and gain +25% duration on beneficial effects. Weapon poisons you prepare lose their beneficial effects and gain a further +25% duration on harmful effects.",
         },
     },
 }

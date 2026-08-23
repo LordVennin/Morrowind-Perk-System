@@ -4266,7 +4266,8 @@ end
 local COAT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationCoatResult"
 local HIT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationHitResult"
 local CONVERT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationConvertResult"
-local MAX_POISON_CONVERSION_COUNT = 100
+local PREPARATION_MODE_POTION = "potion"
+local PREPARATION_MODE_POISON = "poison"
 local poisonRecordCache = {}
 local poisonRegistry = {}
 local coating = nil
@@ -4322,101 +4323,301 @@ local function poisonNameFor(sourceRecord)
     return "Poison: " .. name
 end
 
-local function generatedPoison(sourceRecordId, sourceRecord)
-    local cachedId = poisonRecordCache[sourceRecordId]
+-- Perk tuning for the upper Alchemy tree. Multipliers are applied to the source
+-- record's effects when the refined record is generated, so a given source plus
+-- perk combination always produces the same record (see refinementSignature).
+local CONCENTRATED_DRAUGHT_MAGNITUDE_MULTIPLIER = 1.25
+local LINGERING_TOXINS_DURATION_MULTIPLIER = 1.5
+local CRUCIBLE_DURATION_MULTIPLIER = 1.25
+local MASTER_DISTILLATION_BONUS_CHANCE = 0.25
+local MAX_BREW_REFINE_COUNT = 100
+
+local refinedRegistry = {}
+
+local function effectIsHarmful(effectId)
+    local magic = effectRecord(effectId)
+    return magic ~= nil and magic.harmful == true
+end
+
+-- Scale a value by a multiplier, guaranteeing the change is visible in game:
+-- a 1.25x multiplier on a magnitude of 1 must still reach 2, not round back to 1.
+local function scaledValue(value, multiplier)
+    local number = tonumber(value)
+    if number == nil or number <= 0 then return value end
+    return math.max(number + 1, math.floor(number * multiplier + 0.5))
+end
+
+local function normalizedPerkFlags(perks)
+    perks = type(perks) == "table" and perks or {}
+    return {
+        concentratedDraught = perks.concentratedDraught == true,
+        lingeringToxins = perks.lingeringToxins == true,
+        crucible = perks.crucible == true,
+        masterDistillation = perks.masterDistillation == true,
+    }
+end
+
+-- Describes how a source record's effects are rewritten for a given mode and
+-- perk set. Keyed into the record cache so two perk combinations never share a
+-- generated record.
+local function refinementPlan(mode, perks)
+    local isPoison = mode == PREPARATION_MODE_POISON
+    local plan = {
+        isPoison = isPoison,
+        dropHarmful = perks.crucible and not isPoison,
+        dropBeneficial = perks.crucible and isPoison,
+        boostBeneficialMagnitude = perks.concentratedDraught and not isPoison,
+        harmfulDurationMultiplier = 1,
+        beneficialDurationMultiplier = 1,
+    }
+
+    if isPoison then
+        -- Lingering Toxins and the Crucible both lengthen a poison's harmful
+        -- effects; investing in both stacks multiplicatively.
+        if perks.lingeringToxins then
+            plan.harmfulDurationMultiplier = plan.harmfulDurationMultiplier * LINGERING_TOXINS_DURATION_MULTIPLIER
+        end
+        if perks.crucible then
+            plan.harmfulDurationMultiplier = plan.harmfulDurationMultiplier * CRUCIBLE_DURATION_MULTIPLIER
+        end
+    elseif perks.crucible then
+        plan.beneficialDurationMultiplier = CRUCIBLE_DURATION_MULTIPLIER
+    end
+
+    plan.changesEffects = plan.dropHarmful or plan.dropBeneficial or plan.boostBeneficialMagnitude
+        or plan.harmfulDurationMultiplier ~= 1 or plan.beneficialDurationMultiplier ~= 1
+    return plan
+end
+
+local function refinementSignature(mode, perks, plan)
+    if not plan.changesEffects then return tostring(mode) end
+    return table.concat({
+        tostring(mode),
+        perks.concentratedDraught and "cd" or "-",
+        perks.lingeringToxins and "lt" or "-",
+        perks.crucible and "pc" or "-",
+    }, "|")
+end
+
+-- Returns the rewritten effect list, or nil when the source should be used
+-- unchanged. Never returns an empty list: a product with no effects would be
+-- strictly worse than the mixture it came from.
+local function refinedEffects(sourceRecord, plan)
+    if not plan.changesEffects then return nil end
+
+    local out = {}
+    local changed = false
+    for _, effect in ipairs(sourceRecord.effects or {}) do
+        local harmful = effectIsHarmful(effect.id)
+        if (harmful and plan.dropHarmful) or (not harmful and plan.dropBeneficial) then
+            changed = true
+        else
+            local magic = effectRecord(effect.id)
+            local copy = {
+                id = effect.id,
+                affectedAttribute = effect.affectedAttribute,
+                affectedSkill = effect.affectedSkill,
+                magnitudeMin = effect.magnitudeMin,
+                magnitudeMax = effect.magnitudeMax,
+                duration = effect.duration,
+                area = effect.area,
+                range = effect.range,
+            }
+
+            if plan.boostBeneficialMagnitude and not harmful
+                    and magic ~= nil and magic.hasMagnitude ~= false then
+                copy.magnitudeMin = scaledValue(copy.magnitudeMin, CONCENTRATED_DRAUGHT_MAGNITUDE_MULTIPLIER)
+                copy.magnitudeMax = scaledValue(copy.magnitudeMax, CONCENTRATED_DRAUGHT_MAGNITUDE_MULTIPLIER)
+                changed = true
+            end
+
+            local durationMultiplier = harmful and plan.harmfulDurationMultiplier
+                or plan.beneficialDurationMultiplier
+            if durationMultiplier ~= 1 and magic ~= nil
+                    and magic.hasDuration ~= false and magic.isAppliedOnce ~= true then
+                copy.duration = scaledValue(copy.duration, durationMultiplier)
+                changed = true
+            end
+
+            out[#out + 1] = copy
+        end
+    end
+
+    if not changed or #out == 0 then return nil end
+    return out
+end
+
+local function generatedProduct(sourceRecordId, sourceRecord, mode, plan, signature)
+    local isPoison = plan.isPoison
+    local effects = refinedEffects(sourceRecord, plan)
+
+    -- A potion with nothing to rewrite keeps its own record; only poisons need a
+    -- distinct record so they can be recognised as coatings.
+    if not isPoison and effects == nil then return sourceRecord, false end
+
+    local cacheKey = sourceRecordId .. "|" .. signature
+    local cachedId = poisonRecordCache[cacheKey]
     local cached = potionRecord(cachedId)
+    local name = isPoison and poisonNameFor(sourceRecord) or tostring(sourceRecord.name or "Mixture")
     if cached ~= nil then
-        poisonRegistry[cachedId] = {
-            sourcePotionRecordId = sourceRecordId,
-            poisonName = cached.name or poisonNameFor(sourceRecord),
-        }
-        log("poison record cache hit source=" .. sourceRecordId .. " generated=" .. cachedId)
-        return cached
+        if isPoison then
+            poisonRegistry[cachedId] = {
+                sourcePotionRecordId = sourceRecordId,
+                poisonName = cached.name or name,
+            }
+        end
+        refinedRegistry[cachedId] = true
+        log("refined record cache hit source=" .. sourceRecordId .. " key=" .. cacheKey .. " generated=" .. cachedId)
+        return cached, true
     end
     if cachedId ~= nil then
-        poisonRecordCache[sourceRecordId] = nil
+        poisonRecordCache[cacheKey] = nil
         poisonRegistry[cachedId] = nil
+        refinedRegistry[cachedId] = nil
     end
-    log("poison record cache miss source=" .. sourceRecordId)
-    local okDraft, draft = pcall(types.Potion.createRecordDraft, {
-        template = sourceRecord,
-        name = poisonNameFor(sourceRecord),
-    })
-    if not okDraft or draft == nil then return nil, "Potion draft creation failed: " .. tostring(draft) end
+
+    log("refined record cache miss source=" .. sourceRecordId .. " key=" .. cacheKey)
+    local draftTable = { template = sourceRecord, name = name }
+    if effects ~= nil then draftTable.effects = effects end
+    local okDraft, draft = pcall(types.Potion.createRecordDraft, draftTable)
+    if not okDraft or draft == nil then return nil, false, "Potion draft creation failed: " .. tostring(draft) end
     local okCreate, record = pcall(world.createRecord, draft)
-    if not okCreate or record == nil then return nil, "Potion record creation failed: " .. tostring(record) end
-    poisonRecordCache[sourceRecordId] = record.id
-    poisonRegistry[record.id] = {
-        sourcePotionRecordId = sourceRecordId,
-        poisonName = record.name or poisonNameFor(sourceRecord),
-    }
-    log("created generated poison record=" .. tostring(record.id))
-    return record
+    if not okCreate or record == nil then return nil, false, "Potion record creation failed: " .. tostring(record) end
+
+    poisonRecordCache[cacheKey] = record.id
+    if isPoison then
+        poisonRegistry[record.id] = {
+            sourcePotionRecordId = sourceRecordId,
+            poisonName = record.name or name,
+        }
+    end
+    refinedRegistry[record.id] = true
+    log("created refined record=" .. tostring(record.id) .. " effectsRewritten=" .. tostring(effects ~= nil))
+    return record, true
 end
 
 local function sendConversionResult(player, result)
     sendResult(player, CONVERT_RESULT_EVENT, result)
 end
 
-local function convertPoisons(data)
+-- Delivers extra doses for Master Distillation. Each dose rolled independently
+-- so a large batch does not become all-or-nothing.
+local function grantBonusDoses(player, recordId, doses)
+    if doses < 1 then return 0 end
+    local inventory = Actor.inventory(player)
+    local granted = 0
+    for _ = 1, doses do
+        if math.random() < MASTER_DISTILLATION_BONUS_CHANCE then
+            local okCreate, bonus = pcall(world.createObject, recordId, 1)
+            if okCreate and bonus ~= nil then
+                local delivered = pcall(function() bonus:moveInto(inventory) end)
+                if delivered then
+                    granted = granted + 1
+                else
+                    pcall(bonus.remove, bonus)
+                end
+            end
+        end
+    end
+    if granted > 0 then log("Master Distillation bonus doses=" .. granted .. " record=" .. recordId) end
+    return granted
+end
+
+-- Handles both halves of the upper Alchemy tree: rewriting freshly brewed
+-- mixtures according to the player's perks, and (for Dual Distillation) turning
+-- them into weapon poisons.
+local function refineBrew(data)
     local player = type(data) == "table" and data.player or nil
     local sourceId = type(data) == "table" and data.sourcePotionRecordId or nil
     local requested = tonumber(type(data) == "table" and data.count or nil)
+    local mode = type(data) == "table" and data.mode or PREPARATION_MODE_POISON
+    if mode ~= PREPARATION_MODE_POTION then mode = PREPARATION_MODE_POISON end
+    local perks = normalizedPerkFlags(type(data) == "table" and data.perks or nil)
+    local isPoison = mode == PREPARATION_MODE_POISON
+
     local result = {
         requestId = type(data) == "table" and data.requestId or nil,
         success = false,
+        mode = mode,
         sourcePotionRecordId = sourceId,
         requestedCount = requested,
         convertedCount = 0,
+        bonusCount = 0,
     }
+
     local source, harmful = harmfulPotion(sourceId)
     local available = 0
     if validPlayer(player) then local _; _, available = inventoryPotion(player, sourceId) end
+
     local failure
     if not validPlayer(player) then failure = "invalid player"
     elseif source == nil then failure = "invalid source Potion"
-    elseif poisonRegistry[sourceId] ~= nil then failure = "registered poisons cannot be converted"
-    elseif #harmful == 0 then failure = "source Potion has no harmful effects"
-    elseif requested == nil or requested ~= math.floor(requested) or requested < 1 then failure = "invalid conversion count"
-    elseif requested > MAX_POISON_CONVERSION_COUNT then failure = "conversion count exceeds safety limit"
+    elseif refinedRegistry[sourceId] ~= nil or poisonRegistry[sourceId] ~= nil then
+        failure = "generated products cannot be refined again"
+    elseif isPoison and #harmful == 0 then failure = "source Potion has no harmful effects"
+    elseif requested == nil or requested ~= math.floor(requested) or requested < 1 then failure = "invalid refine count"
+    elseif requested > MAX_BREW_REFINE_COUNT then failure = "refine count exceeds safety limit"
     elseif requested > available then failure = "insufficient source Potion quantity" end
     if failure ~= nil then
         result.failureReason = failure
-        log("conversion failure source=" .. tostring(sourceId) .. " reason=" .. failure)
+        log("refine failure source=" .. tostring(sourceId) .. " mode=" .. mode .. " reason=" .. failure)
         return sendConversionResult(player, result)
     end
-    local generated, generationFailure = generatedPoison(sourceId, source)
+
+    local plan = refinementPlan(mode, perks)
+    local signature = refinementSignature(mode, perks, plan)
+    local generated, isGenerated, generationFailure = generatedProduct(sourceId, source, mode, plan, signature)
     if generated == nil then
         result.failureReason = generationFailure
-        log("conversion failure source=" .. sourceId .. " reason=" .. tostring(generationFailure))
+        log("refine failure source=" .. sourceId .. " reason=" .. tostring(generationFailure))
         return sendConversionResult(player, result)
     end
-    result.poisonPotionRecordId = generated.id
+
+    result.poisonPotionRecordId = isPoison and generated.id or nil
+    result.productRecordId = generated.id
     result.poisonName = generated.name
+    result.productName = generated.name
+    result.effectsRefined = isGenerated and generated.id ~= sourceId
+
+    if not isGenerated then
+        -- Nothing to swap: the brew keeps its own record. Master Distillation
+        -- can still add doses of it.
+        result.convertedCount = requested
+        result.success = true
+        if perks.masterDistillation then
+            result.bonusCount = grantBonusDoses(player, sourceId, requested)
+        end
+        return sendConversionResult(player, result)
+    end
+
     local inventory = Actor.inventory(player)
     for _ = 1, requested do
         local sourceObject = inventoryPotion(player, sourceId)
         if sourceObject == nil then result.failureReason = "source Potion disappeared"; break end
-        local okCreate, poisonObject = pcall(world.createObject, generated.id, 1)
-        if not okCreate or poisonObject == nil then result.failureReason = "poison object creation failed"; break end
-        local delivered, deliveryFailure = pcall(function() poisonObject:moveInto(inventory) end)
+        local okCreate, productObject = pcall(world.createObject, generated.id, 1)
+        if not okCreate or productObject == nil then result.failureReason = "product object creation failed"; break end
+        local delivered, deliveryFailure = pcall(function() productObject:moveInto(inventory) end)
         if not delivered then
-            pcall(poisonObject.remove, poisonObject)
-            result.failureReason = "generated poison delivery failed: " .. tostring(deliveryFailure)
+            pcall(productObject.remove, productObject)
+            result.failureReason = "generated product delivery failed: " .. tostring(deliveryFailure)
             break
         end
         local removed, removalFailure = pcall(sourceObject.remove, sourceObject, 1)
         if not removed then
-            pcall(poisonObject.remove, poisonObject, 1)
+            pcall(productObject.remove, productObject, 1)
             result.failureReason = "source Potion removal failed: " .. tostring(removalFailure)
             break
         end
         result.convertedCount = result.convertedCount + 1
-        log("source Potion removed=" .. sourceId .. "; generated poison delivered=" .. generated.id)
+        log("source Potion removed=" .. sourceId .. "; generated product delivered=" .. generated.id)
     end
+
     result.success = result.convertedCount > 0
     if result.convertedCount < requested then
-        log("partial conversion source=" .. sourceId .. " converted=" .. result.convertedCount .. "/" .. requested)
+        log("partial refine source=" .. sourceId .. " converted=" .. result.convertedCount .. "/" .. requested)
+    end
+    if result.success and perks.masterDistillation then
+        result.bonusCount = grantBonusDoses(player, generated.id, result.convertedCount)
     end
     sendConversionResult(player, result)
 end
@@ -4616,7 +4817,8 @@ subsystems.alchemy = {
         SkillPerkSystem_BasePack_DualDistillationRestoreCoating = onRestore,
         SkillPerkSystem_BasePack_DualDistillationClearCoating = onClear,
         SkillPerkSystem_BasePack_DualDistillationHitRequest = onHit,
-        SkillPerkSystem_BasePack_DualDistillationConvertPoisons = convertPoisons,
+        SkillPerkSystem_BasePack_DualDistillationConvertPoisons = refineBrew,
+        SkillPerkSystem_BasePack_AlchemyRefineBrew = refineBrew,
         SkillPerkSystem_BasePack_DualDistillationDrinkPoison = drinkPoison,
     },
     engineHandlers = {
@@ -4625,6 +4827,7 @@ subsystems.alchemy = {
                 ingredientLoreSpellCache = ingredientLoreSpellCache,
                 poisonRecordCache = poisonRecordCache,
                 poisonRegistry = poisonRegistry,
+                refinedRegistry = refinedRegistry,
             }
         end,
         onLoad = function(data)
@@ -4632,6 +4835,7 @@ subsystems.alchemy = {
             ingredientLoreSpellCache = {}
             poisonRecordCache = {}
             poisonRegistry = {}
+            refinedRegistry = {}
             drinkBypass = nil
             local saved = type(data) == "table" and data.ingredientLoreSpellCache or nil
             if type(saved) == "table" then
@@ -4646,6 +4850,14 @@ subsystems.alchemy = {
                 for sourceId, generatedId in pairs(savedCache) do
                     if type(sourceId) == "string" and type(generatedId) == "string" then
                         poisonRecordCache[sourceId] = generatedId
+                    end
+                end
+            end
+            local savedRefined = type(data) == "table" and data.refinedRegistry or nil
+            if type(savedRefined) == "table" then
+                for generatedId, flag in pairs(savedRefined) do
+                    if type(generatedId) == "string" and flag == true then
+                        refinedRegistry[generatedId] = true
                     end
                 end
             end

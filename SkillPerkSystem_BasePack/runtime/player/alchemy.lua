@@ -16,6 +16,10 @@ local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local INGREDIENT_LORE_PERK_ID = "alchemy_ingredient_lore"
 local CAREFUL_MEASURE_PERK_ID = "alchemy_careful_measure"
 local DUAL_DISTILLATION_PERK_ID = "alchemy_balanced_formula"
+local CONCENTRATED_DRAUGHT_PERK_ID = "alchemy_concentrated_draught"
+local LINGERING_TOXINS_PERK_ID = "alchemy_purified_toxins"
+local MASTER_DISTILLATION_PERK_ID = "alchemy_master_distillation"
+local PHILOSOPHERS_CRUCIBLE_PERK_ID = "alchemy_philosophers_crucible"
 local PREPARATION_MODE_POTION = "potion"
 local PREPARATION_MODE_POISON = "poison"
 local CAREFUL_MEASURE_CHANCE = 0.25
@@ -31,7 +35,7 @@ local LORE_RESULT_EVENT = "SkillPerkSystem_BasePack_IngredientLoreResult"
 local REFUND_REQUEST_EVENT = "SkillPerkSystem_BasePack_AlchemyRefundIngredient"
 local REFUND_RESULT_EVENT = "SkillPerkSystem_BasePack_AlchemyRefundResult"
 local COAT_REQUEST_EVENT = "SkillPerkSystem_BasePack_DualDistillationCoatRequest"
-local CONVERT_REQUEST_EVENT = "SkillPerkSystem_BasePack_DualDistillationConvertPoisons"
+local CONVERT_REQUEST_EVENT = "SkillPerkSystem_BasePack_AlchemyRefineBrew"
 local CONVERT_RESULT_EVENT = "SkillPerkSystem_BasePack_DualDistillationConvertResult"
 local DRINK_REQUEST_EVENT = "SkillPerkSystem_BasePack_DualDistillationDrinkPoison"
 local RESTORE_REQUEST_EVENT = "SkillPerkSystem_BasePack_DualDistillationRestoreCoating"
@@ -51,9 +55,12 @@ local pendingRefundRequests = {}
 local lastAlchemyApparatus, lastAlchemyApparatusRecordId
 local pendingUseApparatus, pendingUseApparatusFrames, replayTimeout = nil, 0, 0
 local suppressNextAlchemyIntercept, alchemyChoiceMenuOpen = false, false
-local pendingPreparationMode, activePreparationMode
+local pendingPreparationMode, activePreparationMode, settlementMode
 local realAlchemySessionOpen = false
 local potionOpeningCounts, poisonSettlementFrames = {}, 0
+-- Distinct from an empty potionOpeningCounts: the player may legitimately own
+-- no potions when the session opens, and the settlement pass must still run.
+local potionSnapshotTaken = false
 local preparationMenu, poisonUseMenu, replacementMenu
 local selectedPoison, replacementPotion, replacementWeapon
 local pendingConversionRequests, conversionSummary = {}, {}
@@ -70,6 +77,22 @@ local function hasEnabledPerk(perkId)
     end
     return true
 end
+-- Perks that rewrite a freshly brewed mixture. Collected once per settlement so
+-- the global side sees a consistent set for the whole batch.
+local function refinementPerkFlags()
+    return {
+        concentratedDraught = hasEnabledPerk(CONCENTRATED_DRAUGHT_PERK_ID),
+        lingeringToxins = hasEnabledPerk(LINGERING_TOXINS_PERK_ID),
+        crucible = hasEnabledPerk(PHILOSOPHERS_CRUCIBLE_PERK_ID),
+        masterDistillation = hasEnabledPerk(MASTER_DISTILLATION_PERK_ID),
+    }
+end
+
+local function anyRefinementPerkEnabled(flags)
+    return flags.concentratedDraught or flags.lingeringToxins
+        or flags.crucible or flags.masterDistillation
+end
+
 local function nextRequestId(prefix)
     requestSerial = requestSerial + 1
     return prefix .. tostring(requestSerial)
@@ -368,12 +391,16 @@ local function beginRealAlchemySession(mode)
     activePreparationMode = mode or PREPARATION_MODE_POTION
     clearCarefulMeasure()
     realAlchemySessionOpen = true
+    potionOpeningCounts, potionSnapshotTaken = {}, false
     if hasEnabledPerk(CAREFUL_MEASURE_PERK_ID) then
         alchemyMenuOpen = true
         ingredientCounts = snapshotIngredients()
     end
-    if activePreparationMode == PREPARATION_MODE_POISON then
+    -- The settlement pass diffs potion counts to find what was brewed. Poison
+    -- mode always needs it; potion mode only when a perk will rewrite the result.
+    if activePreparationMode == PREPARATION_MODE_POISON or anyRefinementPerkEnabled(refinementPerkFlags()) then
         potionOpeningCounts = snapshotPotions()
+        potionSnapshotTaken = true
         local count = 0
         for _ in pairs(potionOpeningCounts) do count = count + 1 end
         log("opening Potion snapshot count=" .. tostring(count))
@@ -384,40 +411,74 @@ end
 local function finishConversionSummary()
     if next(pendingConversionRequests) ~= nil then return end
     local converted = conversionSummary.converted or 0
+    local refined = conversionSummary.refined or 0
+    local bonus = conversionSummary.bonus or 0
+    local isPoison = conversionSummary.mode == PREPARATION_MODE_POISON
+    local message = nil
+
     if converted > 0 then
-        local message = string.format("Prepared %d weapon poison dose%s.", converted, converted == 1 and "" or "s")
-        if conversionSummary.keptBeneficial then message = message .. " Beneficial mixtures were kept as normal potions." end
-        ui.showMessage(message, { showInDialogue = false })
-    elseif conversionSummary.requested then
-        ui.showMessage("The newly brewed mixtures could not be prepared as weapon poisons.", { showInDialogue = false })
+        message = string.format("Prepared %d weapon poison dose%s.", converted, converted == 1 and "" or "s")
+        if conversionSummary.keptBeneficial then
+            message = message .. " Beneficial mixtures were kept as normal potions."
+        end
+    elseif isPoison and conversionSummary.requested and refined == 0 then
+        message = "The newly brewed mixtures could not be prepared as weapon poisons."
     end
+
+    if refined > 0 then
+        local refinedMessage = string.format("Refined %d potion dose%s.", refined, refined == 1 and "" or "s")
+        message = message and (message .. " " .. refinedMessage) or refinedMessage
+    end
+
+    if bonus > 0 then
+        local extra = string.format("Master Distillation yielded %d extra dose%s.", bonus, bonus == 1 and "" or "s")
+        message = message and (message .. " " .. extra) or extra
+    end
+
+    if message ~= nil then ui.showMessage(message, { showInDialogue = false }) end
     conversionSummary = {}
 end
 
-local function settlePoisonSession()
+-- Runs a few frames after the alchemy menu closes, once the engine has settled
+-- the brewed items into the inventory. Diffs potion counts against the opening
+-- snapshot and asks the global side to refine whatever is new.
+local function settleBrewSession(mode)
     local current = snapshotPotions()
+    local flags = refinementPerkFlags()
+    local isPoison = mode == PREPARATION_MODE_POISON
     pendingConversionRequests = {}
-    conversionSummary = { converted = 0, requested = false, keptBeneficial = false }
+    conversionSummary = { converted = 0, bonus = 0, requested = false, keptBeneficial = false, mode = mode }
     for recordId, count in pairs(current) do
         local difference = count - (potionOpeningCounts[recordId] or 0)
         if difference > 0 then
             log("positive source Potion difference=" .. recordId .. ":" .. difference)
             local record, harmful = harmfulPotion(recordId)
-            if record ~= nil and #harmful > 0 and hasEnabledPerk(DUAL_DISTILLATION_PERK_ID) then
-                local requestId = nextRequestId("DualDistillationConvert_")
+            local canPoison = isPoison and record ~= nil and #harmful > 0
+                and hasEnabledPerk(DUAL_DISTILLATION_PERK_ID)
+            -- A mixture with no harmful effects cannot become a poison, so it
+            -- stays a potion and is refined as one. That also lets Master
+            -- Distillation apply to beneficial brews made during a poison session.
+            if isPoison and not canPoison then conversionSummary.keptBeneficial = true end
+            -- Potion refining only has work to do when a perk actually changes
+            -- the result; otherwise the brew is already what the player wanted.
+            local canRefinePotion = not canPoison and record ~= nil and anyRefinementPerkEnabled(flags)
+            if canPoison or canRefinePotion then
+                local requestId = nextRequestId("AlchemyRefine_")
                 pendingConversionRequests[requestId] = true
                 conversionSummary.requested = true
                 core.sendGlobalEvent(CONVERT_REQUEST_EVENT, {
                     player = pself, sourcePotionRecordId = recordId,
                     count = difference, requestId = requestId,
+                    mode = canPoison and PREPARATION_MODE_POISON or PREPARATION_MODE_POTION,
+                    perks = flags,
                 })
-                log("conversion request source=" .. recordId .. " count=" .. difference)
-            else
-                conversionSummary.keptBeneficial = true
+                log("refine request source=" .. recordId .. " count=" .. difference
+                    .. " mode=" .. (canPoison and PREPARATION_MODE_POISON or PREPARATION_MODE_POTION))
             end
         end
     end
     potionOpeningCounts = {}
+    potionSnapshotTaken = false
     finishConversionSummary()
 end
 
@@ -489,16 +550,20 @@ end
 local function endRealAlchemySession()
     if not realAlchemySessionOpen then return end
     if alchemyMenuOpen then compareIngredientCounts(); alchemyMenuOpen=false; closingSession=pendingBatch~=nil; if not closingSession then ingredientCounts={}; successfulBrewsPending=0 end end
-    if activePreparationMode==PREPARATION_MODE_POISON then poisonSettlementFrames=SETTLEMENT_FRAMES end
+    if potionSnapshotTaken then
+        settlementMode = activePreparationMode or PREPARATION_MODE_POTION
+        poisonSettlementFrames = SETTLEMENT_FRAMES
+    end
     log("real Alchemy session ended mode="..tostring(activePreparationMode)); realAlchemySessionOpen=false; activePreparationMode=nil
 end
 local function clearDual(reason, notifyGlobal)
     closeAllDualMenus(reason)
     pendingUseApparatus, pendingUseApparatusFrames, replayTimeout = nil, 0, 0
     suppressNextAlchemyIntercept = false
-    pendingPreparationMode, activePreparationMode = nil, nil
+    pendingPreparationMode, activePreparationMode, settlementMode = nil, nil, nil
     realAlchemySessionOpen = false
     potionOpeningCounts, poisonSettlementFrames = {}, 0
+    potionSnapshotTaken = false
     pendingConversionRequests, conversionSummary = {}, {}
     pendingCoatRequest = nil
     if activeCoating ~= nil and notifyGlobal then
@@ -516,7 +581,7 @@ local function onFrame()
         pendingUseApparatusFrames=pendingUseApparatusFrames-1
         if pendingUseApparatusFrames<=0 then local replay=pendingUseApparatus; pendingUseApparatus=nil; log("apparatus replay="..tostring(replay.recordId)); core.sendGlobalEvent("UseItem",{object=replay,actor=pself}) end
     elseif suppressNextAlchemyIntercept and replayTimeout>0 then replayTimeout=replayTimeout-1; if replayTimeout<=0 then suppressNextAlchemyIntercept=false; pendingPreparationMode=nil; log("apparatus replay timeout") end end
-    if poisonSettlementFrames>0 then poisonSettlementFrames=poisonSettlementFrames-1; if poisonSettlementFrames<=0 then settlePoisonSession() end end
+    if poisonSettlementFrames>0 then poisonSettlementFrames=poisonSettlementFrames-1; if poisonSettlementFrames<=0 then local mode=settlementMode; settlementMode=nil; settleBrewSession(mode) end end
     if restoreFrames>0 then restoreFrames=restoreFrames-1; if restoreFrames<=0 and savedCoating then local weapon=equippedWeapon(); if weapon and weapon.recordId==savedCoating.weaponRecordId and harmfulPotion(savedCoating.potionRecordId) then core.sendGlobalEvent(RESTORE_REQUEST_EVENT,{player=pself,weapon=weapon,coating=savedCoating}) else savedCoating=nil end end end
     if alchemyMenuOpen then compareIngredientCounts() end
     if pendingBatch ~= nil then
@@ -640,8 +705,16 @@ end
 local function onConversionResult(data)
     if type(data) ~= "table" or pendingConversionRequests[data.requestId] == nil then return end
     pendingConversionRequests[data.requestId] = nil
-    conversionSummary.converted = (conversionSummary.converted or 0) + math.max(0, math.floor(tonumber(data.convertedCount) or 0))
-    if not data.success then log("conversion failure source=" .. tostring(data.sourcePotionRecordId) .. " reason=" .. tostring(data.failureReason)) end
+    local count = math.max(0, math.floor(tonumber(data.convertedCount) or 0))
+    if data.mode == PREPARATION_MODE_POISON then
+        conversionSummary.converted = (conversionSummary.converted or 0) + count
+    -- Only count a potion as refined when its effects actually changed; a
+    -- Master Distillation-only batch keeps its original record.
+    elseif data.effectsRefined == true then
+        conversionSummary.refined = (conversionSummary.refined or 0) + count
+    end
+    conversionSummary.bonus = (conversionSummary.bonus or 0) + math.max(0, math.floor(tonumber(data.bonusCount) or 0))
+    if not data.success then log("refine failure source=" .. tostring(data.sourcePotionRecordId) .. " reason=" .. tostring(data.failureReason)) end
     finishConversionSummary()
 end
 local function onHitResult(data) if type(data)=="table" and activeCoating and data.coatingId==activeCoating.coatingId then activeCoating=nil; if data.success then ui.showMessage(tostring(data.potionName).." affects "..tostring(data.targetName)..".",{showInDialogue=false}) end end end

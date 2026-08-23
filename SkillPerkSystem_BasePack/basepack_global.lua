@@ -2497,6 +2497,65 @@ subsystems.shortblade = {
 
 end
 
+-- 5b. sneak crit global state handling
+do
+local sneakCritState = {
+    playerId = nil,
+    killersInstinctEnabled = false,
+    knifeInTheDarkEnabled = false,
+    sneaking = false,
+}
+
+local function sneakCritTargetStateActive()
+    return sneakCritState.killersInstinctEnabled == true
+        and type(sneakCritState.playerId) == "string" and sneakCritState.playerId ~= ""
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_SneakCritRefresh", sneakCritState)
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("sneakcrit", sneakCritTargetStateActive())
+end
+
+local function onSneakCritState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    sneakCritState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        killersInstinctEnabled = data.killersInstinctEnabled == true,
+        knifeInTheDarkEnabled = data.knifeInTheDarkEnabled == true,
+        sneaking = data.sneaking == true,
+    }
+    refreshWatchers()
+    -- Sneak toggles arrive through the same event; targets already attached
+    -- need the fresh flag even when the provider's active state is unchanged.
+    sendTargetWatcherStateToAttached(targetWatcher.providers["sneakcrit"])
+end
+
+registerTargetWatcherProvider("sneakcrit", {
+    isActive = sneakCritTargetStateActive,
+    sendState = sendState,
+})
+
+subsystems.sneakcrit = {
+    eventHandlers = {
+        SkillPerkSystem_SneakCritState = onSneakCritState,
+    },
+    engineHandlers = {
+        onLoad = function()
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -4066,6 +4125,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_DualDistillationDrinkPoison = function(data) dispatchEvent("alchemy", "SkillPerkSystem_BasePack_DualDistillationDrinkPoison", data) end,
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
+    SkillPerkSystem_SneakCritState = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_SneakCritState", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,

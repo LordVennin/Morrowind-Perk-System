@@ -4500,26 +4500,90 @@ local function sendConversionResult(player, result)
     sendResult(player, CONVERT_RESULT_EVENT, result)
 end
 
--- Delivers extra doses for Master Distillation. Each dose rolled independently
--- so a large batch does not become all-or-nothing.
-local function grantBonusDoses(player, recordId, doses)
-    if doses < 1 then return 0 end
-    local inventory = Actor.inventory(player)
-    local granted = 0
-    for _ = 1, doses do
-        if math.random() < MASTER_DISTILLATION_BONUS_CHANCE then
-            local okCreate, bonus = pcall(world.createObject, recordId, 1)
-            if okCreate and bonus ~= nil then
-                local delivered = pcall(function() bonus:moveInto(inventory) end)
-                if delivered then
-                    granted = granted + 1
-                else
-                    pcall(bonus.remove, bonus)
+-- Master Distillation: each dose brewed can leave behind a "distillate" -- a
+-- single-effect potion drawn from the ingredients that went into the brew,
+-- rather than a copy of the full product. Distillate records are cached by
+-- effect signature and marked in refinedRegistry so they cannot be refined
+-- or converted again.
+local distillateRecordCache = {}
+
+local function distillateEffectPool(consumedIngredients)
+    local pool = {}
+    if type(consumedIngredients) ~= "table" then return pool end
+    for index, recordId in ipairs(consumedIngredients) do
+        if index > 32 then break end
+        local ingredient = ingredientRecord(recordId)
+        if ingredient ~= nil and type(ingredient.effects) == "table" then
+            for _, source in ipairs(ingredient.effects) do
+                if effectRecord(source and source.id) ~= nil then
+                    pool[#pool + 1] = source
                 end
             end
         end
     end
-    if granted > 0 then log("Master Distillation bonus doses=" .. granted .. " record=" .. recordId) end
+    return pool
+end
+
+local function distillateRecord(player, source, templateRecord)
+    local tierIndex = validatedTierIndex(player)
+    local tier = tierIndex ~= nil and INGREDIENT_LORE_TIERS[tierIndex] or nil
+    if tier == nil then return nil end
+    local effect, magic = normalizeEffect(source, tier)
+    if effect == nil then return nil end
+
+    local signature = signatureFor(effect)
+    local cachedId = distillateRecordCache[signature]
+    local cached = potionRecord(cachedId)
+    if cached ~= nil then
+        refinedRegistry[cachedId] = true
+        return cached
+    end
+    if cachedId ~= nil then distillateRecordCache[signature] = nil end
+
+    local okDraft, draft = pcall(types.Potion.createRecordDraft, {
+        template = templateRecord,
+        name = "Distillate: " .. tostring(magic.name or effect.id),
+        effects = { effect },
+    })
+    if not okDraft or draft == nil then
+        log("distillate draft failed: " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("distillate record creation failed: " .. tostring(record))
+        return nil
+    end
+    distillateRecordCache[signature] = record.id
+    refinedRegistry[record.id] = true
+    log("created distillate record=" .. tostring(record.id))
+    return record
+end
+
+-- Each dose is rolled independently so a large batch does not become
+-- all-or-nothing; every successful roll picks its own effect from the pool.
+local function grantDistillates(player, effectPool, doses, templateRecord)
+    if doses < 1 or #effectPool == 0 then return 0 end
+    local inventory = Actor.inventory(player)
+    local granted = 0
+    for _ = 1, doses do
+        if math.random() < MASTER_DISTILLATION_BONUS_CHANCE then
+            local source = effectPool[math.random(#effectPool)]
+            local record = distillateRecord(player, source, templateRecord)
+            if record ~= nil then
+                local okCreate, bonus = pcall(world.createObject, record.id, 1)
+                if okCreate and bonus ~= nil then
+                    local delivered = pcall(function() bonus:moveInto(inventory) end)
+                    if delivered then
+                        granted = granted + 1
+                    else
+                        pcall(bonus.remove, bonus)
+                    end
+                end
+            end
+        end
+    end
+    if granted > 0 then log("Master Distillation distillates=" .. granted) end
     return granted
 end
 
@@ -4533,6 +4597,7 @@ local function refineBrew(data)
     local mode = type(data) == "table" and data.mode or PREPARATION_MODE_POISON
     if mode ~= PREPARATION_MODE_POTION then mode = PREPARATION_MODE_POISON end
     local perks = normalizedPerkFlags(type(data) == "table" and data.perks or nil)
+    local consumedIngredients = type(data) == "table" and data.consumedIngredients or nil
     local isPoison = mode == PREPARATION_MODE_POISON
 
     local result = {
@@ -4581,11 +4646,12 @@ local function refineBrew(data)
 
     if not isGenerated then
         -- Nothing to swap: the brew keeps its own record. Master Distillation
-        -- can still add doses of it.
+        -- can still leave distillates behind.
         result.convertedCount = requested
         result.success = true
         if perks.masterDistillation then
-            result.bonusCount = grantBonusDoses(player, sourceId, requested)
+            result.bonusCount = grantDistillates(player,
+                distillateEffectPool(consumedIngredients), requested, source)
         end
         return sendConversionResult(player, result)
     end
@@ -4617,7 +4683,8 @@ local function refineBrew(data)
         log("partial refine source=" .. sourceId .. " converted=" .. result.convertedCount .. "/" .. requested)
     end
     if result.success and perks.masterDistillation then
-        result.bonusCount = grantBonusDoses(player, generated.id, result.convertedCount)
+        result.bonusCount = grantDistillates(player,
+            distillateEffectPool(consumedIngredients), result.convertedCount, source)
     end
     sendConversionResult(player, result)
 end
@@ -4828,6 +4895,7 @@ subsystems.alchemy = {
                 poisonRecordCache = poisonRecordCache,
                 poisonRegistry = poisonRegistry,
                 refinedRegistry = refinedRegistry,
+                distillateRecordCache = distillateRecordCache,
             }
         end,
         onLoad = function(data)
@@ -4836,6 +4904,7 @@ subsystems.alchemy = {
             poisonRecordCache = {}
             poisonRegistry = {}
             refinedRegistry = {}
+            distillateRecordCache = {}
             drinkBypass = nil
             local saved = type(data) == "table" and data.ingredientLoreSpellCache or nil
             if type(saved) == "table" then
@@ -4850,6 +4919,14 @@ subsystems.alchemy = {
                 for sourceId, generatedId in pairs(savedCache) do
                     if type(sourceId) == "string" and type(generatedId) == "string" then
                         poisonRecordCache[sourceId] = generatedId
+                    end
+                end
+            end
+            local savedDistillates = type(data) == "table" and data.distillateRecordCache or nil
+            if type(savedDistillates) == "table" then
+                for signature, recordId in pairs(savedDistillates) do
+                    if type(signature) == "string" and type(recordId) == "string" then
+                        distillateRecordCache[signature] = recordId
                     end
                 end
             end

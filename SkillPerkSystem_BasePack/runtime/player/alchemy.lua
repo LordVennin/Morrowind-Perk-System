@@ -61,6 +61,10 @@ local potionOpeningCounts, poisonSettlementFrames = {}, 0
 -- Distinct from an empty potionOpeningCounts: the player may legitimately own
 -- no potions when the session opens, and the settlement pass must still run.
 local potionSnapshotTaken = false
+-- Ingredient counts at session open, taken when Master Distillation is active
+-- so the settlement pass can tell which ingredients the brew consumed. Kept
+-- separate from the Careful Measure machinery, which tracks per-batch refunds.
+local distillIngredientCounts = nil
 local preparationMenu, poisonUseMenu, replacementMenu
 local selectedPoison, replacementPotion, replacementWeapon
 local pendingConversionRequests, conversionSummary = {}, {}
@@ -398,6 +402,7 @@ local function beginRealAlchemySession(mode)
     end
     -- The settlement pass diffs potion counts to find what was brewed. Poison
     -- mode always needs it; potion mode only when a perk will rewrite the result.
+    distillIngredientCounts = hasEnabledPerk(MASTER_DISTILLATION_PERK_ID) and snapshotIngredients() or nil
     if activePreparationMode == PREPARATION_MODE_POISON or anyRefinementPerkEnabled(refinementPerkFlags()) then
         potionOpeningCounts = snapshotPotions()
         potionSnapshotTaken = true
@@ -431,7 +436,7 @@ local function finishConversionSummary()
     end
 
     if bonus > 0 then
-        local extra = string.format("Master Distillation yielded %d extra dose%s.", bonus, bonus == 1 and "" or "s")
+        local extra = string.format("Master Distillation yielded %d distillate%s.", bonus, bonus == 1 and "" or "s")
         message = message and (message .. " " .. extra) or extra
     end
 
@@ -442,9 +447,23 @@ end
 -- Runs a few frames after the alchemy menu closes, once the engine has settled
 -- the brewed items into the inventory. Diffs potion counts against the opening
 -- snapshot and asks the global side to refine whatever is new.
+-- Ingredients whose count dropped over the session, for the distillate roll.
+local function consumedIngredientList()
+    if distillIngredientCounts == nil then return nil end
+    local current = snapshotIngredients()
+    local consumed = {}
+    for recordId, openingCount in pairs(distillIngredientCounts) do
+        if (current[recordId] or 0) < openingCount then
+            consumed[#consumed + 1] = recordId
+        end
+    end
+    return #consumed > 0 and consumed or nil
+end
+
 local function settleBrewSession(mode)
     local current = snapshotPotions()
     local flags = refinementPerkFlags()
+    local consumedIngredients = consumedIngredientList()
     local isPoison = mode == PREPARATION_MODE_POISON
     pendingConversionRequests = {}
     conversionSummary = { converted = 0, bonus = 0, requested = false, keptBeneficial = false, mode = mode }
@@ -471,6 +490,7 @@ local function settleBrewSession(mode)
                     count = difference, requestId = requestId,
                     mode = canPoison and PREPARATION_MODE_POISON or PREPARATION_MODE_POTION,
                     perks = flags,
+                    consumedIngredients = consumedIngredients,
                 })
                 log("refine request source=" .. recordId .. " count=" .. difference
                     .. " mode=" .. (canPoison and PREPARATION_MODE_POISON or PREPARATION_MODE_POTION))
@@ -479,6 +499,7 @@ local function settleBrewSession(mode)
     end
     potionOpeningCounts = {}
     potionSnapshotTaken = false
+    distillIngredientCounts = nil
     finishConversionSummary()
 end
 
@@ -564,6 +585,7 @@ local function clearDual(reason, notifyGlobal)
     realAlchemySessionOpen = false
     potionOpeningCounts, poisonSettlementFrames = {}, 0
     potionSnapshotTaken = false
+    distillIngredientCounts = nil
     pendingConversionRequests, conversionSummary = {}, {}
     pendingCoatRequest = nil
     if activeCoating ~= nil and notifyGlobal then

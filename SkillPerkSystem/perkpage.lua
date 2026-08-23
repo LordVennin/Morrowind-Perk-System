@@ -20,6 +20,20 @@ local SUPPRESS_JOURNAL_SOUND_EFFECTS = true
 local JOURNAL_OPEN_SOUND_SUPPRESSION_WINDOW_SECONDS = 0.35
 local JOURNAL_CLOSE_SOUND_SUPPRESSION_WINDOW_SECONDS = 0.45
 
+local TOGGLE_KEY_REFRESH_INTERVAL = 0.5
+local toggleKeyRefreshTimer = TOGGLE_KEY_REFRESH_INTERVAL
+
+-- Reads player settings storage, so run it on a slow cadence instead of once
+-- per rendered frame.
+local function refreshToggleKeyBindingThrottled(dt)
+    toggleKeyRefreshTimer = toggleKeyRefreshTimer + (tonumber(dt) or 0)
+    if toggleKeyRefreshTimer < TOGGLE_KEY_REFRESH_INTERVAL then
+        return false
+    end
+    toggleKeyRefreshTimer = 0
+    return true
+end
+
 local function refreshToggleKeyBinding()
     local requestedKey = tostring(settings.getToggleUiKey and settings.getToggleUiKey() or settings.TOGGLE_UI_KEY or "p")
     local normalized = requestedKey:upper()
@@ -39,11 +53,33 @@ local function refreshToggleKeyBinding()
     activeToggleKeyCode = keyCode
 end
 
+local PAN_LEFT_KEYS = {"LeftArrow", "Left", "A"}
+local PAN_RIGHT_KEYS = {"RightArrow", "Right", "D"}
+local PAN_UP_KEYS = {"UpArrow", "Up", "W"}
+local PAN_DOWN_KEYS = {"DownArrow", "Down", "S"}
+
+local GLOBAL_POINTS_POLL_INTERVAL = 0.25
+local globalPointsPollTimer = GLOBAL_POINTS_POLL_INTERVAL
+
+-- input.KEY lookups are constant; resolving them per key per frame allocated a
+-- closure and a pcall each time. Resolve once and remember misses as false.
+local resolvedKeyCodes = {}
+
+local function keyCodeFor(keyName)
+    local cached = resolvedKeyCodes[keyName]
+    if cached == nil then
+        local ok, code = pcall(function()
+            return input.KEY[keyName]
+        end)
+        cached = (ok and code ~= nil) and code or false
+        resolvedKeyCodes[keyName] = cached
+    end
+    return cached
+end
+
 local function keyDown(keyName)
-    local ok, code = pcall(function()
-        return input.KEY[keyName]
-    end)
-    return ok and code ~= nil and input.isKeyPressed(code)
+    local code = keyCodeFor(keyName)
+    return code ~= false and input.isKeyPressed(code)
 end
 
 local function anyKeyDown(names)
@@ -77,6 +113,42 @@ local journalOpenSoundSuppressionRemaining = 0
 local journalCloseSoundSuppressionRemaining = 0
 
 local uiScale = 1
+
+-- Live references into the current menu layout. Panning the tree mutates the
+-- canvas container's position in place rather than rebuilding the whole menu,
+-- so these are refreshed whenever buildPerkPane() runs.
+local activeTreeCanvasLayout = nil
+local activeTreeCanvasSkillID = nil
+local activeTreePanLabelLayout = nil
+
+-- ui.texture allocates a fresh resource handle per call, and the layout used to
+-- be rebuilt on every pan frame. These paths are constant, so resolve once.
+local cachedTexturesByPath = {}
+local function cachedTexture(path)
+    local texture = cachedTexturesByPath[path]
+    if texture == nil then
+        texture = ui.texture { path = path }
+        cachedTexturesByPath[path] = texture
+    end
+    return texture
+end
+
+-- Header fill strip: fresh layout tables each call (they are handed to
+-- ui.content, so they are not shared between elements) but one shared texture.
+local function headerFillTiles(count)
+    local texture = cachedTexture("textures\\menu_head_block_middle.dds")
+    local tiles = {}
+    for _ = 1, count do
+        table.insert(tiles, {
+            type = ui.TYPE.Image,
+            props = {
+                resource = texture,
+                size = v2(20, 30),
+            },
+        })
+    end
+    return tiles
+end
 
 local function safeMenuUpdate()
     if menu == nil or type(menu.update) ~= "function" then
@@ -507,6 +579,41 @@ local function clampTreePan(pan)
     local maxPan = px(600)
     pan.x = math.max(-maxPan, math.min(maxPan, pan.x))
     pan.y = math.max(-maxPan, math.min(maxPan, pan.y))
+end
+
+local function treePanLabelText(pan)
+    return string.format(
+        "Tree view (Drag + WASD/Arrows): x=%d y=%d",
+        math.floor(pan.x),
+        math.floor(pan.y)
+    )
+end
+
+local function treePanOffset(pan)
+    return util.vector2(-math.floor(pan.x), -math.floor(pan.y))
+end
+
+-- Move the tree canvas to match the current pan without rebuilding the layout.
+-- Returns false when there is no live canvas for the selected skill, in which
+-- case the caller still needs a full rebuild.
+local function applyTreePanOffset()
+    if menu == nil or activeTreeCanvasLayout == nil then
+        return false
+    end
+
+    local skillID = getSelectedSkillID()
+    if skillID == nil or skillID ~= activeTreeCanvasSkillID then
+        return false
+    end
+
+    local pan = getTreePan(skillID)
+    activeTreeCanvasLayout.props.position = treePanOffset(pan)
+    if activeTreePanLabelLayout ~= nil then
+        activeTreePanLabelLayout.props.text = treePanLabelText(pan)
+    end
+
+    safeMenuUpdate()
+    return true
 end
 
 local function updateTreePanBounds(skillID, treeNodes)
@@ -1682,14 +1789,18 @@ local function buildPerkPane()
 
     if #treeNodes > 0 then
         ensureTreePanInitialized(selectedSkillID, treeNodes)
+        -- Bounds clamping used to ride along on the per-frame pan handler. Now
+        -- that panning no longer rebuilds, clamp here so a rebuild (tab switch,
+        -- perk purchase) still lands inside the tab's content bounds.
+        updateTreePanBounds(selectedSkillID, treeNodes)
         local pan = getTreePan(selectedSkillID)
         local viewportSize = v2(TREE_INNER_VIEWPORT_WIDTH, TREE_INNER_VIEWPORT_HEIGHT)
         -- Keep tree node boxes/lines at a fixed pixel footprint so dense trees remain readable
         -- and scrolling doesn't feel overly zoomed on high-resolution displays.
         local nodeHeight = 24
         local lineThickness = 2
-        local horizontalLineTexture = ui.texture { path = "textures/menu_thin_border_top.dds" }
-        local verticalLineTexture = ui.texture { path = "textures/menu_thin_border_left.dds" }
+        local horizontalLineTexture = cachedTexture("textures/menu_thin_border_top.dds")
+        local verticalLineTexture = cachedTexture("textures/menu_thin_border_left.dds")
         local treeOrigin = util.vector2(math.floor(viewportSize.x / 2), math.floor(viewportSize.y / 2))
         local nodeByID = {}
 
@@ -1697,19 +1808,14 @@ local function buildPerkPane()
             nodeByID[node.id] = node
         end
 
-        local treePanLabel = string.format(
-            "Tree view (Drag + WASD/Arrows): x=%d y=%d",
-            math.floor(pan.x),
-            math.floor(pan.y)
-        )
-
         local treeHintRow = {
             type = ui.TYPE.Text,
             template = interfaces.MWUI.templates.textDisabled,
             props = {
-                text = treePanLabel,
+                text = treePanLabelText(pan),
             },
         }
+        activeTreePanLabelLayout = treeHintRow
 
         local treeHintSpacer = {
             type = ui.TYPE.Widget,
@@ -1721,10 +1827,12 @@ local function buildPerkPane()
 
         local treeCanvasContent = {}
 
+        -- Node positions are relative to the canvas, not to the current pan. The
+        -- canvas container is offset instead, so panning never rebuilds nodes.
         local function toCanvasPos(node)
             return util.vector2(
-                treeOrigin.x + node.x - pan.x,
-                treeOrigin.y - node.y - pan.y
+                treeOrigin.x + node.x,
+                treeOrigin.y - node.y
             )
         end
 
@@ -1832,6 +1940,18 @@ local function buildPerkPane()
             })
         end
 
+        local treeCanvas = {
+            type = ui.TYPE.Container,
+            props = {
+                autoSize = false,
+                relativeSize = util.vector2(1, 1),
+                position = treePanOffset(pan),
+            },
+            content = ui.content(treeCanvasContent),
+        }
+        activeTreeCanvasLayout = treeCanvas
+        activeTreeCanvasSkillID = selectedSkillID
+
         table.insert(perksCol, {
             type = ui.TYPE.Container,
             props = {
@@ -1839,20 +1959,12 @@ local function buildPerkPane()
                 size = viewportSize,
                 clip = true,
             },
-            content = ui.content {
-                {
-                    type = ui.TYPE.Container,
-                    props = {
-                        autoSize = false,
-                        relativeSize = util.vector2(1, 1),
-                    },
-                    content = ui.content(treeCanvasContent),
-                },
-            },
+            content = ui.content { treeCanvas },
         })
     else
         activeTreeCanvasLayout = nil
         activeTreeCanvasSkillID = nil
+        activeTreePanLabelLayout = nil
         for i, perkID in ipairs(filteredPerkIDs) do
             local perk = perks[perkID]
             local owned = hasPerk(perkID)
@@ -1948,8 +2060,10 @@ local function buildPerkPane()
                                 dragPan.y = dragPan.y - delta.y
                                 clampTreePan(dragPan)
                                 lastMousePos = mouseEvent.position
-                                menu.layout = buildLayout()
-                                safeMenuUpdate()
+                                if not applyTreePanOffset() then
+                                    menu.layout = buildLayout()
+                                    safeMenuUpdate()
+                                end
                             end),
                             mouseRelease = async:callback(function(mouseEvent)
                                 if mouseEvent.button == 1 then
@@ -2025,16 +2139,7 @@ end
 buildLayout = function()
     local menuWidth = PERK_UI_BODY_WIDTH
     local menuHeight = 30 + PERK_UI_BOTTOM_ROW_HEIGHT + 10 + PERK_UI_HEIGHT
-    local topHeaderFillTiles = {}
-    for _ = 1, math.max(1, math.ceil(menuWidth / 20)) do
-        table.insert(topHeaderFillTiles, {
-            type = ui.TYPE.Image,
-            props = {
-                resource = ui.texture { path = "textures\\menu_head_block_middle.dds" },
-                size = v2(20, 30),
-            },
-        })
-    end
+    local topHeaderFillTiles = headerFillTiles(math.max(1, math.ceil(menuWidth / 20)))
 
     return {
         layer = "Windows",
@@ -2369,73 +2474,81 @@ local function onFrame(dt)
     end
 
     if menu ~= nil then
-        local playerApi = interfaces[MOD_NAME .. "Player"]
-        if playerApi ~= nil then
-            local globalPoints = getCurrentGlobalPoints(getSelectedSkillID())
+        -- Point totals only change from outside the menu on level-up or skill
+        -- milestones, so polling them a few times a second is responsive enough
+        -- and keeps the interface lookup off the per-frame path.
+        globalPointsPollTimer = globalPointsPollTimer + deltaTime
+        if globalPointsPollTimer >= GLOBAL_POINTS_POLL_INTERVAL then
+            globalPointsPollTimer = 0
+            local playerApi = interfaces[MOD_NAME .. "Player"]
+            if playerApi ~= nil then
+                local globalPoints = getCurrentGlobalPoints(getSelectedSkillID())
 
-            if type(globalPoints) == "number" and globalPoints ~= lastKnownGlobalPoints then
-                lastKnownGlobalPoints = globalPoints
-                menu.layout = buildLayout()
-                safeMenuUpdate()
+                if type(globalPoints) == "number" and globalPoints ~= lastKnownGlobalPoints then
+                    lastKnownGlobalPoints = globalPoints
+                    menu.layout = buildLayout()
+                    safeMenuUpdate()
+                end
             end
         end
 
-        local modApi = getModApi()
-        local selectedSkillID = getSelectedSkillID()
-        local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
-            and modApi.getTreeNodesForTab(selectedSkillID)
-            or {}
+        local panDelta = 320 * dt
+        local dx, dy = 0, 0
+        if anyKeyDown(PAN_LEFT_KEYS) then
+            dx = dx - panDelta
+        end
+        if anyKeyDown(PAN_RIGHT_KEYS) then
+            dx = dx + panDelta
+        end
+        if anyKeyDown(PAN_UP_KEYS) then
+            dy = dy - panDelta
+        end
+        if anyKeyDown(PAN_DOWN_KEYS) then
+            dy = dy + panDelta
+        end
 
-        if #treeNodes > 0 then
-            local pan = getTreePan(selectedSkillID)
-            local panDelta = 320 * dt
-            local moved = false
-            updateTreePanBounds(selectedSkillID, treeNodes)
-            local leftDown = anyKeyDown({"LeftArrow", "Left", "A"})
-            local rightDown = anyKeyDown({"RightArrow", "Right", "D"})
-            local upDown = anyKeyDown({"UpArrow", "Up", "W"})
-            local downDown = anyKeyDown({"DownArrow", "Down", "S"})
+        -- Fetching the tab's tree nodes copies and sorts the node list, so only
+        -- do it when the player is actually panning.
+        if dx ~= 0 or dy ~= 0 then
+            local modApi = getModApi()
+            local selectedSkillID = getSelectedSkillID()
+            local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
+                and modApi.getTreeNodesForTab(selectedSkillID)
+                or {}
 
-            if leftDown then
-                pan.x = pan.x - panDelta
-                moved = true
-            end
-            if rightDown then
-                pan.x = pan.x + panDelta
-                moved = true
-            end
-            if upDown then
-                pan.y = pan.y - panDelta
-                moved = true
-            end
-            if downDown then
-                pan.y = pan.y + panDelta
-                moved = true
-            end
-
-            if moved then
+            if #treeNodes > 0 then
+                local pan = getTreePan(selectedSkillID)
+                updateTreePanBounds(selectedSkillID, treeNodes)
+                pan.x = pan.x + dx
+                pan.y = pan.y + dy
                 clampTreePan(pan)
-                menu.layout = buildLayout()
-                safeMenuUpdate()
+                if not applyTreePanOffset() then
+                    menu.layout = buildLayout()
+                    safeMenuUpdate()
+                end
             end
         end
     end
 
-    refreshToggleKeyBinding()
-    local hasOpenMenuModeNow = hasOpenMenuMode()
+    if refreshToggleKeyBindingThrottled(deltaTime) then
+        refreshToggleKeyBinding()
+    end
+
     local isPressed = input.isKeyPressed(activeToggleKeyCode)
     if not isPressed then
         suppressToggleUntilRelease = false
     end
+
     if isPressed and not toggleKeyWasPressed then
         if menu ~= nil then
             closeMenu()
-        elseif not hasOpenMenuModeNow and not suppressToggleUntilRelease then
+        -- hasOpenMenuMode() walks the interface mode stack, so it is only
+        -- consulted on the key edge that would actually open the menu.
+        elseif not suppressToggleUntilRelease and not hasOpenMenuMode() then
             toggleMenu()
         end
     end
     toggleKeyWasPressed = isPressed
-    hadOpenMenuModeLastFrame = hasOpenMenuModeNow
 end
 
 return {

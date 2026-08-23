@@ -29,7 +29,11 @@ rg -n "onUpdate|onFrame" SkillPerkSystem SkillPerkSystem_BasePack
 
 | Location | Handler | Current purpose | Classification | Notes / optimization candidate |
 | --- | --- | --- | --- | --- |
-| Perk UI engine handler | `engineHandlers.onFrame = onFrame` | Suppresses journal sounds during short windows, validates/cleans owned UI mode, rebuilds menu if global points changed, handles tree keyboard panning, refreshes toggle key binding, and opens/closes the perk menu on key press. | UI-only; partly required every frame while UI/input is relevant; fallback/safety behavior for stuck modes. | Key edge detection and panning are frame-based. Some work, especially key-binding refresh and global point/layout checks, could be gated to menu-open or settings-change paths. |
+| Perk UI engine handler | `engineHandlers.onFrame = onFrame` | Suppresses journal sounds during short windows, validates/cleans owned UI mode, polls global points while the menu is open, handles tree keyboard panning, refreshes the toggle key binding, and opens/closes the perk menu on key press. | UI-only; toggle-key edge detection required every frame; remaining work throttled or gated. | Optimized. Panning no longer rebuilds the layout: node positions are canvas-relative and the canvas container's `position` is offset in place (`applyTreePanOffset`). Toggle key binding refresh (settings storage read) runs on a `0.5`-second timer; the global point poll runs on a `0.25`-second timer; `getTreeNodesForTab` (which copies and sorts) and `hasOpenMenuMode` (which walks the mode stack) are only called when a pan key is held or on the toggle key edge respectively. `input.KEY` codes are resolved once instead of a pcall plus closure per key per frame. |
+
+### Perk UI redraw cost
+
+Before this pass, every tree interaction assigned `menu.layout = buildLayout()`, rebuilding the entire widget tree — window chrome, one `ui.texture` per header tile, the tab row, every tree node, every connector line segment, and the detail pane. That ran once per rendered frame while an arrow key was held and once per `mouseMove` event while dragging. Full rebuilds are now limited to discrete content changes: tab switch, node selection, perk purchase/refund, and an observed point-total change.
 
 ## SkillPerkSystem/manifest.lua
 

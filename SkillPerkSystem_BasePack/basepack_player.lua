@@ -30,6 +30,7 @@ local __basepack_subsystems = {
     require("scripts.SkillPerkSystem_BasePack.runtime.player.careful_repairs"),
     require("scripts.SkillPerkSystem_BasePack.runtime.player.hand_to_hand"),
     require("scripts.SkillPerkSystem_BasePack.runtime.player.alchemy"),
+    require("scripts.SkillPerkSystem_BasePack.runtime.player.athletics"),
 }
 
 -- Install the shared animation dispatchers only after every runtime module has

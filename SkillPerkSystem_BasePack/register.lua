@@ -146,6 +146,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.alchemy.alchemy",
         data = require("scripts.SkillPerkSystem_BasePack.perks.alchemy.alchemy"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.athletics.athletics",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.athletics.athletics"),
+    },
 }
 
 

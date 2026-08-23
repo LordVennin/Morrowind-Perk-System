@@ -60,6 +60,14 @@ local PAN_DOWN_KEYS = {"DownArrow", "Down", "S"}
 
 local GLOBAL_POINTS_POLL_INTERVAL = 0.25
 local globalPointsPollTimer = GLOBAL_POINTS_POLL_INTERVAL
+-- The perk menu opens a paused UI mode, and onFrame receives dt == 0 while the
+-- game is paused -- so UI timers advance by this nominal frame length whenever
+-- dt is zero, or they would freeze exactly while the menu is on screen.
+local PAUSED_FRAME_SECONDS = 1 / 60
+-- Frames left before a rebuild forced by a perk purchase. The addPerk event is
+-- delivered to the player script a frame after the click, so the click-time
+-- rebuild is always stale; counting frames (not dt) survives the pause.
+local pendingPerkStateRebuildFrames = 0
 
 -- input.KEY lookups are constant; resolving them per key per frame allocated a
 -- closure and a pcall each time. Resolve once and remember misses as false.
@@ -1529,6 +1537,9 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 pself:sendEvent(MOD_NAME .. "addPerk", { perkID = selectedPerkID })
                 menu.layout = buildLayout()
                 safeMenuUpdate()
+                -- The purchase lands in the player script a frame later, so
+                -- the rebuild above still shows the pre-purchase state.
+                pendingPerkStateRebuildFrames = 2
             end
         end, unlockEnabled, v2(104, 24))
     end
@@ -2513,11 +2524,23 @@ local function onFrame(dt)
         end
     end
 
+    -- dt is 0 while the game is paused, which it is whenever this menu is open.
+    local uiDelta = deltaTime > 0 and deltaTime or PAUSED_FRAME_SECONDS
+
     if menu ~= nil then
+        if pendingPerkStateRebuildFrames > 0 then
+            pendingPerkStateRebuildFrames = pendingPerkStateRebuildFrames - 1
+            if pendingPerkStateRebuildFrames == 0 then
+                lastKnownGlobalPoints = getCurrentGlobalPoints(getSelectedSkillID())
+                menu.layout = buildLayout()
+                safeMenuUpdate()
+            end
+        end
+
         -- Point totals only change from outside the menu on level-up or skill
         -- milestones, so polling them a few times a second is responsive enough
         -- and keeps the interface lookup off the per-frame path.
-        globalPointsPollTimer = globalPointsPollTimer + deltaTime
+        globalPointsPollTimer = globalPointsPollTimer + uiDelta
         if globalPointsPollTimer >= GLOBAL_POINTS_POLL_INTERVAL then
             globalPointsPollTimer = 0
             local playerApi = interfaces[MOD_NAME .. "Player"]
@@ -2532,7 +2555,7 @@ local function onFrame(dt)
             end
         end
 
-        local panDelta = 320 * dt
+        local panDelta = 320 * uiDelta
         local dx, dy = 0, 0
         if anyKeyDown(PAN_LEFT_KEYS) then
             dx = dx - panDelta
@@ -2570,7 +2593,7 @@ local function onFrame(dt)
         end
     end
 
-    if refreshToggleKeyBindingThrottled(deltaTime) then
+    if refreshToggleKeyBindingThrottled(uiDelta) then
         refreshToggleKeyBinding()
     end
 

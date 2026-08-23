@@ -133,23 +133,6 @@ local function cachedTexture(path)
     return texture
 end
 
--- Header fill strip: fresh layout tables each call (they are handed to
--- ui.content, so they are not shared between elements) but one shared texture.
-local function headerFillTiles(count)
-    local texture = cachedTexture("textures\\menu_head_block_middle.dds")
-    local tiles = {}
-    for _ = 1, count do
-        table.insert(tiles, {
-            type = ui.TYPE.Image,
-            props = {
-                resource = texture,
-                size = v2(20, 30),
-            },
-        })
-    end
-    return tiles
-end
-
 local function safeMenuUpdate()
     if menu == nil or type(menu.update) ~= "function" then
         return
@@ -308,6 +291,23 @@ end
 
 local function v2(x, y)
     return util.vector2(px(x), px(y))
+end
+
+-- Header fill strip: fresh layout tables each call (they are handed to
+-- ui.content, so they are not shared between elements) but one shared texture.
+local function headerFillTiles(count)
+    local texture = cachedTexture("textures\\menu_head_block_middle.dds")
+    local tiles = {}
+    for _ = 1, count do
+        table.insert(tiles, {
+            type = ui.TYPE.Image,
+            props = {
+                resource = texture,
+                size = v2(20, 30),
+            },
+        })
+    end
+    return tiles
 end
 
 local SKILL_SELECTOR_WIDTH = 352

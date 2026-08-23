@@ -6,13 +6,10 @@
 -- granularity, so this subsystem never asks for a per-frame update -- not even
 -- while stacks are active. Idle cost is one poll every 0.5 seconds.
 
-local interfaces = require("openmw.interfaces")
-local pself = require("openmw.self")
-local types = require("openmw.types")
+local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
-local Actor = types.Actor
-local NPC = types.NPC
-local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
+local enabled = stats.enabled
+local setModifier = stats.setModifier
 
 local __basepack_subsystem_result = nil
 
@@ -69,103 +66,16 @@ local state = {
     appliedMaxFatigue = 0,
 }
 
-local function enabled(perkId)
-    local playerApi = interfaces[PLAYER_INTERFACE_NAME]
-    if playerApi == nil then
-        return false
-    end
-    if type(playerApi.hasPerk) == "function" and not playerApi.hasPerk(perkId) then
-        return false
-    end
-    if type(playerApi.isPerkEffectEnabled) == "function" and not playerApi.isPerkEffectEnabled(perkId) then
-        return false
-    end
-    return true
-end
-
-local function skillStat(skillId)
-    local skills = NPC ~= nil and NPC.stats ~= nil and NPC.stats.skills or nil
-    local accessor = skills ~= nil and skills[skillId] or nil
-    return type(accessor) == "function" and accessor(pself) or nil
-end
-
-local function attributeStat(attributeId)
-    local attributes = Actor ~= nil and Actor.stats ~= nil and Actor.stats.attributes or nil
-    local accessor = attributes ~= nil and attributes[attributeId] or nil
-    return type(accessor) == "function" and accessor(pself) or nil
-end
-
-local function fatigueStat()
-    local dynamic = Actor ~= nil and Actor.stats ~= nil and Actor.stats.dynamic or nil
-    local accessor = dynamic ~= nil and dynamic.fatigue or nil
-    return type(accessor) == "function" and accessor(pself) or nil
-end
-
--- Applies a delta to stat.modifier so that exactly `desired` of this
--- subsystem's contribution is present, leaving other contributors untouched.
-local function setModifier(stat, current, desired)
-    desired = math.max(0, math.floor(tonumber(desired) or 0))
-    current = math.max(0, math.floor(tonumber(current) or 0))
-    if desired == current then
-        return current
-    end
-    if stat == nil or type(stat.modifier) ~= "number" then
-        return current
-    end
-    stat.modifier = stat.modifier - current + desired
-    return desired
-end
-
--- Max fatigue counts this subsystem's own modifier, so subtract it before
--- deriving the percentage. Otherwise Peerless Conditioning would shift every
--- fatigue threshold in the tree.
-local function fatigueRatio(fatigue)
-    if fatigue == nil then
-        return 0, 0
-    end
-    local base = tonumber(fatigue.base) or 0
-    local modifier = tonumber(fatigue.modifier) or 0
-    local maxFatigue = math.max(0, base + modifier)
-    local naturalMax = math.max(0, maxFatigue - state.appliedMaxFatigue)
-    if naturalMax <= 0 then
-        return 0, maxFatigue
-    end
-    return (tonumber(fatigue.current) or 0) / naturalMax, maxFatigue
-end
-
-local function encumbranceRatio()
-    if Actor == nil or type(Actor.getEncumbrance) ~= "function" or type(Actor.getCapacity) ~= "function" then
-        return 0
-    end
-    local okLoad, load = pcall(Actor.getEncumbrance, pself)
-    local okCapacity, capacity = pcall(Actor.getCapacity, pself)
-    if not okLoad or not okCapacity then
-        return 0
-    end
-    capacity = tonumber(capacity) or 0
-    if capacity <= 0 then
-        return 0
-    end
-    return (tonumber(load) or 0) / capacity
-end
-
 -- Movement is sampled rather than hooked: there is no player-side "started
 -- moving" event, and one position read per poll is cheaper than any watcher.
 local function movedSinceLastPoll()
-    local ok, position = pcall(function() return pself.position end)
-    if not ok or position == nil then
+    local position = stats.position()
+    if position == nil then
         return false
     end
-    local previous = state.lastPosition
+    local distanceSquared = stats.distanceSquared(position, state.lastPosition)
     state.lastPosition = position
-    if previous == nil then
-        return false
-    end
-    local dx = (tonumber(position.x) or 0) - (tonumber(previous.x) or 0)
-    local dy = (tonumber(position.y) or 0) - (tonumber(previous.y) or 0)
-    local dz = (tonumber(position.z) or 0) - (tonumber(previous.z) or 0)
-    local distanceSquared = dx * dx + dy * dy + dz * dz
-    if distanceSquared >= C.STRIDE_TELEPORT_EPSILON_SQUARED then
+    if distanceSquared == nil or distanceSquared >= C.STRIDE_TELEPORT_EPSILON_SQUARED then
         return false
     end
     return distanceSquared > C.STRIDE_MOVE_EPSILON_SQUARED
@@ -251,14 +161,14 @@ end
 local function refresh(elapsed)
     elapsed = math.max(0, tonumber(elapsed) or 0)
 
-    local fatigue = fatigueStat()
-    local fatiguePercent, maxFatigue = fatigueRatio(fatigue)
+    local fatigue = stats.fatigueStat()
+    local fatiguePercent, maxFatigue = stats.fatigueRatio(fatigue, state.appliedMaxFatigue)
 
     updateStrides(elapsed, fatiguePercent)
     updateSecondWind(elapsed, fatigue, fatiguePercent, maxFatigue)
 
     local athletics = 0
-    if enabled(C.STEADY_PACE) and encumbranceRatio() < C.STEADY_PACE_MAX_LOAD then
+    if enabled(C.STEADY_PACE) and stats.encumbranceRatio() < C.STEADY_PACE_MAX_LOAD then
         athletics = athletics + C.STEADY_PACE_ATHLETICS
     end
     if enabled(C.LONG_STRIDER) then
@@ -278,9 +188,9 @@ local function refresh(elapsed)
         extraFatigue = math.floor(base * C.PEERLESS_FATIGUE_FRACTION)
     end
 
-    state.appliedAthletics = setModifier(skillStat("athletics"), state.appliedAthletics, athletics)
-    state.appliedEndurance = setModifier(attributeStat("endurance"), state.appliedEndurance, endurance)
-    state.appliedSpeed = setModifier(attributeStat("speed"), state.appliedSpeed, speed)
+    state.appliedAthletics = setModifier(stats.skillStat("athletics"), state.appliedAthletics, athletics)
+    state.appliedEndurance = setModifier(stats.attributeStat("endurance"), state.appliedEndurance, endurance)
+    state.appliedSpeed = setModifier(stats.attributeStat("speed"), state.appliedSpeed, speed)
     state.appliedMaxFatigue = setModifier(fatigue, state.appliedMaxFatigue, extraFatigue)
 end
 

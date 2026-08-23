@@ -1,0 +1,124 @@
+-- Perk UI smoke test. Run from the repository root:
+--
+--     lua5.4 tools/uitest.lua
+--
+-- Loads SkillPerkSystem/perkpage.lua against mocked openmw modules and drives
+-- the menu-open, per-frame, and close paths. luac -p only catches syntax;
+-- this catches the runtime class of bug where a helper references a local
+-- declared later in the file and silently resolves to a nil global (the
+-- "attempt to call global 'v2'" failure). It exercises layout building end to
+-- end, so most nil-field and ordering mistakes in the UI path surface here
+-- instead of in game.
+local function vec2(x, y)
+    return setmetatable({x=x, y=y}, {__sub=function(a,b) return vec2(a.x-b.x, a.y-b.y) end,
+                                     __unm=function(a) return vec2(-a.x, -a.y) end})
+end
+
+local mocks = {}
+mocks["openmw.util"] = { vector2 = vec2 }
+mocks["openmw.core"] = {
+    stats = { Skill = { records = setmetatable({}, {__index=function(_,k) return {name=k} end}) } },
+    sendGlobalEvent = function() end,
+    getRealTime = function() return 0 end,
+    l10n = function() return function(k) return k end end,
+}
+local uiContent = function(t) return t end
+mocks["openmw.ui"] = {
+    TYPE = setmetatable({}, {__index=function(_,k) return k end}),
+    ALIGNMENT = setmetatable({}, {__index=function(_,k) return k end}),
+    texture = function(t) return t end,
+    content = uiContent,
+    create = function(layout) return { layout = layout, update = function() end, destroy = function() end } end,
+    showMessage = function() end,
+    layers = { indexOf = function() return 1 end },
+    screenSize = function() return vec2(1920, 1080) end,
+}
+mocks["openmw.async"] = { callback = function(_, f) return f end }
+setmetatable(mocks["openmw.async"], {__index = {callback = function(_, f) return f end}})
+mocks["openmw.ambient"] = { playSound = function() end, stopSound = function() end }
+mocks["openmw.input"] = {
+    KEY = setmetatable({}, {__index=function(_,k) return k end}),
+    isKeyPressed = function() return false end,
+    ACTION = {}, isActionPressed = function() return false end,
+}
+mocks["openmw.self"] = { position = vec2(0,0), controls = {} }
+mocks["openmw.storage"] = {
+    playerSection = function() return {
+        get = function() return nil end,
+        asTable = function() return {} end,
+        subscribe = function() end,
+        setLifeTime = function() end,
+        set = function() end,
+    } end,
+    LIFE_TIME = { GameSession = 1 },
+}
+mocks["openmw.types"] = { NPC = { stats = { skills = setmetatable({}, {__index=function(_,k)
+    return function() return { base = 100, modified = 100, modifier = 0 } end end}) } },
+    Actor = { stats = { attributes = {}, dynamic = {} } } }
+
+-- interfaces: MWUI templates + UI modes + the mod APIs perkpage looks up
+local perks = { athletics_steady_pace = { cost = 1 } }
+local treeNodes = {
+    { id="athletics_steady_pace", x=-180, y=0, requires={}, requiresAny={}, title="Steady Pace", description="d" },
+    { id="athletics_deep_lungs", x=180, y=0, requires={"athletics_steady_pace"}, requiresAny={}, title="Deep Lungs", description="d" },
+}
+local template = setmetatable({}, {__index=function(_,k) return {name=k} end})
+local currentMode = nil
+mocks["openmw.interfaces"] = setmetatable({
+    MWUI = { templates = template },
+    UI = {
+        getMode = function() return currentMode end,
+        setMode = function(m) currentMode = m end,
+        addMode = function(m) currentMode = m end,
+        removeMode = function() currentMode = nil end,
+        modes = {},
+        registerWindow = function() end,
+    },
+    Settings = { registerPage = function() end, registerGroup = function() end,
+                 updateRendererArgument = function() end },
+    SkillPerkSystem = {
+        getPerks = function() return perks end,
+        getTreeNodesForTab = function() return treeNodes end,
+        getTreeNode = function(id) for _,n in ipairs(treeNodes) do if n.id==id then return n end end end,
+        getTabDescription = function() return "desc" end,
+        getSkillIDs = function() return { "athletics" } end,
+        getRegisteredTabs = function() return { "athletics" } end,
+    },
+    SkillPerkSystemPlayer = {
+        hasPerk = function() return false end,
+        isPerkEffectEnabled = function() return true end,
+        getGlobalPoints = function() return 3 end,
+        getPoints = function() return 3 end,
+        listOwnedPerks = function() return {} end,
+    },
+}, {__index=function(_,k) return nil end})
+
+package.path = "./?.lua;" .. package.path
+local realRequire = require
+_G.require = function(name)
+    if mocks[name] then return mocks[name] end
+    if name:match("^openmw") then error("unmocked openmw module: " .. name) end
+    -- map script module names to files
+    local file = name:gsub("^scripts%.", ""):gsub("%.", "/") .. ".lua"
+    local chunk = assert(loadfile(file))
+    return chunk()
+end
+_G.print = function() end  -- silence mod logging
+
+local page = assert(loadfile("SkillPerkSystem/perkpage.lua"))()
+assert(type(page) == "table" and page.eventHandlers, "perkpage returned no handlers")
+
+-- find the show/close/toggle handlers regardless of MOD_NAME prefix
+local show, close
+for name, fn in pairs(page.eventHandlers) do
+    if name:match("showPerkUI$") then show = fn end
+    if name:match("closePerkUI$") then close = fn end
+end
+assert(show and close, "show/close handlers not found")
+
+show()                                   -- exercises buildLayout end to end
+assert(currentMode ~= nil, "menu did not claim a UI mode")
+for i = 1, 5 do page.engineHandlers.onFrame(0.016) end   -- frame path with menu open
+close()                                  -- close path
+for i = 1, 5 do page.engineHandlers.onFrame(0.016) end   -- frame path with menu closed
+io.write("UI SMOKE TEST PASSED\n")

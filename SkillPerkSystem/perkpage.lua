@@ -120,6 +120,11 @@ local uiScale = 1
 local activeTreeCanvasLayout = nil
 local activeTreeCanvasSkillID = nil
 local activeTreePanLabelLayout = nil
+-- Offset added to every canvas child so all coordinates are non-negative.
+-- MyGUI crops children to their parent's rect, so a child at a negative
+-- coordinate inside the canvas is culled outright; the canvas is therefore
+-- sized to the full content bounds and moved as a whole instead.
+local activeTreeCanvasShift = nil
 
 -- ui.texture allocates a fresh resource handle per call, and the layout used to
 -- be rebuilt on every pan frame. These paths are constant, so resolve once.
@@ -589,8 +594,11 @@ local function treePanLabelText(pan)
     )
 end
 
-local function treePanOffset(pan)
-    return util.vector2(-math.floor(pan.x), -math.floor(pan.y))
+local function treeCanvasPosition(pan, shift)
+    return util.vector2(
+        -math.floor(pan.x) - shift.x,
+        -math.floor(pan.y) - shift.y
+    )
 end
 
 -- Move the tree canvas to match the current pan without rebuilding the layout.
@@ -606,8 +614,12 @@ local function applyTreePanOffset()
         return false
     end
 
+    if activeTreeCanvasShift == nil then
+        return false
+    end
+
     local pan = getTreePan(skillID)
-    activeTreeCanvasLayout.props.position = treePanOffset(pan)
+    activeTreeCanvasLayout.props.position = treeCanvasPosition(pan, activeTreeCanvasShift)
     if activeTreePanLabelLayout ~= nil then
         activeTreePanLabelLayout.props.text = treePanLabelText(pan)
     end
@@ -1940,17 +1952,44 @@ local function buildPerkPane()
             })
         end
 
+        -- Children above or left of the tree origin have negative coordinates
+        -- at this point. Shift everything so the minimum is zero and size the
+        -- canvas to the content bounds: MyGUI crops children to their parent's
+        -- rect, so a child at a negative coordinate would never render.
+        local contentMinX, contentMinY = 0, 0
+        local contentMaxX, contentMaxY = viewportSize.x, viewportSize.y
+        for _, child in ipairs(treeCanvasContent) do
+            local childPosition = child.props.position
+            local childSize = child.props.size
+            contentMinX = math.min(contentMinX, childPosition.x)
+            contentMinY = math.min(contentMinY, childPosition.y)
+            contentMaxX = math.max(contentMaxX, childPosition.x + childSize.x)
+            contentMaxY = math.max(contentMaxY, childPosition.y + childSize.y)
+        end
+        local canvasShift = util.vector2(-contentMinX, -contentMinY)
+        for _, child in ipairs(treeCanvasContent) do
+            local childPosition = child.props.position
+            child.props.position = util.vector2(
+                childPosition.x + canvasShift.x,
+                childPosition.y + canvasShift.y
+            )
+        end
+
         local treeCanvas = {
-            type = ui.TYPE.Container,
+            type = ui.TYPE.Widget,
             props = {
                 autoSize = false,
-                relativeSize = util.vector2(1, 1),
-                position = treePanOffset(pan),
+                size = util.vector2(
+                    contentMaxX - contentMinX,
+                    contentMaxY - contentMinY
+                ),
+                position = treeCanvasPosition(pan, canvasShift),
             },
             content = ui.content(treeCanvasContent),
         }
         activeTreeCanvasLayout = treeCanvas
         activeTreeCanvasSkillID = selectedSkillID
+        activeTreeCanvasShift = canvasShift
 
         table.insert(perksCol, {
             type = ui.TYPE.Container,
@@ -1965,6 +2004,7 @@ local function buildPerkPane()
         activeTreeCanvasLayout = nil
         activeTreeCanvasSkillID = nil
         activeTreePanLabelLayout = nil
+        activeTreeCanvasShift = nil
         for i, perkID in ipairs(filteredPerkIDs) do
             local perk = perks[perkID]
             local owned = hasPerk(perkID)

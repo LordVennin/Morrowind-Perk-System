@@ -6,6 +6,7 @@ local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 
 local shortBlade = {}
+local sneakCrit = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -311,6 +312,120 @@ shortBlade.hasActiveState = function()
         or #flashCutBleedStacks > 0
 end
 shortBlade.onHit = onHit
+
+end
+
+-- 2b. sneak crit target state/effects
+do
+local types = require("openmw.types")
+
+local Actor = types.Actor
+local Weapon = types.Weapon
+
+local KILLERS_INSTINCT_DAMAGE_MULTIPLIER = 1.25
+local KNIFE_IN_THE_DARK_DAMAGE_MULTIPLIER = 1.50
+
+local sneakCritPlayerId = nil
+local killersInstinctEnabled = false
+local knifeInTheDarkEnabled = false
+local attackerSneaking = false
+
+local function setSneakCritState(data)
+    if type(data) ~= "table" then
+        return
+    end
+
+    sneakCritPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    killersInstinctEnabled = data.killersInstinctEnabled == true
+    knifeInTheDarkEnabled = data.knifeInTheDarkEnabled == true
+    attackerSneaking = data.sneaking == true
+end
+
+local function getWeaponRecord(weapon)
+    if weapon == nil or Weapon == nil or type(Weapon.record) ~= "function" then
+        return nil
+    end
+    local ok, record = pcall(Weapon.record, weapon)
+    return ok and record or nil
+end
+
+local function isShortBladeRecord(record)
+    if record == nil or Weapon == nil or Weapon.TYPE == nil then
+        return false
+    end
+    return tonumber(record.type) == tonumber(Weapon.TYPE.ShortBladeOneHand)
+end
+
+local function attackerEquippedShortBlade(attacker)
+    if attacker == nil or Actor == nil or type(Actor.getEquipment) ~= "function"
+            or Actor.EQUIPMENT_SLOT == nil then
+        return false
+    end
+    local ok, weapon = pcall(Actor.getEquipment, attacker, Actor.EQUIPMENT_SLOT.CarriedRight)
+    return ok and isShortBladeRecord(getWeaponRecord(weapon))
+end
+
+local function isMeleeAttack(attack)
+    local meleeType = interfaces.Combat ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES ~= nil
+        and interfaces.Combat.ATTACK_SOURCE_TYPES.Melee
+    return meleeType == nil or (type(attack) == "table" and attack.sourceType == meleeType)
+end
+
+-- The player script publishes sneak/perk state on its half-second poll, so
+-- attackerSneaking is at most half a second stale at hit time.
+local function onHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return
+    end
+    if not killersInstinctEnabled or not attackerSneaking then
+        return
+    end
+    if type(sneakCritPlayerId) ~= "string" or sneakCritPlayerId == "" then
+        return
+    end
+    if attack.attacker == nil or attack.attacker.id ~= sneakCritPlayerId then
+        return
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return
+    end
+    if not isMeleeAttack(attack) then
+        return
+    end
+    if type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return
+    end
+
+    local multiplier = KILLERS_INSTINCT_DAMAGE_MULTIPLIER
+    if knifeInTheDarkEnabled then
+        local weaponRecord = getWeaponRecord(attack.weapon)
+        local shortBladeUsed = weaponRecord ~= nil and isShortBladeRecord(weaponRecord)
+            or (weaponRecord == nil and attackerEquippedShortBlade(attack.attacker))
+        if shortBladeUsed then
+            multiplier = multiplier * KNIFE_IN_THE_DARK_DAMAGE_MULTIPLIER
+        end
+    end
+
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * multiplier
+end
+
+sneakCrit.eventHandlers = {
+    SkillPerkSystem_SneakCritRefresh = setSneakCritState,
+}
+sneakCrit.engineHandlers = {
+    onInit = function(initData)
+        setSneakCritState(initData)
+    end,
+    onLoad = function(_, initData)
+        setSneakCritState(initData)
+    end,
+}
+sneakCrit.hasActiveState = function()
+    return killersInstinctEnabled == true
+        and type(sneakCritPlayerId) == "string" and sneakCritPlayerId ~= ""
+end
+sneakCrit.onHit = onHit
 
 end
 
@@ -2803,6 +2918,7 @@ dualDistillation.onHit=onHit
 end
 
 copyEventHandlers(shortBlade.eventHandlers)
+copyEventHandlers(sneakCrit.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -2813,6 +2929,7 @@ copyEventHandlers(heavyArmor.eventHandlers)
 copyEventHandlers(dualDistillation.eventHandlers)
 
 local function combinedOnHit(attack)
+    sneakCrit.onHit(attack)
     shortBlade.onHit(attack)
     handToHand.onHit(attack)
     axe.onHit(attack)
@@ -2843,6 +2960,7 @@ end
 
 local function hasAnyActiveTargetState()
     return subsystemHasActiveState(shortBlade)
+        or subsystemHasActiveState(sneakCrit)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -2873,6 +2991,7 @@ return {
     engineHandlers = {
         onInit = function(initData)
             callEngineHandler(shortBlade, "onInit", initData)
+            callEngineHandler(sneakCrit, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -2893,6 +3012,7 @@ return {
             local heavyArmorData = type(savedData) == "table" and type(savedData.heavyArmor) == "table" and savedData.heavyArmor or savedData
 
             callEngineHandler(shortBlade, "onLoad", shortBladeData, initData)
+            callEngineHandler(sneakCrit, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)

@@ -72,7 +72,7 @@ return {
             x = 0,
             y = 420,
             title = "Master Distillation",
-            description = "Each potion or weapon poison dose you produce has a 25% chance to yield an additional dose.",
+            description = "Each potion or weapon poison dose you produce has a 25% chance to also yield a distillate: a lesser potion carrying one effect drawn from the ingredients you used, its strength scaling with your Alchemy skill.",
         },
         {
             id = "alchemy_philosophers_crucible",

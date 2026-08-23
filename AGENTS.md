@@ -2,9 +2,12 @@
 
 - Perk runtime state must be stored in OpenMW save storage through script `onSave`/`onLoad` data.
 - NEVER use global Lua storage (`openmw.storage`) for any perk state, perk effects, perk runtime timers, perk bonuses, or perk ownership data.
-- Large consolidated Lua player scripts must keep each perk tree or runtime subsystem inside its own immediately invoked local initializer function, for example `local function __basepack_initExampleTree() ... end` followed by `__basepack_initExampleTree()`.
-- Do not add large groups of perk/runtime `local` declarations directly at file scope or inside top-level `do ... end` blocks in consolidated Lua scripts; Lua chunks have a 200-local-variable limit, and top-level `do` blocks still count toward the chunk's main function locals.
-- When adding new perk trees to consolidated runtime scripts, prefer one initializer function per tree/subsystem so future additions do not push either the main chunk or an existing large initializer toward the 200-local limit.
+- Each perk tree or runtime subsystem lives in its own module file under `SkillPerkSystem_BasePack/runtime/player/` and returns a subsystem table (`eventHandlers` / `engineHandlers`). `basepack_player.lua` only requires those modules in order and runs the handler-combining machinery; do not add perk logic to it.
+- The order of the `__basepack_subsystems` require list defines engine-handler chain order. Preserve existing order when adding a tree; append new trees at the end unless a tree genuinely must run earlier.
+- Lua allows at most 200 local variables per function, and a module's main chunk counts as a function. One module per tree keeps each tree inside its own budget, but a single large tree can still exhaust it.
+- Do not add large groups of `local` declarations at module scope beyond what a tree needs. When a module approaches the limit, collapse related constants (perk ids, tuning values, save-state keys) into one table local — see the `K` table in `runtime/player/block.lua` — or split the module along perk-tree seams.
+- After adding to a runtime module, verify headroom rather than assuming it: append throwaway `local` declarations before the module's final `return` and confirm the file still compiles.
+- Cross-subsystem state belongs in `runtime/shared.lua`; shared animation plumbing belongs in `runtime/animation.lua`. Runtime modules register animation handlers there, and `basepack_player.lua` calls `install()` once every module is loaded — never install animation handlers from inside a tree module, as that reintroduces a load-order dependency between trees.
 
 ## Runtime Performance and Operation Budget
 

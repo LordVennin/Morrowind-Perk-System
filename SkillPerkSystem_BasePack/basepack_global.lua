@@ -2671,6 +2671,212 @@ subsystems.sneakcrit = {
 
 end
 
+-- 5c. conjuration global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Conjuration][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local function conjEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+-- Every grant in this tree is a dynamic record added to or removed from the
+-- player's spell list as the player script reports perk state. Records are
+-- cached by grant key and persisted, so a save reuses its records instead of
+-- accumulating new ones.
+local conjRecords = {}
+
+local function selfEffect(id, magnitude, duration)
+    return {
+        id = id,
+        magnitudeMin = magnitude,
+        magnitudeMax = magnitude,
+        duration = duration,
+        area = 0,
+        range = core.magic.RANGE.Self,
+    }
+end
+
+-- Grant definitions, keyed by the ids the player script sends. Powers are
+-- once per day by engine rule; the pact tiers replace one another.
+local GRANTS = {
+    undead1 = { name = "Ancestral Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonAncestralGhost", "summonancestralghost"), 1, 60) } },
+    undead2 = { name = "Deepened Ancestral Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonBonewalker", "summonbonewalker"), 1, 120) } },
+    undead3 = { name = "Greater Ancestral Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonBonelord", "summonbonelord"), 1, 180) } },
+    daedra1 = { name = "Daedric Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonScamp", "summonscamp"), 1, 60) } },
+    daedra2 = { name = "Deepened Daedric Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonClannfear", "summonclannfear"), 1, 120) } },
+    daedra3 = { name = "Greater Daedric Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonDremora", "summondremora"), 1, 180) } },
+    dominion1 = { name = "Voice of Dominion", type = "Spell", cost = 18,
+        effects = {
+            { id = conjEffectId("CommandHumanoid", "commandhumanoid"),
+                magnitudeMin = 15, magnitudeMax = 15, duration = 20, area = 0, range = core.magic.RANGE.Target },
+            { id = conjEffectId("CommandCreature", "commandcreature"),
+                magnitudeMin = 15, magnitudeMax = 15, duration = 20, area = 0, range = core.magic.RANGE.Target },
+        } },
+    dominion2 = { name = "Voice of Dominion", type = "Spell", cost = 32,
+        effects = {
+            { id = conjEffectId("CommandHumanoid", "commandhumanoid"),
+                magnitudeMin = 25, magnitudeMax = 25, duration = 30, area = 0, range = core.magic.RANGE.Target },
+            { id = conjEffectId("CommandCreature", "commandcreature"),
+                magnitudeMin = 25, magnitudeMax = 25, duration = 30, area = 0, range = core.magic.RANGE.Target },
+        } },
+    rebuke1 = { name = "Rebuke the Dead", type = "Spell", cost = 22,
+        effects = {
+            { id = conjEffectId("TurnUndead", "turnundead"),
+                magnitudeMin = 50, magnitudeMax = 50, duration = 30, area = 10, range = core.magic.RANGE.Touch },
+        } },
+    ward1 = { name = "Spectral Ward", type = "Ability",
+        effects = { selfEffect(conjEffectId("Sanctuary", "sanctuary"), 10, 1) } },
+}
+
+-- Grant families: at most one member of a family is held at a time, selected
+-- by the tier the player script reports (0 = none).
+local FAMILIES = {
+    undead = { "undead1", "undead2", "undead3" },
+    daedra = { "daedra1", "daedra2", "daedra3" },
+    dominion = { "dominion1", "dominion2" },
+    rebuke = { "rebuke1" },
+    ward = { "ward1" },
+}
+
+local function spellTypeFor(kind)
+    if kind == "Power" then return core.magic.SPELL_TYPE.Power end
+    if kind == "Ability" then return core.magic.SPELL_TYPE.Ability end
+    return core.magic.SPELL_TYPE.Spell
+end
+
+local function ensureGrantRecord(key)
+    local grant = GRANTS[key]
+    if grant == nil then return nil end
+
+    local cachedId = conjRecords[key]
+    if cachedId ~= nil then
+        local ok, record = pcall(function() return core.magic.spells.records[cachedId] end)
+        if ok and record ~= nil then return cachedId end
+        conjRecords[key] = nil
+    end
+
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = grant.name,
+        type = spellTypeFor(grant.type),
+        cost = grant.cost or 0,
+        alwaysSucceedFlag = grant.type ~= "Spell",
+        isAutocalc = false,
+        starterSpellFlag = false,
+        effects = grant.effects,
+    })
+    if not okDraft or draft == nil then
+        log("draft failed for " .. key .. ": " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("record creation failed for " .. key .. ": " .. tostring(record))
+        return nil
+    end
+    conjRecords[key] = record.id
+    log("created record " .. key .. "=" .. tostring(record.id))
+    return record.id
+end
+
+local function playerSpellList(player)
+    local ok, spells = pcall(Actor.spells, player)
+    return ok and spells or nil
+end
+
+local function hasSpellId(spells, id)
+    if id == nil then return false end
+    if type(spells.has) == "function" then
+        local ok, has = pcall(function() return spells:has(id) end)
+        if ok then return has == true end
+    end
+    for _, spell in pairs(spells) do
+        local spellId = type(spell) == "table" and spell.id or spell
+        if spellId == id then return true end
+    end
+    return false
+end
+
+-- Reconciles one family: the desired member is granted, every other cached
+-- member is removed. Removal only consults records this pack created.
+local function reconcileFamily(spells, family, desiredIndex)
+    local keys = FAMILIES[family]
+    if keys == nil then return end
+    for index, key in ipairs(keys) do
+        local wanted = index == desiredIndex
+        local recordId = wanted and ensureGrantRecord(key) or conjRecords[key]
+        if recordId ~= nil then
+            local has = hasSpellId(spells, recordId)
+            if wanted and not has then
+                local ok, err = pcall(function() spells:add(recordId) end)
+                if not ok then log("grant add failed " .. key .. ": " .. tostring(err)) end
+            elseif not wanted and has then
+                local ok, err = pcall(function() spells:remove(recordId) end)
+                if not ok then log("grant remove failed " .. key .. ": " .. tostring(err)) end
+            end
+        end
+    end
+end
+
+local function onSetGrants(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local spells = playerSpellList(player)
+    if spells == nil then
+        return
+    end
+
+    local function tier(value, maximum)
+        local number = math.floor(tonumber(value) or 0)
+        return math.max(0, math.min(maximum, number))
+    end
+
+    reconcileFamily(spells, "undead", tier(data.undeadTier, 3))
+    reconcileFamily(spells, "daedra", tier(data.daedraTier, 3))
+    reconcileFamily(spells, "dominion", tier(data.dominionTier, 2))
+    reconcileFamily(spells, "rebuke", tier(data.rebukeTier, 1))
+    reconcileFamily(spells, "ward", tier(data.wardTier, 1))
+end
+
+subsystems.conjuration = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Conjuration_SetGrants = onSetGrants,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { conjRecords = conjRecords }
+        end,
+        onLoad = function(data)
+            conjRecords = {}
+            local saved = type(data) == "table" and data.conjRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" and GRANTS[key] ~= nil then
+                        conjRecords[key] = recordId
+                    end
+                end
+            end
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -4242,6 +4448,7 @@ local eventHandlers = {
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_SneakCritState = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_SneakCritState", data) end,
     SkillPerkSystem_BasePack_OneWithShadow_Set = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_BasePack_OneWithShadow_Set", data) end,
+    SkillPerkSystem_BasePack_Conjuration_SetGrants = function(data) dispatchEvent("conjuration", "SkillPerkSystem_BasePack_Conjuration_SetGrants", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
@@ -5144,6 +5351,7 @@ local engineOrder = {
     "heavyarmor",
     "shortblade",
     "sneakcrit",
+    "conjuration",
     "axe",
     "spear",
     "bluntweapon",

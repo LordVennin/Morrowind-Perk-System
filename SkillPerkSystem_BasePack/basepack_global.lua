@@ -2503,7 +2503,7 @@ subsystems.shortblade = {
 
 end
 
--- 5b. sneak crit, Light Fingers, and One With Shadow global handling
+-- 5b. sneak crit and One With Shadow global handling
 do
 local core = require("openmw.core")
 local types = require("openmw.types")
@@ -2517,7 +2517,6 @@ local sneakCritState = {
     playerId = nil,
     killersInstinctEnabled = false,
     knifeInTheDarkEnabled = false,
-    lightFingersEnabled = false,
     sneaking = false,
 }
 
@@ -2545,7 +2544,6 @@ local function onSneakCritState(data)
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         killersInstinctEnabled = data.killersInstinctEnabled == true,
         knifeInTheDarkEnabled = data.knifeInTheDarkEnabled == true,
-        lightFingersEnabled = data.lightFingersEnabled == true,
         sneaking = data.sneaking == true,
     }
     refreshWatchers()
@@ -2559,135 +2557,10 @@ registerTargetWatcherProvider("sneakcrit", {
     sendState = sendState,
 })
 
--- ---- Light Fingers: dull a mark's senses while their pocket is picked ----
---
--- Pickpocketing rolls compare the thief's (Sneak, Agility, Luck, fatigue)
--- bundle against the victim's, so draining the victim raises success and
--- lowers the chance of being caught in one stroke. The drain is applied when
--- the sneaking player activates the NPC -- activation resolves before the
--- (paused) pickpocket window opens, and effect durations freeze during the
--- pause -- and lifted when the window closes. The duration is only a failsafe.
-
-local DRAIN_MAGNITUDE = 20
-local DRAIN_FAILSAFE_DURATION = 30
-local drainSpellRecordId = nil
-local drainedVictim = nil
-
 local function effectTypeId(name, fallback)
     local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
     if ok and value ~= nil then return value end
     return fallback
-end
-
-local function ensureDrainSpellRecord()
-    if drainSpellRecordId ~= nil then
-        local ok, record = pcall(function() return core.magic.spells.records[drainSpellRecordId] end)
-        if ok and record ~= nil then return drainSpellRecordId end
-        drainSpellRecordId = nil
-    end
-
-    local function drainEffect(effect)
-        effect.magnitudeMin = DRAIN_MAGNITUDE
-        effect.magnitudeMax = DRAIN_MAGNITUDE
-        effect.duration = DRAIN_FAILSAFE_DURATION
-        effect.area = 0
-        effect.range = core.magic.RANGE.Self
-        return effect
-    end
-
-    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
-        name = "Light Fingers",
-        type = core.magic.SPELL_TYPE.Spell,
-        cost = 0,
-        alwaysSucceedFlag = true,
-        isAutocalc = false,
-        starterSpellFlag = false,
-        effects = {
-            drainEffect({ id = effectTypeId("DrainSkill", "drainskill"), affectedSkill = "sneak" }),
-            drainEffect({ id = effectTypeId("DrainAttribute", "drainattribute"), affectedAttribute = "agility" }),
-            drainEffect({ id = effectTypeId("DrainAttribute", "drainattribute"), affectedAttribute = "luck" }),
-        },
-    })
-    if not okDraft or draft == nil then
-        log("Light Fingers drain draft failed: " .. tostring(draft))
-        return nil
-    end
-    local okCreate, record = pcall(world.createRecord, draft)
-    if not okCreate or record == nil then
-        log("Light Fingers drain record creation failed: " .. tostring(record))
-        return nil
-    end
-    drainSpellRecordId = record.id
-    log("created Light Fingers drain record=" .. tostring(record.id))
-    return drainSpellRecordId
-end
-
-local function liftDrain(reason)
-    local victim = drainedVictim
-    drainedVictim = nil
-    if victim == nil or drainSpellRecordId == nil then
-        return
-    end
-    if type(victim.isValid) == "function" and not victim:isValid() then
-        return
-    end
-    pcall(function()
-        Actor.activeSpells(victim):remove(drainSpellRecordId)
-    end)
-    log("Light Fingers drain lifted (" .. tostring(reason) .. ")")
-end
-
-local function livingNpc(object)
-    if object == nil or not types.NPC.objectIsInstance(object) then
-        return false
-    end
-    if type(object.isValid) == "function" and not object:isValid() then
-        return false
-    end
-    local okDead, dead = pcall(Actor.isDead, object)
-    return not (okDead and dead == true)
-end
-
-local function onNpcActivated(npc, actor)
-    if not sneakCritState.lightFingersEnabled or not sneakCritState.sneaking then
-        return
-    end
-    if actor == nil or actor.id ~= sneakCritState.playerId then
-        return
-    end
-    if not livingNpc(npc) then
-        return
-    end
-    if ensureDrainSpellRecord() == nil then
-        return
-    end
-
-    liftDrain("new mark")
-    local ok, err = pcall(function()
-        Actor.activeSpells(npc):add({
-            id = drainSpellRecordId,
-            effects = { 0, 1, 2 },
-            caster = actor,
-            ignoreSpellAbsorption = true,
-            ignoreReflect = true,
-            ignoreResistances = true,
-        })
-    end)
-    if not ok then
-        log("Light Fingers drain application failed: " .. tostring(err))
-        return
-    end
-    drainedVictim = npc
-    log("Light Fingers drain applied to " .. tostring(npc.recordId))
-end
-
-do
-    local activation = require("openmw.interfaces").Activation
-    if activation ~= nil and type(activation.addHandlerForType) == "function" then
-        activation.addHandlerForType(types.NPC, onNpcActivated)
-    else
-        log("Activation interface unavailable; Light Fingers drain disabled")
-    end
 end
 
 -- ---- One With Shadow: Chameleon while dark and unburdened ----
@@ -2780,25 +2653,15 @@ end
 subsystems.sneakcrit = {
     eventHandlers = {
         SkillPerkSystem_SneakCritState = onSneakCritState,
-        SkillPerkSystem_BasePack_LightFingers_Close = function(data)
-            local player = type(data) == "table" and data.player or nil
-            if validPlayerObject(player) and player.id == sneakCritState.playerId then
-                liftDrain("window closed")
-            end
-        end,
         SkillPerkSystem_BasePack_OneWithShadow_Set = onShadowSet,
     },
     engineHandlers = {
         onSave = function()
             return {
-                drainSpellRecordId = drainSpellRecordId,
                 chameleonRecordId = chameleonRecordId,
             }
         end,
         onLoad = function(data)
-            drainedVictim = nil
-            drainSpellRecordId = type(data) == "table" and type(data.drainSpellRecordId) == "string"
-                and data.drainSpellRecordId or nil
             chameleonRecordId = type(data) == "table" and type(data.chameleonRecordId) == "string"
                 and data.chameleonRecordId or nil
             refreshWatchers()
@@ -4378,7 +4241,6 @@ local eventHandlers = {
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_SneakCritState = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_SneakCritState", data) end,
-    SkillPerkSystem_BasePack_LightFingers_Close = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_BasePack_LightFingers_Close", data) end,
     SkillPerkSystem_BasePack_OneWithShadow_Set = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_BasePack_OneWithShadow_Set", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,

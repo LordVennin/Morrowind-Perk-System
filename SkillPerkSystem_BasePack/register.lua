@@ -158,6 +158,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.sneak.sneak",
         data = require("scripts.SkillPerkSystem_BasePack.perks.sneak.sneak"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.conjuration.conjuration",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.conjuration.conjuration"),
+    },
 }
 
 

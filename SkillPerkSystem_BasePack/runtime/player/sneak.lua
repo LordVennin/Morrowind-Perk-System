@@ -24,10 +24,8 @@ local C = {
     ONE_WITH_SHADOW = "sneak_one_with_shadow",
     KILLERS_INSTINCT = "sneak_killers_instinct",
     KNIFE_IN_THE_DARK = "sneak_knife_in_the_dark",
-    LIGHT_FINGERS = "sneak_light_fingers",
 
     CRIT_STATE_EVENT = "SkillPerkSystem_SneakCritState",
-    PICKPOCKET_CLOSE_EVENT = "SkillPerkSystem_BasePack_LightFingers_Close",
     SHADOW_SET_EVENT = "SkillPerkSystem_BasePack_OneWithShadow_Set",
 
     POLL_INTERVAL = 0.5,
@@ -90,9 +88,7 @@ end
 local function publishCritState(sneaking)
     local killers = enabled(C.KILLERS_INSTINCT)
     local knife = enabled(C.KNIFE_IN_THE_DARK)
-    local lightFingers = enabled(C.LIGHT_FINGERS)
-    local stateKey = tostring(killers) .. ":" .. tostring(knife) .. ":"
-        .. tostring(lightFingers) .. ":" .. tostring(sneaking)
+    local stateKey = tostring(killers) .. ":" .. tostring(knife) .. ":" .. tostring(sneaking)
     if stateKey == state.lastCritStateKey then
         return
     end
@@ -101,7 +97,6 @@ local function publishCritState(sneaking)
         playerId = pself.id,
         killersInstinctEnabled = killers,
         knifeInTheDarkEnabled = knife,
-        lightFingersEnabled = lightFingers,
         sneaking = sneaking,
     })
 end
@@ -153,23 +148,7 @@ local function refresh()
     state.appliedSpeed = setModifier(stats.attributeStat("speed"), state.appliedSpeed, speed)
 end
 
--- The pickpocket window is a paused Container UI mode. Its drain is applied
--- by the global script when the sneaking player activates the NPC (before the
--- pause); leaving Container mode -- or landing in Dialogue instead, when the
--- mark noticed the approach -- is when the drain should lift.
-local function onUiModeChanged(data)
-    if type(data) ~= "table" then
-        return
-    end
-    if data.oldMode == "Container" or data.newMode == "Dialogue" then
-        core.sendGlobalEvent(C.PICKPOCKET_CLOSE_EVENT, { player = pself })
-    end
-end
-
 __basepack_subsystem_result = {
-    eventHandlers = {
-        UiModeChanged = onUiModeChanged,
-    },
     engineHandlers = {
         shouldUpdate = function(dt)
             state.pollTimer = state.pollTimer + (tonumber(dt) or 0)

@@ -2503,7 +2503,7 @@ subsystems.shortblade = {
 
 end
 
--- 5b. sneak crit, Light Fingers, and One With Shadow global handling
+-- 5b. sneak crit and One With Shadow global handling
 do
 local core = require("openmw.core")
 local types = require("openmw.types")
@@ -2517,7 +2517,6 @@ local sneakCritState = {
     playerId = nil,
     killersInstinctEnabled = false,
     knifeInTheDarkEnabled = false,
-    lightFingersEnabled = false,
     sneaking = false,
 }
 
@@ -2545,7 +2544,6 @@ local function onSneakCritState(data)
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         killersInstinctEnabled = data.killersInstinctEnabled == true,
         knifeInTheDarkEnabled = data.knifeInTheDarkEnabled == true,
-        lightFingersEnabled = data.lightFingersEnabled == true,
         sneaking = data.sneaking == true,
     }
     refreshWatchers()
@@ -2559,135 +2557,10 @@ registerTargetWatcherProvider("sneakcrit", {
     sendState = sendState,
 })
 
--- ---- Light Fingers: dull a mark's senses while their pocket is picked ----
---
--- Pickpocketing rolls compare the thief's (Sneak, Agility, Luck, fatigue)
--- bundle against the victim's, so draining the victim raises success and
--- lowers the chance of being caught in one stroke. The drain is applied when
--- the sneaking player activates the NPC -- activation resolves before the
--- (paused) pickpocket window opens, and effect durations freeze during the
--- pause -- and lifted when the window closes. The duration is only a failsafe.
-
-local DRAIN_MAGNITUDE = 20
-local DRAIN_FAILSAFE_DURATION = 30
-local drainSpellRecordId = nil
-local drainedVictim = nil
-
 local function effectTypeId(name, fallback)
     local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
     if ok and value ~= nil then return value end
     return fallback
-end
-
-local function ensureDrainSpellRecord()
-    if drainSpellRecordId ~= nil then
-        local ok, record = pcall(function() return core.magic.spells.records[drainSpellRecordId] end)
-        if ok and record ~= nil then return drainSpellRecordId end
-        drainSpellRecordId = nil
-    end
-
-    local function drainEffect(effect)
-        effect.magnitudeMin = DRAIN_MAGNITUDE
-        effect.magnitudeMax = DRAIN_MAGNITUDE
-        effect.duration = DRAIN_FAILSAFE_DURATION
-        effect.area = 0
-        effect.range = core.magic.RANGE.Self
-        return effect
-    end
-
-    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
-        name = "Light Fingers",
-        type = core.magic.SPELL_TYPE.Spell,
-        cost = 0,
-        alwaysSucceedFlag = true,
-        isAutocalc = false,
-        starterSpellFlag = false,
-        effects = {
-            drainEffect({ id = effectTypeId("DrainSkill", "drainskill"), affectedSkill = "sneak" }),
-            drainEffect({ id = effectTypeId("DrainAttribute", "drainattribute"), affectedAttribute = "agility" }),
-            drainEffect({ id = effectTypeId("DrainAttribute", "drainattribute"), affectedAttribute = "luck" }),
-        },
-    })
-    if not okDraft or draft == nil then
-        log("Light Fingers drain draft failed: " .. tostring(draft))
-        return nil
-    end
-    local okCreate, record = pcall(world.createRecord, draft)
-    if not okCreate or record == nil then
-        log("Light Fingers drain record creation failed: " .. tostring(record))
-        return nil
-    end
-    drainSpellRecordId = record.id
-    log("created Light Fingers drain record=" .. tostring(record.id))
-    return drainSpellRecordId
-end
-
-local function liftDrain(reason)
-    local victim = drainedVictim
-    drainedVictim = nil
-    if victim == nil or drainSpellRecordId == nil then
-        return
-    end
-    if type(victim.isValid) == "function" and not victim:isValid() then
-        return
-    end
-    pcall(function()
-        Actor.activeSpells(victim):remove(drainSpellRecordId)
-    end)
-    log("Light Fingers drain lifted (" .. tostring(reason) .. ")")
-end
-
-local function livingNpc(object)
-    if object == nil or not types.NPC.objectIsInstance(object) then
-        return false
-    end
-    if type(object.isValid) == "function" and not object:isValid() then
-        return false
-    end
-    local okDead, dead = pcall(Actor.isDead, object)
-    return not (okDead and dead == true)
-end
-
-local function onNpcActivated(npc, actor)
-    if not sneakCritState.lightFingersEnabled or not sneakCritState.sneaking then
-        return
-    end
-    if actor == nil or actor.id ~= sneakCritState.playerId then
-        return
-    end
-    if not livingNpc(npc) then
-        return
-    end
-    if ensureDrainSpellRecord() == nil then
-        return
-    end
-
-    liftDrain("new mark")
-    local ok, err = pcall(function()
-        Actor.activeSpells(npc):add({
-            id = drainSpellRecordId,
-            effects = { 0, 1, 2 },
-            caster = actor,
-            ignoreSpellAbsorption = true,
-            ignoreReflect = true,
-            ignoreResistances = true,
-        })
-    end)
-    if not ok then
-        log("Light Fingers drain application failed: " .. tostring(err))
-        return
-    end
-    drainedVictim = npc
-    log("Light Fingers drain applied to " .. tostring(npc.recordId))
-end
-
-do
-    local activation = require("openmw.interfaces").Activation
-    if activation ~= nil and type(activation.addHandlerForType) == "function" then
-        activation.addHandlerForType(types.NPC, onNpcActivated)
-    else
-        log("Activation interface unavailable; Light Fingers drain disabled")
-    end
 end
 
 -- ---- One With Shadow: Chameleon while dark and unburdened ----
@@ -2780,28 +2653,224 @@ end
 subsystems.sneakcrit = {
     eventHandlers = {
         SkillPerkSystem_SneakCritState = onSneakCritState,
-        SkillPerkSystem_BasePack_LightFingers_Close = function(data)
-            local player = type(data) == "table" and data.player or nil
-            if validPlayerObject(player) and player.id == sneakCritState.playerId then
-                liftDrain("window closed")
-            end
-        end,
         SkillPerkSystem_BasePack_OneWithShadow_Set = onShadowSet,
     },
     engineHandlers = {
         onSave = function()
             return {
-                drainSpellRecordId = drainSpellRecordId,
                 chameleonRecordId = chameleonRecordId,
             }
         end,
         onLoad = function(data)
-            drainedVictim = nil
-            drainSpellRecordId = type(data) == "table" and type(data.drainSpellRecordId) == "string"
-                and data.drainSpellRecordId or nil
             chameleonRecordId = type(data) == "table" and type(data.chameleonRecordId) == "string"
                 and data.chameleonRecordId or nil
             refreshWatchers()
+        end,
+    },
+}
+
+end
+
+-- 5c. conjuration global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Conjuration][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local function conjEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+-- Every grant in this tree is a dynamic record added to or removed from the
+-- player's spell list as the player script reports perk state. Records are
+-- cached by grant key and persisted, so a save reuses its records instead of
+-- accumulating new ones.
+local conjRecords = {}
+
+local function selfEffect(id, magnitude, duration)
+    return {
+        id = id,
+        magnitudeMin = magnitude,
+        magnitudeMax = magnitude,
+        duration = duration,
+        area = 0,
+        range = core.magic.RANGE.Self,
+    }
+end
+
+-- Grant definitions, keyed by the ids the player script sends. Powers are
+-- once per day by engine rule; the pact tiers replace one another.
+local GRANTS = {
+    undead1 = { name = "Ancestral Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonAncestralGhost", "summonancestralghost"), 1, 60) } },
+    undead2 = { name = "Deepened Ancestral Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonBonewalker", "summonbonewalker"), 1, 120) } },
+    undead3 = { name = "Greater Ancestral Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonBonelord", "summonbonelord"), 1, 180) } },
+    daedra1 = { name = "Daedric Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonScamp", "summonscamp"), 1, 60) } },
+    daedra2 = { name = "Deepened Daedric Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonClannfear", "summonclannfear"), 1, 120) } },
+    daedra3 = { name = "Greater Daedric Pact", type = "Power",
+        effects = { selfEffect(conjEffectId("SummonDremora", "summondremora"), 1, 180) } },
+    dominion1 = { name = "Voice of Dominion", type = "Spell", cost = 18,
+        effects = {
+            { id = conjEffectId("CommandHumanoid", "commandhumanoid"),
+                magnitudeMin = 15, magnitudeMax = 15, duration = 20, area = 0, range = core.magic.RANGE.Target },
+            { id = conjEffectId("CommandCreature", "commandcreature"),
+                magnitudeMin = 15, magnitudeMax = 15, duration = 20, area = 0, range = core.magic.RANGE.Target },
+        } },
+    dominion2 = { name = "Voice of Dominion", type = "Spell", cost = 32,
+        effects = {
+            { id = conjEffectId("CommandHumanoid", "commandhumanoid"),
+                magnitudeMin = 25, magnitudeMax = 25, duration = 30, area = 0, range = core.magic.RANGE.Target },
+            { id = conjEffectId("CommandCreature", "commandcreature"),
+                magnitudeMin = 25, magnitudeMax = 25, duration = 30, area = 0, range = core.magic.RANGE.Target },
+        } },
+    rebuke1 = { name = "Rebuke the Dead", type = "Spell", cost = 22,
+        effects = {
+            { id = conjEffectId("TurnUndead", "turnundead"),
+                magnitudeMin = 50, magnitudeMax = 50, duration = 30, area = 10, range = core.magic.RANGE.Touch },
+        } },
+    ward1 = { name = "Spectral Ward", type = "Ability",
+        effects = { selfEffect(conjEffectId("Sanctuary", "sanctuary"), 10, 1) } },
+}
+
+-- Grant families: at most one member of a family is held at a time, selected
+-- by the tier the player script reports (0 = none).
+local FAMILIES = {
+    undead = { "undead1", "undead2", "undead3" },
+    daedra = { "daedra1", "daedra2", "daedra3" },
+    dominion = { "dominion1", "dominion2" },
+    rebuke = { "rebuke1" },
+    ward = { "ward1" },
+}
+
+local function spellTypeFor(kind)
+    if kind == "Power" then return core.magic.SPELL_TYPE.Power end
+    if kind == "Ability" then return core.magic.SPELL_TYPE.Ability end
+    return core.magic.SPELL_TYPE.Spell
+end
+
+local function ensureGrantRecord(key)
+    local grant = GRANTS[key]
+    if grant == nil then return nil end
+
+    local cachedId = conjRecords[key]
+    if cachedId ~= nil then
+        local ok, record = pcall(function() return core.magic.spells.records[cachedId] end)
+        if ok and record ~= nil then return cachedId end
+        conjRecords[key] = nil
+    end
+
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = grant.name,
+        type = spellTypeFor(grant.type),
+        cost = grant.cost or 0,
+        alwaysSucceedFlag = grant.type ~= "Spell",
+        isAutocalc = false,
+        starterSpellFlag = false,
+        effects = grant.effects,
+    })
+    if not okDraft or draft == nil then
+        log("draft failed for " .. key .. ": " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("record creation failed for " .. key .. ": " .. tostring(record))
+        return nil
+    end
+    conjRecords[key] = record.id
+    log("created record " .. key .. "=" .. tostring(record.id))
+    return record.id
+end
+
+local function playerSpellList(player)
+    local ok, spells = pcall(Actor.spells, player)
+    return ok and spells or nil
+end
+
+local function hasSpellId(spells, id)
+    if id == nil then return false end
+    if type(spells.has) == "function" then
+        local ok, has = pcall(function() return spells:has(id) end)
+        if ok then return has == true end
+    end
+    for _, spell in pairs(spells) do
+        local spellId = type(spell) == "table" and spell.id or spell
+        if spellId == id then return true end
+    end
+    return false
+end
+
+-- Reconciles one family: the desired member is granted, every other cached
+-- member is removed. Removal only consults records this pack created.
+local function reconcileFamily(spells, family, desiredIndex)
+    local keys = FAMILIES[family]
+    if keys == nil then return end
+    for index, key in ipairs(keys) do
+        local wanted = index == desiredIndex
+        local recordId = wanted and ensureGrantRecord(key) or conjRecords[key]
+        if recordId ~= nil then
+            local has = hasSpellId(spells, recordId)
+            if wanted and not has then
+                local ok, err = pcall(function() spells:add(recordId) end)
+                if not ok then log("grant add failed " .. key .. ": " .. tostring(err)) end
+            elseif not wanted and has then
+                local ok, err = pcall(function() spells:remove(recordId) end)
+                if not ok then log("grant remove failed " .. key .. ": " .. tostring(err)) end
+            end
+        end
+    end
+end
+
+local function onSetGrants(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local spells = playerSpellList(player)
+    if spells == nil then
+        return
+    end
+
+    local function tier(value, maximum)
+        local number = math.floor(tonumber(value) or 0)
+        return math.max(0, math.min(maximum, number))
+    end
+
+    reconcileFamily(spells, "undead", tier(data.undeadTier, 3))
+    reconcileFamily(spells, "daedra", tier(data.daedraTier, 3))
+    reconcileFamily(spells, "dominion", tier(data.dominionTier, 2))
+    reconcileFamily(spells, "rebuke", tier(data.rebukeTier, 1))
+    reconcileFamily(spells, "ward", tier(data.wardTier, 1))
+end
+
+subsystems.conjuration = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Conjuration_SetGrants = onSetGrants,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { conjRecords = conjRecords }
+        end,
+        onLoad = function(data)
+            conjRecords = {}
+            local saved = type(data) == "table" and data.conjRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" and GRANTS[key] ~= nil then
+                        conjRecords[key] = recordId
+                    end
+                end
+            end
         end,
     },
 }
@@ -4378,8 +4447,8 @@ local eventHandlers = {
 
     SkillPerkSystem_ShortBladeState = function(data) dispatchEvent("shortblade", "SkillPerkSystem_ShortBladeState", data) end,
     SkillPerkSystem_SneakCritState = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_SneakCritState", data) end,
-    SkillPerkSystem_BasePack_LightFingers_Close = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_BasePack_LightFingers_Close", data) end,
     SkillPerkSystem_BasePack_OneWithShadow_Set = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_BasePack_OneWithShadow_Set", data) end,
+    SkillPerkSystem_BasePack_Conjuration_SetGrants = function(data) dispatchEvent("conjuration", "SkillPerkSystem_BasePack_Conjuration_SetGrants", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
@@ -5282,6 +5351,7 @@ local engineOrder = {
     "heavyarmor",
     "shortblade",
     "sneakcrit",
+    "conjuration",
     "axe",
     "spear",
     "bluntweapon",

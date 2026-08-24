@@ -51,18 +51,6 @@ return {
             description = "Sneaking attacks made with a short blade deal a further 50% more damage.",
         },
         {
-            id = "sneak_light_fingers",
-            tab = "Sneak",
-            minimumSkill = 60,
-            effectId = "demo_noop",
-            requires = { "sneak_cutpurse_poise" },
-            cost = 1,
-            x = -440,
-            y = 420,
-            title = "Light Fingers",
-            description = "Your deft touch distracts your marks: pickpocketing is easier, and you are less likely to be caught in the act.",
-        },
-        {
             id = "sneak_moonless_night",
             tab = "Sneak",
             minimumSkill = 35,

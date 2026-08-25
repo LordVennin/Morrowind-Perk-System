@@ -111,7 +111,7 @@ return {
             x = 0,
             y = 420,
             title = "Grand Conjurer",
-            description = "Every Conjuration spell you cast returns 10% of your maximum magicka.",
+            description = "Every Conjuration spell you cast returns a quarter of the magicka it cost you.",
         },
     },
 }

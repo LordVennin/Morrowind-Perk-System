@@ -52,8 +52,12 @@ local C = {
     SOUL_RECLAMATION_THRESHOLD = 0.5,
     SOUL_RECLAMATION_PER_SECOND = 0.01,
     SOUL_RECLAMATION_RANGE = 400,
-    -- Fraction of maximum magicka restored per Conjuration cast.
-    GRAND_CONJURER_RESTORE_FRACTION = 0.10,
+    -- Fraction of the CAST SPELL'S OWN COST returned, never a fraction of
+    -- maximum magicka. Paying out against the pool let a one-second summon
+    -- costing a few points refund far more than it consumed, so spamming the
+    -- cheapest possible spell refilled the bar. Refunding part of what was
+    -- actually spent means a cast can never turn a profit.
+    GRAND_CONJURER_REFUND_FRACTION = 0.25,
     -- In-game seconds in a day, for the once-per-day pact check.
     SECONDS_PER_DAY = 86400,
 }
@@ -333,12 +337,22 @@ local function onSkillUsed(skillId, params)
             and params.useType ~= castSuccess then
         return
     end
-    local magicka = stats.dynamicStat("magicka")
-    if magicka == nil then
+    -- The spell being cast is the one currently selected. A cast from an
+    -- enchanted item selects no spell and costs no magicka, so it refunds
+    -- nothing.
+    local okSpell, selected = pcall(Actor.getSelectedSpell, pself)
+    if not okSpell or selected == nil then
         return
     end
-    local maximum = math.max(0, (tonumber(magicka.base) or 0) + (tonumber(magicka.modifier) or 0))
-    restoreMagicka(maximum * C.GRAND_CONJURER_RESTORE_FRACTION)
+    local cost = tonumber(selected.cost)
+    if cost == nil and type(selected.id) == "string" then
+        local okRecord, record = pcall(function() return core.magic.spells.records[selected.id] end)
+        if okRecord and record ~= nil then cost = tonumber(record.cost) end
+    end
+    if cost == nil or cost <= 0 then
+        return
+    end
+    restoreMagicka(cost * C.GRAND_CONJURER_REFUND_FRACTION)
 end
 
 -- Registered from the poll rather than at module load. interfaces.* is

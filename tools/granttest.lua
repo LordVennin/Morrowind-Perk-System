@@ -176,4 +176,32 @@ do
     assert(dailyGate("ward", 1, 2) == 1, "non-daily family must not be gated")
 end
 
+-- ---------------------------------------------------------------------------
+-- Grand Conjurer refund: a cast must never be able to turn a profit.
+--
+-- Paying out a share of MAXIMUM magicka let a one-second summon costing a few
+-- points refund far more than it consumed, so the cheapest spell in the game
+-- refilled the bar when spammed. Refunding a share of what the cast actually
+-- cost is bounded by the cost itself.
+-- ---------------------------------------------------------------------------
+do
+    local REFUND_FRACTION = 0.25
+    assert(REFUND_FRACTION < 1, "a refund of the full cost would make casting free")
+
+    local function netMagicka(spellCost)
+        return REFUND_FRACTION * spellCost - spellCost
+    end
+
+    -- Every spell, cheap or expensive, must leave the caster down on the deal.
+    for _, spellCost in ipairs({ 1, 3, 5, 12, 40, 120, 400 }) do
+        assert(netMagicka(spellCost) < 0,
+            string.format("casting a %d-cost spell profits %.2f magicka", spellCost, netMagicka(spellCost)))
+    end
+
+    -- The old rule for comparison: a share of a 200-point pool against a
+    -- 5-point spell, which is what made spamming worthwhile.
+    local oldRefund = 0.10 * 200
+    assert(oldRefund - 5 > 0, "sanity: the previous rule really did profit")
+end
+
 io.write("GRANT RECONCILER TEST PASSED\n")

@@ -7,6 +7,7 @@ local interfaces = require("openmw.interfaces")
 
 local shortBlade = {}
 local sneakCrit = {}
+local destruction = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -426,6 +427,290 @@ sneakCrit.hasActiveState = function()
         and type(sneakCritPlayerId) == "string" and sneakCritPlayerId ~= ""
 end
 sneakCrit.onHit = onHit
+
+end
+
+-- 2c. destruction target state/effects
+do
+local core = require("openmw.core")
+local interfaces = require("openmw.interfaces")
+local selfObj = require("openmw.self")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Destruction][Target]"
+
+-- Set true to log the shape of every magic-effect payload this actor receives.
+-- The SpellCasting options table is not documented field by field, so this is
+-- how the classification below gets checked against what the engine actually
+-- passes rather than against an assumption.
+local PROBE_EFFECT_PAYLOADS = true
+local probesLogged = 0
+local PROBE_LOG_LIMIT = 12
+
+local destructionPlayerId = nil
+local searingHeat, bitingCold, stormChannel = false, false, false
+local sunderingRuin, witheringCurse, annihilationMastery = false, false, false
+
+local SEARING_BURN_FRACTION = 0.5
+local SEARING_BURN_SECONDS = 6
+local BITING_SLOW_MAGNITUDE = 15
+local BITING_SLOW_SECONDS = 8
+local STORM_MAGICKA_FRACTION = 0.5
+local SUNDER_MAGNITUDE = 15
+local SUNDER_SECONDS = 20
+local WEAKNESS_MAGNITUDE = 10
+local WEAKNESS_SECONDS = 8
+local WITHERING_FORTIFY_SECONDS = 20
+
+local ELEMENT_WEAKNESS = {
+    firedamage = "WeaknessToFire",
+    frostdamage = "WeaknessToFrost",
+    shockdamage = "WeaknessToShock",
+}
+
+local ARMOR_SKILL_BY_TYPE = {
+    [0] = "lightarmor", [1] = "mediumarmor", [2] = "heavyarmor",
+}
+
+local function setDestructionState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    destructionPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    searingHeat = data.searingHeat == true
+    bitingCold = data.bitingCold == true
+    stormChannel = data.stormChannel == true
+    sunderingRuin = data.sunderingRuin == true
+    witheringCurse = data.witheringCurse == true
+    annihilationMastery = data.annihilationMastery == true
+end
+
+local function normalizedEffectId(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    return value:lower():gsub("%s+", "")
+end
+
+-- Reads the effect list out of whatever the engine hands us. The payload may
+-- carry the effects inline, or carry a spell id whose record holds them, so
+-- both are tried rather than assuming one shape.
+local function effectsFromPayload(options)
+    if type(options) ~= "table" then
+        return nil
+    end
+    if type(options.effects) == "table" then
+        local first = nil
+        for _, value in pairs(options.effects) do first = value break end
+        -- A list of effect tables can be used directly; a list of indices has
+        -- to be resolved against the spell record.
+        if type(first) == "table" then
+            return options.effects
+        end
+    end
+    local spellId = options.id
+    if type(spellId) ~= "string" then
+        local spell = options.spell
+        spellId = type(spell) == "table" and spell.id or spell
+    end
+    if type(spellId) == "string" then
+        local ok, record = pcall(function() return core.magic.spells.records[spellId] end)
+        if ok and record ~= nil and type(record.effects) == "table" then
+            return record.effects
+        end
+    end
+    return nil
+end
+
+local function equippedArmorSkill()
+    local Actor, Armor = types.Actor, types.Armor
+    if Actor == nil or Armor == nil or type(Actor.getEquipment) ~= "function" then
+        return nil
+    end
+    local ok, equipment = pcall(Actor.getEquipment, selfObj)
+    if not ok or type(equipment) ~= "table" then
+        return nil
+    end
+    for _, item in pairs(equipment) do
+        if item ~= nil and type(Armor.objectIsInstance) == "function" and Armor.objectIsInstance(item) then
+            local okRecord, record = pcall(Armor.record, item)
+            if okRecord and record ~= nil then
+                local skill = ARMOR_SKILL_BY_TYPE[tonumber(record.type)]
+                if skill ~= nil then return skill end
+            end
+        end
+    end
+    return nil
+end
+
+local function equippedWeaponSkill()
+    local Actor, Weapon = types.Actor, types.Weapon
+    if Actor == nil or Weapon == nil or Actor.EQUIPMENT_SLOT == nil then
+        return nil
+    end
+    local ok, weapon = pcall(Actor.getEquipment, selfObj, Actor.EQUIPMENT_SLOT.CarriedRight)
+    if not ok or weapon == nil or type(Weapon.record) ~= "function" then
+        return nil
+    end
+    local okRecord, record = pcall(Weapon.record, weapon)
+    if not okRecord or record == nil or Weapon.TYPE == nil then
+        return nil
+    end
+    local weaponType = tonumber(record.type)
+    local byType = {
+        [tonumber(Weapon.TYPE.ShortBladeOneHand)] = "shortblade",
+        [tonumber(Weapon.TYPE.LongBladeOneHand)] = "longblade",
+        [tonumber(Weapon.TYPE.LongBladeTwoHand)] = "longblade",
+        [tonumber(Weapon.TYPE.BluntOneHand)] = "bluntweapon",
+        [tonumber(Weapon.TYPE.BluntTwoClose)] = "bluntweapon",
+        [tonumber(Weapon.TYPE.BluntTwoWide)] = "bluntweapon",
+        [tonumber(Weapon.TYPE.AxeOneHand)] = "axe",
+        [tonumber(Weapon.TYPE.AxeTwoHand)] = "axe",
+        [tonumber(Weapon.TYPE.SpearTwoWide)] = "spear",
+        [tonumber(Weapon.TYPE.MarksmanBow)] = "marksman",
+        [tonumber(Weapon.TYPE.MarksmanCrossbow)] = "marksman",
+        [tonumber(Weapon.TYPE.MarksmanThrown)] = "marksman",
+    }
+    return byType[weaponType]
+end
+
+local function probePayload(options, effects)
+    if not PROBE_EFFECT_PAYLOADS or probesLogged >= PROBE_LOG_LIMIT then
+        return
+    end
+    probesLogged = probesLogged + 1
+    local keys = {}
+    for key, value in pairs(options) do
+        keys[#keys + 1] = tostring(key) .. "=" .. type(value)
+    end
+    table.sort(keys)
+    print(LOG_TAG .. " payload keys: " .. table.concat(keys, ", "))
+    if effects == nil then
+        print(LOG_TAG .. " no effect list could be read from this payload")
+        return
+    end
+    for index, effect in pairs(effects) do
+        if type(effect) == "table" then
+            print(LOG_TAG .. string.format(
+                " effect[%s] id=%s magMin=%s magMax=%s duration=%s skill=%s attribute=%s",
+                tostring(index), tostring(effect.id), tostring(effect.magnitudeMin),
+                tostring(effect.magnitudeMax), tostring(effect.duration),
+                tostring(effect.affectedSkill), tostring(effect.affectedAttribute)))
+        else
+            print(LOG_TAG .. string.format(" effect[%s] = %s (%s)",
+                tostring(index), tostring(effect), type(effect)))
+        end
+    end
+end
+
+local function onApplyMagicEffects(options)
+    if type(options) ~= "table" then
+        return
+    end
+    local caster = options.caster
+    local casterId = type(caster) == "table" and caster.id or caster
+    local effects = effectsFromPayload(options)
+    probePayload(options, effects)
+
+    if destructionPlayerId == nil or casterId ~= destructionPlayerId or effects == nil then
+        return
+    end
+
+    local request = { target = selfObj }
+    local wanted = false
+    local withering = { health = 0, fatigue = 0, magicka = 0 }
+    local witheringWanted = false
+
+    for _, effect in pairs(effects) do
+        if type(effect) == "table" then
+            local id = normalizedEffectId(effect.id)
+            local magnitude = math.max(tonumber(effect.magnitudeMin) or 0, tonumber(effect.magnitudeMax) or 0)
+
+            if id == "firedamage" and searingHeat and magnitude > 0 then
+                request.burnPerSecond = math.max(1, math.floor(magnitude * SEARING_BURN_FRACTION / SEARING_BURN_SECONDS))
+                request.burnSeconds = SEARING_BURN_SECONDS
+                wanted = true
+            elseif id == "frostdamage" and bitingCold and magnitude > 0 then
+                request.slowMagnitude = BITING_SLOW_MAGNITUDE
+                request.slowSeconds = BITING_SLOW_SECONDS
+                wanted = true
+            elseif id == "shockdamage" and stormChannel and magnitude > 0 then
+                request.magickaBurn = math.max(1, math.floor(magnitude * STORM_MAGICKA_FRACTION))
+                wanted = true
+            elseif id == "disintegratearmor" and sunderingRuin then
+                request.sunderSkill = equippedArmorSkill()
+                request.sunderMagnitude = SUNDER_MAGNITUDE
+                request.sunderSeconds = SUNDER_SECONDS
+                wanted = wanted or request.sunderSkill ~= nil
+            elseif id == "disintegrateweapon" and sunderingRuin then
+                request.sunderSkill = equippedWeaponSkill()
+                request.sunderMagnitude = SUNDER_MAGNITUDE
+                request.sunderSeconds = SUNDER_SECONDS
+                wanted = wanted or request.sunderSkill ~= nil
+            end
+
+            if annihilationMastery and ELEMENT_WEAKNESS[id or ""] ~= nil and magnitude > 0 then
+                request.weaknessEffect = ELEMENT_WEAKNESS[id]
+                request.weaknessMagnitude = WEAKNESS_MAGNITUDE
+                request.weaknessSeconds = WEAKNESS_SECONDS
+                wanted = true
+            end
+
+            -- Withering Curse: whatever the drain takes, the caster keeps.
+            if witheringCurse and magnitude > 0 and id ~= nil then
+                if id == "drainhealth" then
+                    withering.health = withering.health + magnitude
+                    witheringWanted = true
+                elseif id == "drainfatigue" then
+                    withering.fatigue = withering.fatigue + magnitude
+                    witheringWanted = true
+                elseif id == "drainmagicka" then
+                    withering.magicka = withering.magicka + magnitude
+                    witheringWanted = true
+                elseif id == "drainskill" and type(effect.affectedSkill) == "string" then
+                    withering.fortifySkill = effect.affectedSkill
+                    withering.fortifyMagnitude = magnitude
+                    witheringWanted = true
+                elseif id == "drainattribute" and type(effect.affectedAttribute) == "string" then
+                    withering.fortifyAttribute = effect.affectedAttribute
+                    withering.fortifyMagnitude = magnitude
+                    witheringWanted = true
+                end
+            end
+        end
+    end
+
+    if wanted then
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_ApplyRiders", request)
+    end
+    if witheringWanted then
+        withering.fortifySeconds = WITHERING_FORTIFY_SECONDS
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_Withering", withering)
+    end
+end
+
+local spellCasting = interfaces.SpellCasting
+if spellCasting ~= nil and type(spellCasting.addApplyMagicEffectsHandler) == "function" then
+    spellCasting.addApplyMagicEffectsHandler(onApplyMagicEffects)
+else
+    print(LOG_TAG .. " SpellCasting.addApplyMagicEffectsHandler unavailable; riders inactive")
+end
+
+destruction.eventHandlers = {
+    SkillPerkSystem_BasePack_Destruction_RiderRefresh = setDestructionState,
+}
+destruction.engineHandlers = {
+    onInit = function(initData) setDestructionState(initData) end,
+    onLoad = function(_, initData) setDestructionState(initData) end,
+}
+-- Event-only: no per-target update work, so this never keeps the combined
+-- target update loop alive.
+destruction.hasActiveState = function()
+    return type(destructionPlayerId) == "string" and destructionPlayerId ~= ""
+        and (searingHeat or bitingCold or stormChannel or sunderingRuin
+            or witheringCurse or annihilationMastery)
+end
+destruction.onHit = function() end
 
 end
 
@@ -2919,6 +3204,7 @@ end
 
 copyEventHandlers(shortBlade.eventHandlers)
 copyEventHandlers(sneakCrit.eventHandlers)
+copyEventHandlers(destruction.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -2930,6 +3216,7 @@ copyEventHandlers(dualDistillation.eventHandlers)
 
 local function combinedOnHit(attack)
     sneakCrit.onHit(attack)
+    destruction.onHit(attack)
     shortBlade.onHit(attack)
     handToHand.onHit(attack)
     axe.onHit(attack)
@@ -2961,6 +3248,7 @@ end
 local function hasAnyActiveTargetState()
     return subsystemHasActiveState(shortBlade)
         or subsystemHasActiveState(sneakCrit)
+        or subsystemHasActiveState(destruction)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -2992,6 +3280,7 @@ return {
         onInit = function(initData)
             callEngineHandler(shortBlade, "onInit", initData)
             callEngineHandler(sneakCrit, "onInit", initData)
+            callEngineHandler(destruction, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -3013,6 +3302,7 @@ return {
 
             callEngineHandler(shortBlade, "onLoad", shortBladeData, initData)
             callEngineHandler(sneakCrit, "onLoad", nil, initData)
+            callEngineHandler(destruction, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)

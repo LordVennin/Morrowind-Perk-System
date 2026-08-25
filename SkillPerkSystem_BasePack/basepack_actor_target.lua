@@ -722,16 +722,19 @@ end
 
 local spellCastingRegistered = false
 local spellCastingReported = 0
+local spellCastingAttempts = 0
 
 ensureSpellCastingHandler = function()
     if spellCastingRegistered then
         return
     end
+    spellCastingAttempts = spellCastingAttempts + 1
     local spellCasting = interfaces.SpellCasting
     if spellCasting ~= nil and type(spellCasting.addApplyMagicEffectsHandler) == "function" then
         spellCasting.addApplyMagicEffectsHandler(onApplyMagicEffects)
         spellCastingRegistered = true
-        print(LOG_TAG .. " applyMagicEffects handler registered on " .. tostring(selfObj.recordId))
+        print(LOG_TAG .. " applyMagicEffects handler registered on " .. tostring(selfObj.recordId)
+            .. " (attempt " .. spellCastingAttempts .. ")")
         return
     end
     -- interfaces are not fully resolved during onInit, so this legitimately
@@ -776,6 +779,16 @@ destruction.engineHandlers = {
 }
 -- Event-only: no per-target update work, so this never keeps the combined
 -- target update loop alive.
+-- Interfaces resolve some frames after a runtime-attached script initialises,
+-- and the state-push retries all fall inside that window. Retrying from the
+-- update loop guarantees registration lands; once it has, this is a single
+-- boolean test per update.
+destruction.engineHandlers.onUpdate = function()
+    if not spellCastingRegistered then
+        ensureSpellCastingHandler()
+    end
+end
+
 destruction.hasActiveState = function()
     return type(destructionPlayerId) == "string" and destructionPlayerId ~= ""
         and (searingHeat or bitingCold or stormChannel or sunderingRuin
@@ -3396,6 +3409,7 @@ return {
             }
         end,
         onUpdate = function(dt)
+            callActiveUpdate(destruction, dt)
             callActiveUpdate(shortBlade, dt)
             callActiveUpdate(axe, dt)
             callActiveUpdate(spear, dt)

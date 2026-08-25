@@ -3244,8 +3244,42 @@ local function onWitheringReturn(data)
     end
 end
 
+-- Answers the console diagnostic: reports what the global side believes and,
+-- crucially, how many actors the watcher has actually attached the target
+-- script to, which is the stage that cannot be seen from the player.
+local function onDiagnose()
+    log("---- diagnostic ----")
+    log("rider caster=" .. tostring(riderState.playerId)
+        .. " fire=" .. tostring(riderState.searingHeat)
+        .. " frost=" .. tostring(riderState.bitingCold)
+        .. " shock=" .. tostring(riderState.stormChannel)
+        .. " sunder=" .. tostring(riderState.sunderingRuin)
+        .. " wither=" .. tostring(riderState.witheringCurse)
+        .. " weakness=" .. tostring(riderState.annihilationMastery))
+    log("ridersActive=" .. tostring(ridersActive()))
+
+    local attached, withScript = 0, 0
+    for actor in pairs(targetWatcher.attachedTargets) do
+        attached = attached + 1
+        local ok, has = pcall(function() return actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) end)
+        if ok and has then withScript = withScript + 1 end
+    end
+    log("watcher attachedTargets=" .. attached .. " still carrying the target script=" .. withScript)
+
+    local nearbyActors = 0
+    for _, actor in ipairs(world.activeActors) do
+        nearbyActors = nearbyActors + 1
+    end
+    log("active actors in world=" .. nearbyActors)
+
+    -- Push state out again so any attached target re-reports.
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
+end
+
 subsystems.destruction = {
     eventHandlers = {
+        SkillPerkSystem_BasePack_Destruction_Diagnose = onDiagnose,
         SkillPerkSystem_BasePack_Destruction_SetGrants = onSetGrants,
         SkillPerkSystem_BasePack_Destruction_SetRiders = onSetRiders,
         SkillPerkSystem_BasePack_Destruction_ApplyRiders = onApplyRiders,
@@ -4850,6 +4884,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_SetRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_ApplyRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_ApplyRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
+    SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,

@@ -71,8 +71,14 @@ local function restoreMagicka(amount)
     end)
 end
 
+local function anyRiderPerkEnabled()
+    return enabled(C.SEARING_HEAT) or enabled(C.BITING_COLD) or enabled(C.STORM_CHANNEL)
+        or enabled(C.SUNDERING_RUIN) or enabled(C.WITHERING_CURSE)
+        or enabled(C.ANNIHILATION_MASTERY)
+end
+
 local function onSkillUsed(skillId, params)
-    if skillId ~= "destruction" or not enabled(C.EFFICIENT_RUIN) then
+    if skillId ~= "destruction" then
         return
     end
     local useTypes = interfaces.SkillProgression ~= nil
@@ -87,6 +93,20 @@ local function onSkillUsed(skillId, params)
     -- selects no spell and spends no magicka, so it refunds nothing.
     local okSpell, selected = pcall(Actor.getSelectedSpell, pself)
     if not okSpell or selected == nil then
+        return
+    end
+
+    -- Nearby targets briefly scan their own active spells for this cast
+    -- landing; that is the rider path on builds without the SpellCasting
+    -- interface (it was added after 0.51.0).
+    if anyRiderPerkEnabled() and type(selected.id) == "string" then
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_CastNotice", {
+            player = pself,
+            spellId = selected.id,
+        })
+    end
+
+    if not enabled(C.EFFICIENT_RUIN) then
         return
     end
     local cost = tonumber(selected.cost)

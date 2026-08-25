@@ -12,7 +12,7 @@ return {
             x = -220,
             y = 0,
             title = "Elemental Focus",
-            description = "Your command of the elements sharpens: gain +10 Destruction.",
+            description = "Your command of the elements sharpens: gain +10 Destruction while more than half your magicka remains.",
         },
         {
             id = "destruction_arcane_reservoir",
@@ -73,7 +73,7 @@ return {
             x = -220,
             y = 280,
             title = "Sundering Ruin",
-            description = "Disintegrate Armor also saps the target's skill with the armor they wear, and Disintegrate Weapon their skill with the weapon they hold, leaving them easier to hit and easier to dodge.",
+            description = "Disintegrate Armor also saps the target's skill with the armor they wear, and Disintegrate Weapon their skill with the weapon they hold, by an amount set by your Destruction. A second cast replaces the first rather than stacking on it.",
         },
         {
             id = "destruction_withering_curse",
@@ -86,7 +86,7 @@ return {
             x = 220,
             y = 280,
             title = "Withering Curse",
-            description = "What your Drain spells take, you keep. Drained health, fatigue and magicka flow into you, and a drained attribute or skill fortifies your own for as long as the curse holds.",
+            description = "What your Drain spells take, you keep. Drained health, fatigue, magicka, attributes and skills fortify your own for as long as the curse holds.",
         },
         {
             id = "destruction_efficient_ruin",

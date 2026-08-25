@@ -43,11 +43,19 @@ local C = {
     RIDERS_EVENT = "SkillPerkSystem_BasePack_Destruction_SetRiders",
 
     ELEMENTAL_FOCUS_SKILL_BONUS = 10,
+    -- Elemental Focus is a reward for fighting with magicka in hand rather
+    -- than a flat number on the sheet: the bonus is there while the pool is
+    -- over half and gone once it is spent.
+    ELEMENTAL_FOCUS_MAGICKA_FRACTION = 0.5,
     -- A share of the CAST SPELL'S OWN COST, never of the magicka pool: paying
     -- out against the pool lets the cheapest possible spell refund more than
     -- it costs. Below 1, so a cast can never turn a profit.
     EFFICIENT_RUIN_REFUND_FRACTION = 0.25,
 }
+
+-- Verbose tracing of the rider pipeline, off by default and toggled at
+-- runtime with "spsdestructiondebug" in the console.
+local debugLogging = false
 
 local state = {
     pollTimer = C.POLL_INTERVAL,
@@ -69,6 +77,20 @@ local function restoreMagicka(amount)
     pcall(function()
         magicka.current = math.min(maximum, current + amount)
     end)
+end
+
+-- Fraction of the magicka pool currently held, 0 when there is no pool to
+-- speak of (so the bonus is simply off rather than dividing by zero).
+local function magickaFraction()
+    local magicka = stats.dynamicStat("magicka")
+    if magicka == nil then
+        return 0
+    end
+    local maximum = (tonumber(magicka.base) or 0) + (tonumber(magicka.modifier) or 0)
+    if maximum <= 0 then
+        return 0
+    end
+    return (tonumber(magicka.current) or 0) / maximum
 end
 
 local function anyRiderPerkEnabled()
@@ -131,7 +153,9 @@ ensureSkillUsedHandler = function()
     if type(progression.addSkillUsedHandler) == "function" then
         progression.addSkillUsedHandler(onSkillUsed)
         skillHandlerRegistered = true
-        print(LOG_TAG .. " skill-used handler registered")
+        if debugLogging then
+            print(LOG_TAG .. " skill-used handler registered")
+        end
         return
     end
     if not skillHandlerReported then
@@ -183,11 +207,13 @@ local function publishRiders()
         return
     end
     state.lastRidersKey = ridersKey
-    print(LOG_TAG .. string.format(
+    if debugLogging then
+        print(LOG_TAG .. string.format(
         " publishing riders: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
         tostring(riders.playerId), tostring(riders.searingHeat), tostring(riders.bitingCold),
         tostring(riders.stormChannel), tostring(riders.sunderingRuin),
         tostring(riders.witheringCurse), tostring(riders.annihilationMastery)))
+    end
     core.sendGlobalEvent(C.RIDERS_EVENT, riders)
 end
 
@@ -196,8 +222,10 @@ local function refresh()
     publishGrants()
     publishRiders()
 
+    local focused = enabled(C.ELEMENTAL_FOCUS)
+        and magickaFraction() > C.ELEMENTAL_FOCUS_MAGICKA_FRACTION
     state.appliedDestruction = setModifier(stats.skillStat("destruction"), state.appliedDestruction,
-        enabled(C.ELEMENTAL_FOCUS) and C.ELEMENTAL_FOCUS_SKILL_BONUS or 0)
+        focused and C.ELEMENTAL_FOCUS_SKILL_BONUS or 0)
 end
 
 local function onPerkStateChanged()
@@ -206,30 +234,10 @@ local function onPerkStateChanged()
     refresh()
 end
 
--- Withering Curse pays the player what their Drain spells took; the target
--- side works out the amount and the global side forwards it here.
-local function onWitheringReturn(data)
-    if type(data) ~= "table" or not enabled(C.WITHERING_CURSE) then
-        return
-    end
-    local health = tonumber(data.health) or 0
-    local fatigue = tonumber(data.fatigue) or 0
-    local magicka = tonumber(data.magicka) or 0
-
-    if magicka > 0 then restoreMagicka(magicka) end
-    for name, amount in pairs({ health = health, fatigue = fatigue }) do
-        if amount > 0 then
-            local stat = stats.dynamicStat(name)
-            if stat ~= nil then
-                local maximum = math.max(0, (tonumber(stat.base) or 0) + (tonumber(stat.modifier) or 0))
-                local current = tonumber(stat.current) or 0
-                pcall(function()
-                    stat.current = math.min(maximum, current + amount)
-                end)
-            end
-        end
-    end
-end
+-- Withering Curse used to be paid out here by topping up health, fatigue and
+-- magicka. It is now a set of Fortify effects applied on the global side: a
+-- top-up of a pool that is already full is invisible, which is exactly the
+-- state you are in right after casting a cheap Drain spell.
 
 -- Typing "spsdestruction" in the console dumps the whole rider pipeline and
 -- forces a republish. The state lines are printed once when they change, which
@@ -239,6 +247,15 @@ local function onConsoleCommand(_, command)
     -- Console input may arrive bare or with a "lua" prefix depending on how the
     -- console routes unknown commands, so accept both spellings.
     local text = tostring(command or ""):lower():gsub("%s+", "")
+    if text == "spsdestructiondebug" or text == "luaspsdestructiondebug" then
+        debugLogging = not debugLogging
+        print(LOG_TAG .. " verbose rider logging " .. (debugLogging and "ON" or "OFF"))
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_SetDebug", {
+            player = pself,
+            enabled = debugLogging,
+        })
+        return
+    end
     if text ~= "spsdestruction" and text ~= "luaspsdestruction" then
         return
     end
@@ -246,6 +263,11 @@ local function onConsoleCommand(_, command)
     print(LOG_TAG .. " ---- diagnostic ----")
     print(LOG_TAG .. " player id=" .. tostring(pself.id))
     print(LOG_TAG .. " skill-used handler registered=" .. tostring(skillHandlerRegistered == true))
+    print(LOG_TAG .. " verbose logging=" .. tostring(debugLogging)
+        .. " (toggle with spsdestructiondebug)")
+    print(LOG_TAG .. string.format(" magicka at %.0f%% of maximum; elemental focus %s",
+        magickaFraction() * 100,
+        magickaFraction() > C.ELEMENTAL_FOCUS_MAGICKA_FRACTION and "active" or "dormant"))
     for label, perkId in pairs({
         elementalFocus = C.ELEMENTAL_FOCUS, arcaneReservoir = C.ARCANE_RESERVOIR,
         searingHeat = C.SEARING_HEAT, bitingCold = C.BITING_COLD,
@@ -265,7 +287,6 @@ end
 __basepack_subsystem_result = {
     eventHandlers = {
         SkillPerkSystem_PerkStateChanged = onPerkStateChanged,
-        SkillPerkSystem_BasePack_Destruction_WitheringReturn = onWitheringReturn,
     },
     engineHandlers = {
         shouldUpdate = function(dt)

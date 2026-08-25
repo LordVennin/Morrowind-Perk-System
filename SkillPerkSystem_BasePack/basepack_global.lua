@@ -3033,6 +3033,18 @@ local function onSetGrants(data)
 end
 
 -- ---- Rider state, shared with the actor-target script --------------------
+--
+-- Verbose tracing is off by default and switched on at runtime with
+-- "spsdestructiondebug" in the console; the on-demand "spsdestruction" dump
+-- below always prints.
+local destrDebug = false
+
+local function destrLog(message)
+    if destrDebug then
+        log(message)
+    end
+end
+
 local riderState = {
     playerId = nil,
     searingHeat = false,
@@ -3054,11 +3066,20 @@ local attachLogged = 0
 
 local function sendState(actor)
     if actor ~= nil and type(actor.sendEvent) == "function" then
-        if attachLogged < 20 then
+        if destrDebug and attachLogged < 20 then
             attachLogged = attachLogged + 1
-            log("sending rider state to " .. tostring(actor.recordId))
+            destrLog("sending rider state to " .. tostring(actor.recordId))
         end
-        actor:sendEvent("SkillPerkSystem_BasePack_Destruction_RiderRefresh", riderState)
+        actor:sendEvent("SkillPerkSystem_BasePack_Destruction_RiderRefresh", {
+            playerId = riderState.playerId,
+            searingHeat = riderState.searingHeat,
+            bitingCold = riderState.bitingCold,
+            stormChannel = riderState.stormChannel,
+            sunderingRuin = riderState.sunderingRuin,
+            witheringCurse = riderState.witheringCurse,
+            annihilationMastery = riderState.annihilationMastery,
+            debugLogging = destrDebug,
+        })
     end
 end
 
@@ -3070,7 +3091,7 @@ local function onSetRiders(data)
     if type(data) ~= "table" then
         return
     end
-    log("rider state received from player; active=" .. tostring(data.playerId ~= nil))
+    destrLog("rider state received from player; active=" .. tostring(data.playerId ~= nil))
     riderState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         searingHeat = data.searingHeat == true,
@@ -3081,7 +3102,7 @@ local function onSetRiders(data)
         annihilationMastery = data.annihilationMastery == true,
     }
     refreshWatchers()
-    log("riders active=" .. tostring(ridersActive()) .. "; watcher refresh requested")
+    destrLog("riders active=" .. tostring(ridersActive()) .. "; watcher refresh requested")
     sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
 end
 
@@ -3161,6 +3182,42 @@ local function applyRider(target, caster, recordId)
     end
 end
 
+-- ---- Sundering Ruin -------------------------------------------------------
+--
+-- How far the sunder bites is a share of the caster's own Destruction rather
+-- than a flat number, so the perk keeps pace with the skill that bought it.
+-- The floor keeps it worth casting at the 50 skill the perk unlocks at; the
+-- ceiling is what stops a single hit from erasing a weapon skill outright.
+local SUNDER_SKILL_FRACTION = 0.25
+local SUNDER_MIN = 8
+local SUNDER_MAX = 25
+
+local sunderRecordIds = {}
+
+local function sunderMagnitude(caster)
+    local skill = 0
+    local ok, stat = pcall(function() return types.NPC.stats.skills.destruction(caster) end)
+    if ok and stat ~= nil then
+        skill = tonumber(stat.modified) or tonumber(stat.base) or 0
+    end
+    return math.max(SUNDER_MIN, math.min(SUNDER_MAX, math.floor(skill * SUNDER_SKILL_FRACTION)))
+end
+
+-- Strips every sunder this mod has ever minted off the target, so what lands
+-- next is the only one on them.
+local function clearSunder(target)
+    if target == nil then
+        return
+    end
+    local ok, active = pcall(Actor.activeSpells, target)
+    if not ok or active == nil then
+        return
+    end
+    for recordId in pairs(sunderRecordIds) do
+        pcall(function() active:remove(recordId) end)
+    end
+end
+
 -- The target script has classified an incoming hit and asked for the riders
 -- that go with it. Everything it can ask for is bounded by the rider state.
 local ridersLogged = 0
@@ -3177,9 +3234,9 @@ local function onApplyRiders(data)
 
     -- Mirrors the target-side probe: shows that a classified hit made it here
     -- and what it asked for, so a break between the two sides is visible.
-    if ridersLogged < 12 then
+    if destrDebug and ridersLogged < 12 then
         ridersLogged = ridersLogged + 1
-        log(string.format("rider request burn=%s slow=%s magickaBurn=%s sunder=%s weakness=%s",
+        destrLog(string.format("rider request burn=%s slow=%s magickaBurn=%s sunder=%s weakness=%s",
             tostring(data.burnPerSecond), tostring(data.slowMagnitude),
             tostring(data.magickaBurn), tostring(data.sunderSkill), tostring(data.weaknessEffect)))
     end
@@ -3207,8 +3264,17 @@ local function onApplyRiders(data)
         end
     end
     if riderState.sunderingRuin and type(data.sunderSkill) == "string" then
-        applyRider(target, caster, riderRecord("Sundering Ruin", "DrainSkill", "drainskill",
-            tonumber(data.sunderMagnitude) or 15, tonumber(data.sunderSeconds) or 20, data.sunderSkill))
+        -- One stack only. Repeated Disintegrate casts used to pile drain on
+        -- drain until the target's weapon skill hit zero; now a fresh sunder
+        -- clears the old one and replaces it.
+        clearSunder(target)
+        local magnitude = sunderMagnitude(caster)
+        local recordId = riderRecord("Sundering Ruin", "DrainSkill", "drainskill",
+            magnitude, tonumber(data.sunderSeconds) or 20, data.sunderSkill)
+        if recordId ~= nil then
+            sunderRecordIds[recordId] = true
+            applyRider(target, caster, recordId)
+        end
     end
     if riderState.annihilationMastery and type(data.weaknessEffect) == "string" then
         applyRider(target, caster, riderRecord("Annihilation Mastery", data.weaknessEffect,
@@ -3218,7 +3284,20 @@ local function onApplyRiders(data)
 end
 
 -- Withering Curse: the target worked out what its Drain effects took, and the
--- player script pays it back.
+-- caster keeps it for as long as the drain holds.
+--
+-- Every payback is a Fortify active spell rather than a write to the caster's
+-- current health or magicka. Topping a pool up is invisible whenever it is
+-- already full -- which, right after casting a cheap Drain spell, it usually
+-- is -- so the perk read as doing nothing at all. A fortify shows on the bar
+-- no matter how full it was, and it rides the same rider machinery that the
+-- elemental riders already prove works.
+local WITHERING_FORTIFY = {
+    { field = "health", name = "FortifyHealth", fallback = "fortifyhealth" },
+    { field = "fatigue", name = "FortifyFatigue", fallback = "fortifyfatigue" },
+    { field = "magicka", name = "FortifyMagicka", fallback = "fortifymagicka" },
+}
+
 local function onWitheringReturn(data)
     if type(data) ~= "table" or not riderState.witheringCurse then
         return
@@ -3227,24 +3306,35 @@ local function onWitheringReturn(data)
     if player == nil or player.id ~= riderState.playerId then
         return
     end
-    if type(player.sendEvent) == "function" then
-        player:sendEvent("SkillPerkSystem_BasePack_Destruction_WitheringReturn", {
-            health = tonumber(data.health) or 0,
-            fatigue = tonumber(data.fatigue) or 0,
-            magicka = tonumber(data.magicka) or 0,
-        })
-    end
-    if type(data.fortifySkill) == "string" or type(data.fortifyAttribute) == "string" then
-        local recordId = riderRecord("Withering Curse", "FortifySkill", "fortifyskill",
-            tonumber(data.fortifyMagnitude) or 10, tonumber(data.fortifySeconds) or 20,
-            data.fortifySkill, nil)
-        if type(data.fortifyAttribute) == "string" then
-            recordId = riderRecord("Withering Curse", "FortifyAttribute", "fortifyattribute",
-                tonumber(data.fortifyMagnitude) or 10, tonumber(data.fortifySeconds) or 20,
-                nil, data.fortifyAttribute)
+    local seconds = math.max(1, math.floor(tonumber(data.fortifySeconds) or 20))
+    local applied = {}
+
+    for _, entry in ipairs(WITHERING_FORTIFY) do
+        local amount = math.floor(tonumber(data[entry.field]) or 0)
+        if amount > 0 then
+            applyRider(player, player, riderRecord("Withering Curse", entry.name, entry.fallback,
+                amount, seconds))
+            applied[#applied + 1] = entry.field .. "+" .. amount
         end
-        applyRider(player, player, recordId)
     end
+
+    -- A drain never touches a skill and an attribute at once, but asking about
+    -- each separately costs nothing and stops an attribute drain from minting
+    -- a skill record with no skill in it.
+    local magnitude = math.max(1, math.floor(tonumber(data.fortifyMagnitude) or 0))
+    if type(data.fortifySkill) == "string" then
+        applyRider(player, player, riderRecord("Withering Curse", "FortifySkill", "fortifyskill",
+            magnitude, seconds, data.fortifySkill, nil))
+        applied[#applied + 1] = data.fortifySkill .. "+" .. magnitude
+    end
+    if type(data.fortifyAttribute) == "string" then
+        applyRider(player, player, riderRecord("Withering Curse", "FortifyAttribute", "fortifyattribute",
+            magnitude, seconds, nil, data.fortifyAttribute))
+        applied[#applied + 1] = data.fortifyAttribute .. "+" .. magnitude
+    end
+
+    destrLog("withering payback for " .. seconds .. "s: "
+        .. (#applied > 0 and table.concat(applied, ", ") or "nothing matched"))
 end
 
 -- Answers the console diagnostic: reports what the global side believes and,
@@ -3259,7 +3349,8 @@ local function onDiagnose()
         .. " sunder=" .. tostring(riderState.sunderingRuin)
         .. " wither=" .. tostring(riderState.witheringCurse)
         .. " weakness=" .. tostring(riderState.annihilationMastery))
-    log("ridersActive=" .. tostring(ridersActive()))
+    log("ridersActive=" .. tostring(ridersActive())
+        .. " verboseLogging=" .. tostring(destrDebug))
 
     local attached, withScript = 0, 0
     for _, actor in pairs(targetWatcher.attachedTargets) do
@@ -3289,15 +3380,24 @@ local function onCastNotice(data)
     if player == nil or player.id ~= riderState.playerId then
         return
     end
-    if castNoticeLogged < 8 then
+    if destrDebug and castNoticeLogged < 8 then
         castNoticeLogged = castNoticeLogged + 1
-        log("broadcasting cast notice for " .. tostring(data.spellId))
+        destrLog("broadcasting cast notice for " .. tostring(data.spellId))
     end
     for _, actor in pairs(targetWatcher.attachedTargets) do
         if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
             actor:sendEvent("SkillPerkSystem_BasePack_Destruction_CastNotice", { spellId = data.spellId })
         end
     end
+end
+
+-- "spsdestructiondebug" in the console flips verbose tracing on or off across
+-- the global side and every attached target at once, so a misbehaving rider
+-- can be traced without shipping the noise on by default.
+local function onSetDebug(data)
+    destrDebug = type(data) == "table" and data.enabled == true
+    log("verbose rider logging " .. (destrDebug and "ON" or "OFF"))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
 end
 
 -- A freshly attached target asks for its state, because the push sent when the
@@ -3315,6 +3415,7 @@ subsystems.destruction = {
         SkillPerkSystem_BasePack_Destruction_RequestState = onRequestState,
         SkillPerkSystem_BasePack_Destruction_CastNotice = onCastNotice,
         SkillPerkSystem_BasePack_Destruction_Diagnose = onDiagnose,
+        SkillPerkSystem_BasePack_Destruction_SetDebug = onSetDebug,
         SkillPerkSystem_BasePack_Destruction_SetGrants = onSetGrants,
         SkillPerkSystem_BasePack_Destruction_SetRiders = onSetRiders,
         SkillPerkSystem_BasePack_Destruction_ApplyRiders = onApplyRiders,
@@ -3322,7 +3423,11 @@ subsystems.destruction = {
     },
     engineHandlers = {
         onSave = function()
-            return { reservoirRecordId = reservoirRecordId, riderRecords = riderRecords }
+            return {
+                reservoirRecordId = reservoirRecordId,
+                riderRecords = riderRecords,
+                sunderRecordIds = sunderRecordIds,
+            }
         end,
         onLoad = function(data)
             reservoirRecordId = type(data) == "table" and type(data.reservoirRecordId) == "string"
@@ -3333,6 +3438,17 @@ subsystems.destruction = {
                 for key, recordId in pairs(saved) do
                     if type(key) == "string" and type(recordId) == "string" then
                         riderRecords[key] = recordId
+                    end
+                end
+            end
+            -- Without this the sunders minted before the save would survive a
+            -- reload as stacks clearSunder no longer knows how to strip.
+            sunderRecordIds = {}
+            local savedSunders = type(data) == "table" and data.sunderRecordIds or nil
+            if type(savedSunders) == "table" then
+                for recordId in pairs(savedSunders) do
+                    if type(recordId) == "string" then
+                        sunderRecordIds[recordId] = true
                     end
                 end
             end
@@ -4919,6 +5035,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_SetRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_ApplyRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_ApplyRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
+    SkillPerkSystem_BasePack_Destruction_SetDebug = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetDebug", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,

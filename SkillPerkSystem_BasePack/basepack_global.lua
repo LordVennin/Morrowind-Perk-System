@@ -3152,6 +3152,8 @@ end
 
 -- The target script has classified an incoming hit and asked for the riders
 -- that go with it. Everything it can ask for is bounded by the rider state.
+local ridersLogged = 0
+
 local function onApplyRiders(data)
     if type(data) ~= "table" then
         return
@@ -3160,6 +3162,15 @@ local function onApplyRiders(data)
     local caster = world.players[1]
     if target == nil or caster == nil or caster.id ~= riderState.playerId then
         return
+    end
+
+    -- Mirrors the target-side probe: shows that a classified hit made it here
+    -- and what it asked for, so a break between the two sides is visible.
+    if ridersLogged < 12 then
+        ridersLogged = ridersLogged + 1
+        log(string.format("rider request burn=%s slow=%s magickaBurn=%s sunder=%s weakness=%s",
+            tostring(data.burnPerSecond), tostring(data.slowMagnitude),
+            tostring(data.magickaBurn), tostring(data.sunderSkill), tostring(data.weaknessEffect)))
     end
 
     if riderState.searingHeat then

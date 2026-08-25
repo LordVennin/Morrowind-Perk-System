@@ -472,6 +472,13 @@ local ARMOR_SKILL_BY_TYPE = {
     [0] = "lightarmor", [1] = "mediumarmor", [2] = "heavyarmor",
 }
 
+-- Assigned once onApplyMagicEffects exists. Registration is attempted from
+-- setDestructionState rather than at load: interfaces fill in as scripts come
+-- up, and this script is attached to actors at runtime, so a load-time
+-- registration can silently find no SpellCasting interface and do nothing.
+local ensureSpellCastingHandler
+local stateLogged = false
+
 local function setDestructionState(data)
     if type(data) ~= "table" then
         return
@@ -483,6 +490,19 @@ local function setDestructionState(data)
     sunderingRuin = data.sunderingRuin == true
     witheringCurse = data.witheringCurse == true
     annihilationMastery = data.annihilationMastery == true
+
+    if PROBE_EFFECT_PAYLOADS and not stateLogged then
+        stateLogged = true
+        print(LOG_TAG .. string.format(
+            " rider state received on %s: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
+            tostring(selfObj.recordId), tostring(destructionPlayerId),
+            tostring(searingHeat), tostring(bitingCold), tostring(stormChannel),
+            tostring(sunderingRuin), tostring(witheringCurse), tostring(annihilationMastery)))
+    end
+
+    if ensureSpellCastingHandler ~= nil then
+        ensureSpellCastingHandler()
+    end
 end
 
 local function normalizedEffectId(value)
@@ -613,6 +633,10 @@ local function onApplyMagicEffects(options)
     probePayload(options, effects)
 
     if destructionPlayerId == nil or casterId ~= destructionPlayerId or effects == nil then
+        if PROBE_EFFECT_PAYLOADS and probesLogged <= PROBE_LOG_LIMIT then
+            print(LOG_TAG .. string.format(" ignored: caster=%s expected=%s effects=%s",
+                tostring(casterId), tostring(destructionPlayerId), effects == nil and "none" or "read"))
+        end
         return
     end
 
@@ -689,11 +713,34 @@ local function onApplyMagicEffects(options)
     end
 end
 
-local spellCasting = interfaces.SpellCasting
-if spellCasting ~= nil and type(spellCasting.addApplyMagicEffectsHandler) == "function" then
-    spellCasting.addApplyMagicEffectsHandler(onApplyMagicEffects)
-else
-    print(LOG_TAG .. " SpellCasting.addApplyMagicEffectsHandler unavailable; riders inactive")
+local spellCastingRegistered = false
+local spellCastingReported = false
+
+ensureSpellCastingHandler = function()
+    if spellCastingRegistered then
+        return
+    end
+    local spellCasting = interfaces.SpellCasting
+    if spellCasting ~= nil and type(spellCasting.addApplyMagicEffectsHandler) == "function" then
+        spellCasting.addApplyMagicEffectsHandler(onApplyMagicEffects)
+        spellCastingRegistered = true
+        print(LOG_TAG .. " applyMagicEffects handler registered on " .. tostring(selfObj.recordId))
+        return
+    end
+    if not spellCastingReported then
+        spellCastingReported = true
+        if spellCasting == nil then
+            print(LOG_TAG .. " SpellCasting interface not available on this actor")
+        else
+            local names = {}
+            for key, value in pairs(spellCasting) do
+                names[#names + 1] = tostring(key) .. " (" .. type(value) .. ")"
+            end
+            table.sort(names)
+            print(LOG_TAG .. " SpellCasting has no addApplyMagicEffectsHandler; it exposes: "
+                .. table.concat(names, ", "))
+        end
+    end
 end
 
 destruction.eventHandlers = {

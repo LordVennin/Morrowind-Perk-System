@@ -2954,6 +2954,307 @@ subsystems.conjuration = {
 
 end
 
+-- 5d. destruction global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Destruction][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local function destrEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+-- ---- Arcane Reservoir: maximum magicka, granted as an Ability -------------
+local reservoirRecordId = nil
+
+local function ensureReservoirRecord()
+    if reservoirRecordId ~= nil then
+        return reservoirRecordId
+    end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = "Arcane Reservoir",
+        type = core.magic.SPELL_TYPE.Ability,
+        cost = 0,
+        isAutocalc = false,
+        effects = {
+            {
+                id = destrEffectId("FortifyMagicka", "fortifymagicka"),
+                magnitudeMin = 25, magnitudeMax = 25, duration = 1,
+                area = 0, range = core.magic.RANGE.Self,
+            },
+        },
+    })
+    if not okDraft or draft == nil then
+        log("Arcane Reservoir draft failed: " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("Arcane Reservoir record creation failed: " .. tostring(record))
+        return nil
+    end
+    reservoirRecordId = record.id
+    log("created Arcane Reservoir record=" .. tostring(record.id))
+    return reservoirRecordId
+end
+
+local function onSetGrants(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local okSpells, spells = pcall(Actor.spells, player)
+    if not okSpells or spells == nil then
+        return
+    end
+    local wanted = math.floor(tonumber(data.reservoirTier) or 0) >= 1
+    if wanted and ensureReservoirRecord() == nil then
+        return
+    end
+    if reservoirRecordId == nil then
+        return
+    end
+    -- Acting without asking whether it is held: the engine does not reliably
+    -- report holdings for dynamically created records.
+    if wanted then
+        pcall(function() spells:add(reservoirRecordId) end)
+    else
+        pcall(function() spells:remove(reservoirRecordId) end)
+    end
+end
+
+-- ---- Rider state, shared with the actor-target script --------------------
+local riderState = {
+    playerId = nil,
+    searingHeat = false,
+    bitingCold = false,
+    stormChannel = false,
+    sunderingRuin = false,
+    witheringCurse = false,
+    annihilationMastery = false,
+}
+
+local function ridersActive()
+    return type(riderState.playerId) == "string" and riderState.playerId ~= ""
+        and (riderState.searingHeat or riderState.bitingCold or riderState.stormChannel
+            or riderState.sunderingRuin or riderState.witheringCurse
+            or riderState.annihilationMastery)
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BasePack_Destruction_RiderRefresh", riderState)
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("destruction", ridersActive())
+end
+
+local function onSetRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    riderState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        searingHeat = data.searingHeat == true,
+        bitingCold = data.bitingCold == true,
+        stormChannel = data.stormChannel == true,
+        sunderingRuin = data.sunderingRuin == true,
+        witheringCurse = data.witheringCurse == true,
+        annihilationMastery = data.annihilationMastery == true,
+    }
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
+end
+
+registerTargetWatcherProvider("destruction", {
+    isActive = ridersActive,
+    sendState = sendState,
+})
+
+-- ---- Rider effects ------------------------------------------------------
+--
+-- Records are cached by shape (effect plus rounded magnitude and duration) so
+-- a burning tick of a given strength reuses one record instead of minting a
+-- new one per cast.
+local riderRecords = {}
+
+local function riderRecord(name, effectName, effectFallback, magnitude, duration, affectedSkill, affectedAttribute)
+    magnitude = math.max(1, math.floor(tonumber(magnitude) or 0))
+    duration = math.max(1, math.floor(tonumber(duration) or 0))
+    local key = table.concat({
+        effectName, magnitude, duration,
+        tostring(affectedSkill or ""), tostring(affectedAttribute or ""),
+    }, "|")
+    local cached = riderRecords[key]
+    if cached ~= nil then
+        return cached
+    end
+
+    local effect = {
+        id = destrEffectId(effectName, effectFallback),
+        magnitudeMin = magnitude, magnitudeMax = magnitude,
+        duration = duration, area = 0, range = core.magic.RANGE.Target,
+    }
+    if affectedSkill ~= nil then effect.affectedSkill = affectedSkill end
+    if affectedAttribute ~= nil then effect.affectedAttribute = affectedAttribute end
+
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = name,
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { effect },
+    })
+    if not okDraft or draft == nil then
+        log("rider draft failed (" .. key .. "): " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("rider record creation failed (" .. key .. "): " .. tostring(record))
+        return nil
+    end
+    riderRecords[key] = record.id
+    return record.id
+end
+
+local function applyRider(target, caster, recordId)
+    if recordId == nil or target == nil then
+        return
+    end
+    if type(target.isValid) == "function" and not target:isValid() then
+        return
+    end
+    local ok, err = pcall(function()
+        Actor.activeSpells(target):add({
+            id = recordId,
+            effects = { 0 },
+            caster = caster,
+            stackable = true,
+            ignoreSpellAbsorption = true,
+            ignoreReflect = true,
+            ignoreResistances = false,
+        })
+    end)
+    if not ok then
+        log("rider application failed: " .. tostring(err))
+    end
+end
+
+-- The target script has classified an incoming hit and asked for the riders
+-- that go with it. Everything it can ask for is bounded by the rider state.
+local function onApplyRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    local target = data.target
+    local caster = world.players[1]
+    if target == nil or caster == nil or caster.id ~= riderState.playerId then
+        return
+    end
+
+    if riderState.searingHeat then
+        local burn = tonumber(data.burnPerSecond) or 0
+        if burn > 0 then
+            applyRider(target, caster, riderRecord("Searing Heat", "FireDamage", "firedamage",
+                burn, tonumber(data.burnSeconds) or 6))
+        end
+    end
+    if riderState.bitingCold then
+        -- Slowing an actor means draining Speed; there is no "slow" effect.
+        local slow = tonumber(data.slowMagnitude) or 0
+        if slow > 0 then
+            applyRider(target, caster, riderRecord("Biting Cold", "DrainAttribute", "drainattribute",
+                slow, tonumber(data.slowSeconds) or 8, nil, "speed"))
+        end
+    end
+    if riderState.stormChannel then
+        local burn = tonumber(data.magickaBurn) or 0
+        if burn > 0 then
+            applyRider(target, caster, riderRecord("Storm Channel", "DamageMagicka", "damagemagicka",
+                burn, 1))
+        end
+    end
+    if riderState.sunderingRuin and type(data.sunderSkill) == "string" then
+        applyRider(target, caster, riderRecord("Sundering Ruin", "DrainSkill", "drainskill",
+            tonumber(data.sunderMagnitude) or 15, tonumber(data.sunderSeconds) or 20, data.sunderSkill))
+    end
+    if riderState.annihilationMastery and type(data.weaknessEffect) == "string" then
+        applyRider(target, caster, riderRecord("Annihilation Mastery", data.weaknessEffect,
+            data.weaknessEffect:lower(), tonumber(data.weaknessMagnitude) or 10,
+            tonumber(data.weaknessSeconds) or 8))
+    end
+end
+
+-- Withering Curse: the target worked out what its Drain effects took, and the
+-- player script pays it back.
+local function onWitheringReturn(data)
+    if type(data) ~= "table" or not riderState.witheringCurse then
+        return
+    end
+    local player = world.players[1]
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    if type(player.sendEvent) == "function" then
+        player:sendEvent("SkillPerkSystem_BasePack_Destruction_WitheringReturn", {
+            health = tonumber(data.health) or 0,
+            fatigue = tonumber(data.fatigue) or 0,
+            magicka = tonumber(data.magicka) or 0,
+        })
+    end
+    if type(data.fortifySkill) == "string" or type(data.fortifyAttribute) == "string" then
+        local recordId = riderRecord("Withering Curse", "FortifySkill", "fortifyskill",
+            tonumber(data.fortifyMagnitude) or 10, tonumber(data.fortifySeconds) or 20,
+            data.fortifySkill, nil)
+        if type(data.fortifyAttribute) == "string" then
+            recordId = riderRecord("Withering Curse", "FortifyAttribute", "fortifyattribute",
+                tonumber(data.fortifyMagnitude) or 10, tonumber(data.fortifySeconds) or 20,
+                nil, data.fortifyAttribute)
+        end
+        applyRider(player, player, recordId)
+    end
+end
+
+subsystems.destruction = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Destruction_SetGrants = onSetGrants,
+        SkillPerkSystem_BasePack_Destruction_SetRiders = onSetRiders,
+        SkillPerkSystem_BasePack_Destruction_ApplyRiders = onApplyRiders,
+        SkillPerkSystem_BasePack_Destruction_Withering = onWitheringReturn,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { reservoirRecordId = reservoirRecordId, riderRecords = riderRecords }
+        end,
+        onLoad = function(data)
+            reservoirRecordId = type(data) == "table" and type(data.reservoirRecordId) == "string"
+                and data.reservoirRecordId or nil
+            riderRecords = {}
+            local saved = type(data) == "table" and data.riderRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" then
+                        riderRecords[key] = recordId
+                    end
+                end
+            end
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -4526,6 +4827,10 @@ local eventHandlers = {
     SkillPerkSystem_SneakCritState = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_SneakCritState", data) end,
     SkillPerkSystem_BasePack_OneWithShadow_Set = function(data) dispatchEvent("sneakcrit", "SkillPerkSystem_BasePack_OneWithShadow_Set", data) end,
     SkillPerkSystem_BasePack_Conjuration_SetGrants = function(data) dispatchEvent("conjuration", "SkillPerkSystem_BasePack_Conjuration_SetGrants", data) end,
+    SkillPerkSystem_BasePack_Destruction_SetGrants = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetGrants", data) end,
+    SkillPerkSystem_BasePack_Destruction_SetRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetRiders", data) end,
+    SkillPerkSystem_BasePack_Destruction_ApplyRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_ApplyRiders", data) end,
+    SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,
@@ -5429,6 +5734,7 @@ local engineOrder = {
     "shortblade",
     "sneakcrit",
     "conjuration",
+    "destruction",
     "axe",
     "spear",
     "bluntweapon",

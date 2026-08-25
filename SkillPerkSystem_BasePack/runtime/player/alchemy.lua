@@ -762,15 +762,14 @@ local function recordSuccessfulBrew(eventOrSkillId, params)
         log("successful-brew signal=" .. tostring(successfulBrewsPending))
     end
 end
+-- SkillProgression takes one handler for every skill, registered with no skill
+-- argument, and calls it as handler(skillId, params). The per-skill spellings
+-- tried before matched nothing, so this signal never fired.
 local progression = interfaces.SkillProgression
-if progression ~= nil then
-    if type(progression.addSkillUseHandler) == "function" then
-        progression.addSkillUseHandler("alchemy", function(first, second)
-            if second ~= nil then recordSuccessfulBrew(first, second) else recordSuccessfulBrew("alchemy", first) end
-        end)
-    elseif type(progression.registerSkillUseHandler) == "function" then
-        progression.registerSkillUseHandler({ id = "SkillPerkSystem_BasePack_Alchemy", skill = "alchemy", handler = recordSuccessfulBrew })
-    end
+if progression ~= nil and type(progression.addSkillUsedHandler) == "function" then
+    progression.addSkillUsedHandler(function(skillId, params)
+        if skillId == "alchemy" then recordSuccessfulBrew(skillId, params) end
+    end)
 end
 
 __basepack_subsystem_result = {

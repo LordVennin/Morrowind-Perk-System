@@ -216,8 +216,10 @@ end
 -- makes them easy to miss in a running log; this puts the same information a
 -- keystroke away instead.
 local function onConsoleCommand(_, command)
+    -- Console input may arrive bare or with a "lua" prefix depending on how the
+    -- console routes unknown commands, so accept both spellings.
     local text = tostring(command or ""):lower():gsub("%s+", "")
-    if text ~= "spsdestruction" then
+    if text ~= "spsdestruction" and text ~= "luaspsdestruction" then
         return
     end
 

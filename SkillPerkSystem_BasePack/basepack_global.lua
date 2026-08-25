@@ -3051,7 +3051,7 @@ local attachLogged = 0
 
 local function sendState(actor)
     if actor ~= nil and type(actor.sendEvent) == "function" then
-        if attachLogged < 6 then
+        if attachLogged < 20 then
             attachLogged = attachLogged + 1
             log("sending rider state to " .. tostring(actor.recordId))
         end
@@ -3277,8 +3277,19 @@ local function onDiagnose()
     sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
 end
 
+-- A freshly attached target asks for its state, because the push sent when the
+-- watcher attached it arrived before the script existed.
+local function onRequestState(data)
+    local target = type(data) == "table" and data.target or nil
+    if target == nil then
+        return
+    end
+    sendState(target)
+end
+
 subsystems.destruction = {
     eventHandlers = {
+        SkillPerkSystem_BasePack_Destruction_RequestState = onRequestState,
         SkillPerkSystem_BasePack_Destruction_Diagnose = onDiagnose,
         SkillPerkSystem_BasePack_Destruction_SetGrants = onSetGrants,
         SkillPerkSystem_BasePack_Destruction_SetRiders = onSetRiders,
@@ -4885,6 +4896,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_ApplyRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_ApplyRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
+    SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,

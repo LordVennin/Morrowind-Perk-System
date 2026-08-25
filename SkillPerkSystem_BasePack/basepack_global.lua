@@ -2609,19 +2609,9 @@ local function ensureChameleonRecord()
     return chameleonRecordId
 end
 
-local function playerHasChameleon(player)
+local function playerSpells(player)
     local okSpells, spells = pcall(Actor.spells, player)
-    if not okSpells or spells == nil then return false, nil end
-    -- As above: a "no" from has() is not authoritative for dynamic records.
-    if type(spells.has) == "function" then
-        local okHas, has = pcall(function() return spells:has(chameleonRecordId) end)
-        if okHas and has == true then return true, spells end
-    end
-    for _, spell in pairs(spells) do
-        local id = type(spell) == "table" and spell.id or spell
-        if id == chameleonRecordId then return true, spells end
-    end
-    return false, spells
+    return okSpells and spells or nil
 end
 
 local function onShadowSet(data)
@@ -2638,16 +2628,15 @@ local function onShadowSet(data)
         return
     end
 
-    local has, spells = playerHasChameleon(player)
+    local spells = playerSpells(player)
     if spells == nil then
         return
     end
-    if wantActive and not has then
-        local ok, err = pcall(function() spells:add(chameleonRecordId) end)
-        if not ok then log("One With Shadow add failed: " .. tostring(err)) end
-    elseif not wantActive and has then
-        local ok, err = pcall(function() spells:remove(chameleonRecordId) end)
-        if not ok then log("One With Shadow remove failed: " .. tostring(err)) end
+    -- Act without asking whether it is held; see reconcileFamily above.
+    if wantActive then
+        pcall(function() spells:add(chameleonRecordId) end)
+    else
+        pcall(function() spells:remove(chameleonRecordId) end)
     end
 end
 
@@ -2753,6 +2742,17 @@ local FAMILIES = {
     ward = { "ward1" },
 }
 
+local FAMILY_OF_KEY = {}
+for family, keys in pairs(FAMILIES) do
+    for _, key in ipairs(keys) do FAMILY_OF_KEY[key] = family end
+end
+
+-- Every record id this pack has ever issued, mapped to its family. Tier swaps
+-- must be able to take back a record created in an earlier session, so this is
+-- persisted alongside the current-id cache and is the authority on what may be
+-- removed. Nothing outside this table is ever removed from the player.
+local conjIssued = {}
+
 local function spellTypeFor(kind)
     if kind == "Power" then return core.magic.SPELL_TYPE.Power end
     if kind == "Ability" then return core.magic.SPELL_TYPE.Ability end
@@ -2763,11 +2763,13 @@ local function ensureGrantRecord(key)
     local grant = GRANTS[key]
     if grant == nil then return nil end
 
+    -- Trust the cache. core.magic.spells.records does not necessarily index
+    -- records created through world.createRecord, so treating a nil lookup as
+    -- "gone" minted a fresh record on every reconcile -- which both leaked
+    -- records and lost the id needed to take the previous tier back.
     local cachedId = conjRecords[key]
     if cachedId ~= nil then
-        local ok, record = pcall(function() return core.magic.spells.records[cachedId] end)
-        if ok and record ~= nil then return cachedId end
-        conjRecords[key] = nil
+        return cachedId
     end
 
     local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
@@ -2789,6 +2791,7 @@ local function ensureGrantRecord(key)
         return nil
     end
     conjRecords[key] = record.id
+    conjIssued[record.id] = FAMILY_OF_KEY[key]
     log("created record " .. key .. "=" .. tostring(record.id))
     return record.id
 end
@@ -2798,53 +2801,40 @@ local function playerSpellList(player)
     return ok and spells or nil
 end
 
--- Only ever trust spells:has() when it answers "yes". A dynamic record id it
--- does not recognise answers "no", and taking that at face value made removal
--- unreachable: the reconciler saw the grant as absent and never took it back,
--- so disabling an upgraded perk left the old power in the spell list.
-local function hasSpellId(spells, id)
-    if id == nil then return false end
-    if type(spells.has) == "function" then
-        local ok, has = pcall(function() return spells:has(id) end)
-        if ok and has == true then return true end
-    end
-    for _, spell in pairs(spells) do
-        local spellId = type(spell) == "table" and spell.id or spell
-        if spellId == id then return true end
-    end
-    return false
-end
-
--- Reconciles one family: the desired member is granted, every other cached
--- member is removed. Removal only consults records this pack created.
+-- Reconciles one family to exactly one held record (or none).
+--
+-- Deliberately does not ask whether the player holds a spell before acting.
+-- spells:has() answers "no" for dynamically created ids and list enumeration
+-- is no more trustworthy for them, so every previous tier is simply removed
+-- and the desired one added: adding a spell already held is a no-op, and
+-- removing one not held is harmless. That makes the outcome independent of
+-- what the engine is willing to report back to us.
 local function reconcileFamily(spells, family, desiredIndex)
     local keys = FAMILIES[family]
     if keys == nil then return end
-    for index, key in ipairs(keys) do
-        local wanted = index == desiredIndex
-        local recordId = wanted and ensureGrantRecord(key) or conjRecords[key]
-        if recordId ~= nil then
-            local has = hasSpellId(spells, recordId)
-            if wanted and not has then
-                local ok, err = pcall(function() spells:add(recordId) end)
-                if not ok then log("grant add failed " .. key .. ": " .. tostring(err)) end
-            elseif not wanted and has then
-                local ok = pcall(function() spells:remove(recordId) end)
-                if not ok then
-                    -- Fall back to removing by record, in case the id form is
-                    -- not accepted for this record type.
-                    local okRecord, record = pcall(function() return core.magic.spells.records[recordId] end)
-                    if okRecord and record ~= nil then
-                        ok = pcall(function() spells:remove(record) end)
-                    end
-                end
-                if not ok then
-                    log("grant remove FAILED " .. key .. " id=" .. tostring(recordId))
-                elseif hasSpellId(spells, recordId) then
-                    log("grant remove did not take effect " .. key .. " id=" .. tostring(recordId))
+
+    local desiredId = nil
+    if desiredIndex >= 1 and keys[desiredIndex] ~= nil then
+        desiredId = ensureGrantRecord(keys[desiredIndex])
+    end
+
+    -- Take back every record this pack has issued for the family, including
+    -- ones minted in an earlier session, except the one being kept.
+    for recordId, issuedFamily in pairs(conjIssued) do
+        if issuedFamily == family and recordId ~= desiredId then
+            local ok = pcall(function() spells:remove(recordId) end)
+            if not ok then
+                local okRecord, record = pcall(function() return core.magic.spells.records[recordId] end)
+                if okRecord and record ~= nil then
+                    pcall(function() spells:remove(record) end)
                 end
             end
         end
+    end
+
+    if desiredId ~= nil then
+        local ok, err = pcall(function() spells:add(desiredId) end)
+        if not ok then log("grant add failed " .. family .. ": " .. tostring(err)) end
     end
 end
 
@@ -2876,15 +2866,25 @@ subsystems.conjuration = {
     },
     engineHandlers = {
         onSave = function()
-            return { conjRecords = conjRecords }
+            return { conjRecords = conjRecords, conjIssued = conjIssued }
         end,
         onLoad = function(data)
             conjRecords = {}
+            conjIssued = {}
             local saved = type(data) == "table" and data.conjRecords or nil
             if type(saved) == "table" then
                 for key, recordId in pairs(saved) do
                     if type(key) == "string" and type(recordId) == "string" and GRANTS[key] ~= nil then
                         conjRecords[key] = recordId
+                        conjIssued[recordId] = FAMILY_OF_KEY[key]
+                    end
+                end
+            end
+            local savedIssued = type(data) == "table" and data.conjIssued or nil
+            if type(savedIssued) == "table" then
+                for recordId, family in pairs(savedIssued) do
+                    if type(recordId) == "string" and FAMILIES[family] ~= nil then
+                        conjIssued[recordId] = family
                     end
                 end
             end

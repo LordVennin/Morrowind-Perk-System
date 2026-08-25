@@ -50,7 +50,7 @@ return {
             x = 0,
             y = 140,
             title = "Deepened Pact",
-            description = "Your pact powers call stronger servants for longer: a Bonewalker or a Clannfear, for 120 seconds.",
+            description = "Every pact you have formed calls a stronger servant for longer: a Bonewalker or a Clannfear, for 120 seconds. A pact formed later is bound at your current mastery.",
         },
         {
             id = "conjuration_voice_of_dominion",
@@ -87,7 +87,7 @@ return {
             x = 0,
             y = 280,
             title = "Greater Pact",
-            description = "Your pact powers call mighty servants: a Bonelord or a Dremora, for 180 seconds.",
+            description = "Every pact you have formed calls a mighty servant: a Bonelord or a Dremora, for 180 seconds. A pact formed later is bound at your current mastery.",
         },
         {
             id = "conjuration_rebuke_the_dead",

@@ -644,7 +644,31 @@ local function onUpdate(dt)
     end
 end
 local function modeIsAlchemy(mode) return tostring(mode or ""):lower() == "alchemy" end
+-- Defined further down; the registrar below only calls it at runtime.
+local recordSuccessfulBrew
+
+-- SkillProgression takes one handler for every skill, registered with no skill
+-- argument, and calls it as handler(skillId, params).
+--
+-- Registered lazily rather than at module load: interfaces.* fills in as
+-- scripts come up, and this module is required early enough that the interface
+-- was still absent, so a load-time registration silently did nothing. Opening
+-- any menu is enough to arm it well before the first brew.
+local skillHandlerRegistered = false
+
+local function ensureSkillUsedHandler()
+    if skillHandlerRegistered then return end
+    local progression = interfaces.SkillProgression
+    if progression == nil or type(progression.addSkillUsedHandler) ~= "function" then return end
+    progression.addSkillUsedHandler(function(skillId, params)
+        if skillId == "alchemy" then recordSuccessfulBrew(skillId, params) end
+    end)
+    skillHandlerRegistered = true
+    log("skill-used handler registered")
+end
+
 local function onUiModeChanged(data)
+    ensureSkillUsedHandler()
     data=type(data)=="table" and data or {}; local entering=modeIsAlchemy(data.newMode) and not modeIsAlchemy(data.oldMode); local leaving=modeIsAlchemy(data.oldMode) and not modeIsAlchemy(data.newMode)
     if entering then
         if suppressNextAlchemyIntercept then suppressNextAlchemyIntercept=false; pendingUseApparatus=nil; replayTimeout=0; local mode=pendingPreparationMode or PREPARATION_MODE_POTION; pendingPreparationMode=nil; beginRealAlchemySession(mode); return end
@@ -748,7 +772,7 @@ local function onPerkStateChanged(data)
     if perkId == CAREFUL_MEASURE_PERK_ID and not hasEnabledPerk(CAREFUL_MEASURE_PERK_ID) then clearCarefulMeasure() end
     if perkId == DUAL_DISTILLATION_PERK_ID and not hasEnabledPerk(DUAL_DISTILLATION_PERK_ID) then clearDual("perk disabled", true) end
 end
-local function recordSuccessfulBrew(eventOrSkillId, params)
+recordSuccessfulBrew = function(eventOrSkillId, params)
     local skillId, eventParams = eventOrSkillId, params
     if type(eventOrSkillId) == "table" then
         skillId = eventOrSkillId.skillId or eventOrSkillId.skill
@@ -762,16 +786,6 @@ local function recordSuccessfulBrew(eventOrSkillId, params)
         log("successful-brew signal=" .. tostring(successfulBrewsPending))
     end
 end
--- SkillProgression takes one handler for every skill, registered with no skill
--- argument, and calls it as handler(skillId, params). The per-skill spellings
--- tried before matched nothing, so this signal never fired.
-local progression = interfaces.SkillProgression
-if progression ~= nil and type(progression.addSkillUsedHandler) == "function" then
-    progression.addSkillUsedHandler(function(skillId, params)
-        if skillId == "alchemy" then recordSuccessfulBrew(skillId, params) end
-    end)
-end
-
 __basepack_subsystem_result = {
     engineHandlers = {
         onConsume = onConsume,

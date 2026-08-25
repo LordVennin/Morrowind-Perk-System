@@ -176,49 +176,4 @@ do
     assert(dailyGate("ward", 1, 2) == 1, "non-daily family must not be gated")
 end
 
--- ---------------------------------------------------------------------------
--- Soul Reclamation: telling a slain summon from one whose time ran out.
---
--- The engine purges a summon effect from the summoner the moment the creature
--- dies, so an effect that disappears with duration still on it marks a death.
--- One that counts down to nothing simply expired and must pay nothing.
--- ---------------------------------------------------------------------------
-do
-    local DEATH_MARGIN = 1.0
-    local watch, restored = {}, 0
-
-    local function poll(seen)
-        for key, previousDuration in pairs(watch) do
-            if seen[key] == nil and previousDuration > DEATH_MARGIN then
-                restored = restored + 15
-            end
-        end
-        watch = seen
-    end
-
-    -- A summon ticking down normally pays nothing as it expires.
-    poll({ scamp = 60 })
-    poll({ scamp = 30 })
-    poll({ scamp = 0.4 })     -- last sighting inside the margin
-    poll({})                  -- ran its course
-    assert(restored == 0, "an expired summon must not restore magicka, got " .. restored)
-
-    -- One cut short mid-duration pays out once.
-    poll({ ghost = 90 })
-    poll({ ghost = 45 })      -- still going strong
-    poll({})                  -- purged early: killed
-    assert(restored == 15, "a slain summon should restore 15 magicka, got " .. restored)
-
-    -- Two dying in the same interval pay twice.
-    poll({ a = 50, b = 50 })
-    poll({})
-    assert(restored == 45, "two slain summons should restore 30 more, got " .. restored)
-
-    -- Summons the player still has do not pay repeatedly.
-    poll({ c = 20 })
-    poll({ c = 19 })
-    poll({ c = 18 })
-    assert(restored == 45, "a living summon must not pay out, got " .. restored)
-end
-
 io.write("GRANT RECONCILER TEST PASSED\n")

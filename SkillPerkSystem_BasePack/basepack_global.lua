@@ -68,15 +68,18 @@ local function isValidTargetWatcherActor(actor)
     return type(actor.hasScript) == "function" and type(actor.addScript) == "function"
 end
 
+-- Keyed by actor id: GameObject userdata hashes by wrapper identity, so using
+-- the object itself as the key collected a fresh entry per wrapper and every
+-- broadcast repeated once per duplicate.
 local function rememberAttachedTarget(actor)
-    if actor ~= nil then
-        targetWatcher.attachedTargets[actor] = true
+    if actor ~= nil and actor.id ~= nil then
+        targetWatcher.attachedTargets[actor.id] = actor
     end
 end
 
 local function forgetAttachedTarget(actor)
-    if actor ~= nil then
-        targetWatcher.attachedTargets[actor] = nil
+    if actor ~= nil and actor.id ~= nil then
+        targetWatcher.attachedTargets[actor.id] = nil
     end
 end
 
@@ -96,7 +99,7 @@ local function sendTargetWatcherStateToAttached(provider)
     if provider == nil or type(provider.sendState) ~= "function" then
         return
     end
-    for actor in pairs(targetWatcher.attachedTargets) do
+    for _, actor in pairs(targetWatcher.attachedTargets) do
         if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
             provider.sendState(actor)
         else
@@ -3259,7 +3262,7 @@ local function onDiagnose()
     log("ridersActive=" .. tostring(ridersActive()))
 
     local attached, withScript = 0, 0
-    for actor in pairs(targetWatcher.attachedTargets) do
+    for _, actor in pairs(targetWatcher.attachedTargets) do
         attached = attached + 1
         local ok, has = pcall(function() return actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) end)
         if ok and has then withScript = withScript + 1 end
@@ -3290,7 +3293,7 @@ local function onCastNotice(data)
         castNoticeLogged = castNoticeLogged + 1
         log("broadcasting cast notice for " .. tostring(data.spellId))
     end
-    for actor in pairs(targetWatcher.attachedTargets) do
+    for _, actor in pairs(targetWatcher.attachedTargets) do
         if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
             actor:sendEvent("SkillPerkSystem_BasePack_Destruction_CastNotice", { spellId = data.spellId })
         end

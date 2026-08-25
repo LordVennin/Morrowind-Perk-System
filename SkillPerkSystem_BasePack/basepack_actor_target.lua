@@ -638,10 +638,15 @@ local function classifyAndRequest(effects)
     local wanted = false
     local withering = { health = 0, fatigue = 0, magicka = 0 }
     local witheringWanted = false
+    local seenIds = {}
 
     for _, effect in pairs(effects) do
-        if type(effect) == "table" then
+        -- Active-spell effects are userdata, record effects tables; field
+        -- access works identically on both. Requiring a table here silently
+        -- dropped every effect on the active-spell path.
+        if type(effect) == "table" or type(effect) == "userdata" then
             local id = normalizedEffectId(effect.id)
+            seenIds[#seenIds + 1] = tostring(id)
             local magnitude = math.max(
                 tonumber(effect.magnitudeMin) or 0, tonumber(effect.magnitudeMax) or 0,
                 tonumber(effect.minMagnitude) or 0, tonumber(effect.maxMagnitude) or 0)
@@ -705,6 +710,8 @@ local function classifyAndRequest(effects)
             print(LOG_TAG .. " rider request sent from " .. tostring(selfObj.recordId))
         end
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_ApplyRiders", request)
+    elseif PROBE_EFFECT_PAYLOADS and not witheringWanted then
+        print(LOG_TAG .. " no rider matched; effect ids seen: " .. table.concat(seenIds, ", "))
     end
     if witheringWanted then
         withering.fortifySeconds = WITHERING_FORTIFY_SECONDS
@@ -760,7 +767,14 @@ local function scanActiveSpellsForCasts()
             local spellId = normalizedEffectId(entry.id)
             local key = activeInstanceKey(entry)
             present[key] = true
-            if spellId ~= nil and expectedSpellIds[spellId] and not processedInstances[key] then
+            -- The window is opened by our player's cast, but another actor
+            -- could land the same spell during it; the caster field settles it.
+            local casterOk = true
+            local okCaster, entryCaster = pcall(function() return entry.caster end)
+            if okCaster and entryCaster ~= nil and entryCaster.id ~= nil then
+                casterOk = entryCaster.id == destructionPlayerId
+            end
+            if spellId ~= nil and expectedSpellIds[spellId] and casterOk and not processedInstances[key] then
                 processedInstances[key] = true
                 local effects = entry.effects
                 if PROBE_EFFECT_PAYLOADS then
@@ -781,6 +795,8 @@ local function scanActiveSpellsForCasts()
     end
 end
 
+local castNoticesLogged = 0
+
 local function onCastNotice(data)
     if type(data) ~= "table" or type(data.spellId) ~= "string" then
         return
@@ -789,7 +805,8 @@ local function onCastNotice(data)
     scanWindow = SCAN_WINDOW_SECONDS
     -- Also the right moment to try the payload hook on builds that have it.
     ensureSpellCastingHandler()
-    if PROBE_EFFECT_PAYLOADS then
+    if PROBE_EFFECT_PAYLOADS and castNoticesLogged < 2 then
+        castNoticesLogged = castNoticesLogged + 1
         print(LOG_TAG .. " cast notice on " .. tostring(selfObj.recordId)
             .. ": watching for " .. tostring(data.spellId))
     end

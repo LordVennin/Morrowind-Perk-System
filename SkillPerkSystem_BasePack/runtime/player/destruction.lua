@@ -163,6 +163,11 @@ local function publishRiders()
         return
     end
     state.lastRidersKey = ridersKey
+    print(LOG_TAG .. string.format(
+        " publishing riders: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
+        tostring(riders.playerId), tostring(riders.searingHeat), tostring(riders.bitingCold),
+        tostring(riders.stormChannel), tostring(riders.sunderingRuin),
+        tostring(riders.witheringCurse), tostring(riders.annihilationMastery)))
     core.sendGlobalEvent(C.RIDERS_EVENT, riders)
 end
 

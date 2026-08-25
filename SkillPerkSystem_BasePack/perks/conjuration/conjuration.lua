@@ -4,7 +4,7 @@ return {
         {
             id = "conjuration_ancestral_pact",
             tab = "Conjuration",
-            tabDescription = "Conjuration governs summoning servants from Oblivion and beyond, binding spectral arms and armor, and bending creatures to your will.",
+            tabDescription = "Conjuration governs summoning servants from Oblivion and beyond, binding spectral arms and armor, and drawing on the reserves that make such callings possible.",
             minimumSkill = 20,
             effectId = "demo_noop",
             requires = {},
@@ -53,7 +53,7 @@ return {
             description = "Every pact you have formed calls a stronger servant for longer: a Bonewalker or a Clannfear, for 120 seconds. A pact formed later is bound at your current mastery.",
         },
         {
-            id = "conjuration_voice_of_dominion",
+            id = "conjuration_soul_tether",
             tab = "Conjuration",
             minimumSkill = 35,
             effectId = "demo_noop",
@@ -62,8 +62,8 @@ return {
             cost = 1,
             x = 220,
             y = 140,
-            title = "Beast Tongue",
-            description = "Grants a spell that cows a lesser beast into serving you briefly. Stronger creatures ignore it.",
+            title = "Soul Tether",
+            description = "The channels you have opened hold more power: your maximum magicka is increased by 30.",
         },
         {
             id = "conjuration_spectral_ward",
@@ -90,16 +90,16 @@ return {
             description = "Every pact you have formed calls a mighty servant: a Bonelord or a Dremora, for 180 seconds. A pact formed later is bound at your current mastery.",
         },
         {
-            id = "conjuration_rebuke_the_dead",
+            id = "conjuration_ebb_and_flow",
             tab = "Conjuration",
             minimumSkill = 65,
             effectId = "demo_noop",
-            requires = { "conjuration_voice_of_dominion" },
+            requires = { "conjuration_soul_tether" },
             cost = 1,
             x = 220,
             y = 280,
-            title = "Rebuke the Dead",
-            description = "Grants a spell that drives back the walking dead around you, and lets Beast Tongue hold larger beasts for longer.",
+            title = "Ebb and Flow",
+            description = "When your magicka runs low, it returns far more quickly: below half, you recover an extra 2% of your maximum each second.",
         },
         {
             id = "conjuration_grand_conjurer",
@@ -111,7 +111,7 @@ return {
             x = 0,
             y = 420,
             title = "Grand Conjurer",
-            description = "Casting Conjuration spells restores a portion of your magicka.",
+            description = "Every Conjuration spell you cast returns 10% of your maximum magicka.",
         },
     },
 }

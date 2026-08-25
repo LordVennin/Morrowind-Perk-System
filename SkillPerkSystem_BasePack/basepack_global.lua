@@ -2709,25 +2709,6 @@ local GRANTS = {
         effects = { selfEffect(conjEffectId("SummonClannfear", "summonclannfear"), 1, 120) } },
     daedra3 = { name = "Greater Daedric Pact", type = "Power",
         effects = { selfEffect(conjEffectId("SummonDremora", "summondremora"), 1, 180) } },
-    -- Command magnitude is the maximum target level affected, so these stay
-    -- deliberately low: a tool for taming lesser beasts, not for turning any
-    -- NPC or high-level creature into an ally. Humanoids are not commanded at
-    -- all -- that is the part that trivialises encounters.
-    dominion1 = { name = "Beast Tongue", type = "Spell", cost = 25,
-        effects = {
-            { id = conjEffectId("CommandCreature", "commandcreature"),
-                magnitudeMin = 5, magnitudeMax = 5, duration = 15, area = 0, range = core.magic.RANGE.Target },
-        } },
-    dominion2 = { name = "Beast Tongue", type = "Spell", cost = 40,
-        effects = {
-            { id = conjEffectId("CommandCreature", "commandcreature"),
-                magnitudeMin = 10, magnitudeMax = 10, duration = 25, area = 0, range = core.magic.RANGE.Target },
-        } },
-    rebuke1 = { name = "Rebuke the Dead", type = "Spell", cost = 30,
-        effects = {
-            { id = conjEffectId("TurnUndead", "turnundead"),
-                magnitudeMin = 30, magnitudeMax = 30, duration = 20, area = 15, range = core.magic.RANGE.Touch },
-        } },
     ward1 = { name = "Spectral Ward", type = "Ability",
         effects = { selfEffect(conjEffectId("Sanctuary", "sanctuary"), 10, 1) } },
 }
@@ -2737,10 +2718,13 @@ local GRANTS = {
 local FAMILIES = {
     undead = { "undead1", "undead2", "undead3" },
     daedra = { "daedra1", "daedra2", "daedra3" },
-    dominion = { "dominion1", "dominion2" },
-    rebuke = { "rebuke1" },
     ward = { "ward1" },
 }
+
+-- Families whose grant is a once-per-day Power. Handing the player a record
+-- they were not already holding gives them a fresh daily use, so these are
+-- gated on our own record of when the pact was last spent.
+local DAILY_FAMILIES = { undead = true, daedra = true }
 
 local FAMILY_OF_KEY = {}
 for family, keys in pairs(FAMILIES) do
@@ -2752,6 +2736,12 @@ end
 -- persisted alongside the current-id cache and is the authority on what may be
 -- removed. Nothing outside this table is ever removed from the player.
 local conjIssued = {}
+
+-- The grant key each family currently holds, and the game day on which each
+-- daily family was last spent. Both persist: the whole point is that they
+-- outlive a perk being toggled off and back on.
+local conjHeldKey = {}
+local conjUsedDay = {}
 
 local function spellTypeFor(kind)
     if kind == "Power" then return core.magic.SPELL_TYPE.Power end
@@ -2838,6 +2828,28 @@ local function reconcileFamily(spells, family, desiredIndex)
     end
 end
 
+-- Refuses to hand over a daily power the player has already spent today.
+--
+-- Toggling a perk off and on, or moving to a different tier, replaces the
+-- Power record and hands back a fresh daily use, which let a player cycle
+-- through every tier for a free summon each. Our own "spent on day N" record
+-- lives in save data and is unaffected by any of that, so the pact simply
+-- stays gone until the next day. A player who has not toggled anything keeps
+-- the record they already hold and never notices this.
+local function dailyGate(family, tierIndex, currentDay)
+    if not DAILY_FAMILIES[family] or tierIndex < 1 then
+        return tierIndex
+    end
+    local keys = FAMILIES[family]
+    local desiredKey = keys[tierIndex]
+    if desiredKey ~= nil and conjHeldKey[family] ~= desiredKey
+            and conjUsedDay[family] == currentDay then
+        log(family .. " pact already spent today; withholding until tomorrow")
+        return 0
+    end
+    return tierIndex
+end
+
 local function onSetGrants(data)
     local player = type(data) == "table" and data.player or nil
     if not validPlayerObject(player) then
@@ -2853,11 +2865,33 @@ local function onSetGrants(data)
         return math.max(0, math.min(maximum, number))
     end
 
-    reconcileFamily(spells, "undead", tier(data.undeadTier, 3))
-    reconcileFamily(spells, "daedra", tier(data.daedraTier, 3))
-    reconcileFamily(spells, "dominion", tier(data.dominionTier, 2))
-    reconcileFamily(spells, "rebuke", tier(data.rebukeTier, 1))
-    reconcileFamily(spells, "ward", tier(data.wardTier, 1))
+    local currentDay = math.floor(tonumber(data.currentDay) or 0)
+
+    -- The player script watches for a pact power actually taking effect and
+    -- reports the day, so a use is recorded even if the perk is toggled a
+    -- moment later.
+    for family in pairs(DAILY_FAMILIES) do
+        local reported = math.floor(tonumber(data[family .. "UsedDay"]) or -1)
+        if reported >= 0 and reported > (conjUsedDay[family] or -1) then
+            conjUsedDay[family] = reported
+        end
+    end
+
+    local granted = {}
+    for _, family in ipairs({ "undead", "daedra", "ward" }) do
+        local requested = tier(data[family .. "Tier"], #FAMILIES[family])
+        local allowed = dailyGate(family, requested, currentDay)
+        reconcileFamily(spells, family, allowed)
+        local heldKey = allowed >= 1 and FAMILIES[family][allowed] or nil
+        conjHeldKey[family] = heldKey
+        granted[family] = heldKey and conjRecords[heldKey] or nil
+    end
+
+    -- Tell the player which record ids it now holds, so it can watch for them
+    -- being cast without having to guess from effect ids.
+    if type(player.sendEvent) == "function" then
+        player:sendEvent("SkillPerkSystem_BasePack_Conjuration_Granted", granted)
+    end
 end
 
 subsystems.conjuration = {
@@ -2866,11 +2900,30 @@ subsystems.conjuration = {
     },
     engineHandlers = {
         onSave = function()
-            return { conjRecords = conjRecords, conjIssued = conjIssued }
+            return {
+                conjRecords = conjRecords,
+                conjIssued = conjIssued,
+                conjHeldKey = conjHeldKey,
+                conjUsedDay = conjUsedDay,
+            }
         end,
         onLoad = function(data)
             conjRecords = {}
             conjIssued = {}
+            conjHeldKey = {}
+            conjUsedDay = {}
+            local savedHeld = type(data) == "table" and data.conjHeldKey or nil
+            if type(savedHeld) == "table" then
+                for family, key in pairs(savedHeld) do
+                    if FAMILIES[family] ~= nil and GRANTS[key] ~= nil then conjHeldKey[family] = key end
+                end
+            end
+            local savedUsed = type(data) == "table" and data.conjUsedDay or nil
+            if type(savedUsed) == "table" then
+                for family, day in pairs(savedUsed) do
+                    if DAILY_FAMILIES[family] and type(day) == "number" then conjUsedDay[family] = day end
+                end
+            end
             local saved = type(data) == "table" and data.conjRecords or nil
             if type(saved) == "table" then
                 for key, recordId in pairs(saved) do

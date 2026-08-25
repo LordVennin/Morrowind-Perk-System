@@ -630,23 +630,10 @@ local function probePayload(options, effects)
     end
 end
 
-local function onApplyMagicEffects(options)
-    if type(options) ~= "table" then
-        return
-    end
-    local caster = options.caster
-    local casterId = type(caster) == "table" and caster.id or caster
-    local effects = effectsFromPayload(options)
-    probePayload(options, effects)
-
-    if destructionPlayerId == nil or casterId ~= destructionPlayerId or effects == nil then
-        if PROBE_EFFECT_PAYLOADS and probesLogged <= PROBE_LOG_LIMIT then
-            print(LOG_TAG .. string.format(" ignored: caster=%s expected=%s effects=%s",
-                tostring(casterId), tostring(destructionPlayerId), effects == nil and "none" or "read"))
-        end
-        return
-    end
-
+-- Classifies an effect list (record effects or active-spell effects; the two
+-- spell magnitude fields differ, so both are read) and sends the rider and
+-- withering requests it calls for.
+local function classifyAndRequest(effects)
     local request = { target = selfObj }
     local wanted = false
     local withering = { health = 0, fatigue = 0, magicka = 0 }
@@ -655,7 +642,9 @@ local function onApplyMagicEffects(options)
     for _, effect in pairs(effects) do
         if type(effect) == "table" then
             local id = normalizedEffectId(effect.id)
-            local magnitude = math.max(tonumber(effect.magnitudeMin) or 0, tonumber(effect.magnitudeMax) or 0)
+            local magnitude = math.max(
+                tonumber(effect.magnitudeMin) or 0, tonumber(effect.magnitudeMax) or 0,
+                tonumber(effect.minMagnitude) or 0, tonumber(effect.maxMagnitude) or 0)
 
             if id == "firedamage" and searingHeat and magnitude > 0 then
                 request.burnPerSecond = math.max(1, math.floor(magnitude * SEARING_BURN_FRACTION / SEARING_BURN_SECONDS))
@@ -712,11 +701,97 @@ local function onApplyMagicEffects(options)
     end
 
     if wanted then
+        if PROBE_EFFECT_PAYLOADS then
+            print(LOG_TAG .. " rider request sent from " .. tostring(selfObj.recordId))
+        end
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_ApplyRiders", request)
     end
     if witheringWanted then
         withering.fortifySeconds = WITHERING_FORTIFY_SECONDS
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_Withering", withering)
+    end
+end
+
+-- Kept for builds where the SpellCasting interface exists (it was added after
+-- 0.51.0); on such builds the riders fire straight from the effect payload.
+local function onApplyMagicEffects(options)
+    if type(options) ~= "table" then
+        return
+    end
+    local caster = options.caster
+    local casterId = type(caster) == "table" and caster.id or caster
+    local effects = effectsFromPayload(options)
+    probePayload(options, effects)
+    if destructionPlayerId == nil or casterId ~= destructionPlayerId or effects == nil then
+        return
+    end
+    classifyAndRequest(effects)
+end
+
+-- ---- Cast-notice scan: the path that works on 0.51.0 and earlier ----------
+--
+-- The player script reports each successful Destruction cast with its spell
+-- id. For a few seconds afterwards (projectiles take flight time) this actor
+-- scans its own active spells -- API that exists on every supported build --
+-- and classifies any new instance of that spell. Instances are remembered by
+-- activeSpellId where the build provides one, so one landing triggers once.
+local SCAN_WINDOW_SECONDS = 3.0
+local scanWindow = 0
+local expectedSpellIds = {}
+local processedInstances = {}
+
+local function activeInstanceKey(entry)
+    local unique = entry.activeSpellId
+    if unique ~= nil then
+        return tostring(unique)
+    end
+    return normalizedEffectId(entry.id) or "?"
+end
+
+local function scanActiveSpellsForCasts()
+    local Actor = types.Actor
+    local ok, active = pcall(Actor.activeSpells, selfObj)
+    if not ok or active == nil then
+        return
+    end
+    local present = {}
+    for _, entry in pairs(active) do
+        if type(entry) == "table" or type(entry) == "userdata" then
+            local spellId = normalizedEffectId(entry.id)
+            local key = activeInstanceKey(entry)
+            present[key] = true
+            if spellId ~= nil and expectedSpellIds[spellId] and not processedInstances[key] then
+                processedInstances[key] = true
+                local effects = entry.effects
+                if PROBE_EFFECT_PAYLOADS then
+                    print(LOG_TAG .. string.format(" matched cast %s on %s (effects=%s)",
+                        spellId, tostring(selfObj.recordId), effects == nil and "none" or "read"))
+                end
+                if type(effects) == "table" then
+                    classifyAndRequest(effects)
+                end
+            end
+        end
+    end
+    -- Forget instances that have expired so a later recast can trigger again.
+    for key in pairs(processedInstances) do
+        if not present[key] then
+            processedInstances[key] = nil
+        end
+    end
+end
+
+local function onCastNotice(data)
+    if type(data) ~= "table" or type(data.spellId) ~= "string" then
+        return
+    end
+    expectedSpellIds[normalizedEffectId(data.spellId) or ""] = true
+    scanWindow = SCAN_WINDOW_SECONDS
+    -- Also the right moment to try the payload hook on builds that have it.
+    ensureSpellCastingHandler()
+    if PROBE_EFFECT_PAYLOADS then
+        print(LOG_TAG .. " cast notice on " .. tostring(selfObj.recordId)
+            .. ": watching for " .. tostring(data.spellId))
     end
 end
 
@@ -758,6 +833,7 @@ end
 
 destruction.eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_RiderRefresh = setDestructionState,
+    SkillPerkSystem_BasePack_Destruction_CastNotice = onCastNotice,
 }
 -- The watcher attaches this script and immediately pushes state, but the
 -- script does not exist yet when that push is sent, so the push is lost and
@@ -779,13 +855,15 @@ destruction.engineHandlers = {
 }
 -- Event-only: no per-target update work, so this never keeps the combined
 -- target update loop alive.
--- Interfaces resolve some frames after a runtime-attached script initialises,
--- and the state-push retries all fall inside that window. Retrying from the
--- update loop guarantees registration lands; once it has, this is a single
--- boolean test per update.
-destruction.engineHandlers.onUpdate = function()
-    if not spellCastingRegistered then
-        ensureSpellCastingHandler()
+-- Scan only while a cast window is open; otherwise this is one comparison.
+destruction.engineHandlers.onUpdate = function(dt)
+    if scanWindow <= 0 then
+        return
+    end
+    scanWindow = scanWindow - (tonumber(dt) or 0)
+    scanActiveSpellsForCasts()
+    if scanWindow <= 0 then
+        expectedSpellIds = {}
     end
 end
 

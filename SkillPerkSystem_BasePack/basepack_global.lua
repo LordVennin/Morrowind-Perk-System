@@ -3277,6 +3277,26 @@ local function onDiagnose()
     sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
 end
 
+-- A successful Destruction cast: forward the notice to every attached target
+-- so each opens its short active-spell scan window.
+local castNoticeLogged = 0
+
+local function onCastNotice(data)
+    local player = type(data) == "table" and data.player or nil
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    if castNoticeLogged < 8 then
+        castNoticeLogged = castNoticeLogged + 1
+        log("broadcasting cast notice for " .. tostring(data.spellId))
+    end
+    for actor in pairs(targetWatcher.attachedTargets) do
+        if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+            actor:sendEvent("SkillPerkSystem_BasePack_Destruction_CastNotice", { spellId = data.spellId })
+        end
+    end
+end
+
 -- A freshly attached target asks for its state, because the push sent when the
 -- watcher attached it arrived before the script existed.
 local function onRequestState(data)
@@ -3290,6 +3310,7 @@ end
 subsystems.destruction = {
     eventHandlers = {
         SkillPerkSystem_BasePack_Destruction_RequestState = onRequestState,
+        SkillPerkSystem_BasePack_Destruction_CastNotice = onCastNotice,
         SkillPerkSystem_BasePack_Destruction_Diagnose = onDiagnose,
         SkillPerkSystem_BasePack_Destruction_SetGrants = onSetGrants,
         SkillPerkSystem_BasePack_Destruction_SetRiders = onSetRiders,
@@ -4897,6 +4918,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
+    SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
     SkillPerkSystem_CloseMeasureTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_CloseMeasureTriggered", data) end,
     SkillPerkSystem_MasterOfKnivesTriggered = function(data) dispatchEvent("shortblade", "SkillPerkSystem_MasterOfKnivesTriggered", data) end,
     SkillPerkSystem_AxeKindlingGripState = function(data) dispatchEvent("axe", "SkillPerkSystem_AxeKindlingGripState", data) end,

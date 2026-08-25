@@ -99,7 +99,7 @@ return {
             x = 220,
             y = 280,
             title = "Soul Reclamation",
-            description = "When a servant you summoned is destroyed, the power binding it returns to you: restore 15 magicka. A servant that simply returns home when its time runs out gives nothing back.",
+            description = "Stay close to a servant you have summoned and it feeds power back to you: while your magicka is below half, recover 1% of your maximum each second.",
         },
         {
             id = "conjuration_grand_conjurer",

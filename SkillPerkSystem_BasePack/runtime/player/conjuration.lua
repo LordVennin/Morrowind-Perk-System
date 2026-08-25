@@ -11,6 +11,7 @@ local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
+local nearby = require("openmw.nearby")
 local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
 local enabled = stats.enabled
@@ -21,6 +22,14 @@ local __basepack_subsystem_result = nil
 local Actor = types.Actor
 local Armor = types.Armor
 local Weapon = types.Weapon
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Conjuration][Player]"
+
+-- Assigned further down, once onSkillUsed exists; declared here so the poll
+-- can reach it.
+local skillHandlerRegistered
+local skillHandlerReported
+local ensureSkillUsedHandler
 
 local C = {
     ANCESTRAL_PACT = "conjuration_ancestral_pact",
@@ -38,12 +47,11 @@ local C = {
     GRANTED_EVENT = "SkillPerkSystem_BasePack_Conjuration_Granted",
 
     SPECTRAL_EDGE_SKILL_BONUS = 15,
-    SOUL_RECLAMATION_MAGICKA = 15,
-    -- A summon effect that vanishes with more than this much duration left
-    -- was cut short -- the engine purges the effect when the creature dies --
-    -- rather than having run its course. Comfortably above the poll interval
-    -- so a natural expiry is never mistaken for a death.
-    SOUL_RECLAMATION_DEATH_MARGIN = 1.0,
+    -- Communion with a summoned servant: stay near one while your own reserves
+    -- are low and it feeds power back to you.
+    SOUL_RECLAMATION_THRESHOLD = 0.5,
+    SOUL_RECLAMATION_PER_SECOND = 0.01,
+    SOUL_RECLAMATION_RANGE = 400,
     -- Fraction of maximum magicka restored per Conjuration cast.
     GRAND_CONJURER_RESTORE_FRACTION = 0.10,
     -- In-game seconds in a day, for the once-per-day pact check.
@@ -69,8 +77,6 @@ local state = {
     -- the game day each pact was last seen actually taking effect.
     grantedPactIds = {},
     pactUsedDay = { undead = -1, daedra = -1 },
-    -- Duration remaining, per active summon effect, as of the last poll.
-    summonWatch = {},
 }
 
 local function isBoundRecordId(recordId)
@@ -136,10 +142,6 @@ local function currentGameDay()
     return math.floor(gameTime / C.SECONDS_PER_DAY)
 end
 
-local function isSummonEffectId(effectId)
-    return type(effectId) == "string" and effectId:sub(1, 6) == "summon"
-end
-
 local function restoreMagicka(amount)
     local magicka = stats.dynamicStat("magicka")
     if magicka == nil or amount <= 0 then
@@ -155,72 +157,114 @@ local function restoreMagicka(amount)
     end)
 end
 
--- One pass over the player's active spells, serving two purposes.
---
--- Pact use: matching the granted record id rather than the summon effect means
--- an ordinary summon spell the player also knows never spends the daily pact.
---
--- Soul Reclamation: the engine purges a summon effect from the summoner as
--- soon as the creature dies, so an effect that disappears with duration still
--- on it marks a death, while one that runs down to nothing simply expired.
-local function scanActiveSpells(day)
+-- The creature each summon effect spawns is named by a GMST, so the set of
+-- summoned-creature record ids is exact rather than guessed from naming.
+local SUMMON_CREATURE_GMSTS = {
+    "sMagicAncestralGhostID", "sMagicBonelordID", "sMagicLeastBonewalkerID",
+    "sMagicCenturionSphereID", "sMagicClannfearID", "sMagicDaedrothID",
+    "sMagicDremoraID", "sMagicFabricantID", "sMagicFlameAtronachID",
+    "sMagicFrostAtronachID", "sMagicGoldenSaintID", "sMagicGreaterBonewalkerID",
+    "sMagicHungerID", "sMagicScampID", "sMagicSkeletalMinionID",
+    "sMagicStormAtronachID", "sMagicWingedTwilightID", "sMagicCreature01ID",
+    "sMagicCreature02ID", "sMagicCreature03ID", "sMagicCreature04ID",
+    "sMagicCreature05ID",
+}
+
+local summonRecordIds = nil
+
+local function summonedRecordIds()
+    if summonRecordIds ~= nil then
+        return summonRecordIds
+    end
+    summonRecordIds = {}
+    for _, gmst in ipairs(SUMMON_CREATURE_GMSTS) do
+        local ok, value = pcall(core.getGMST, gmst)
+        if ok and type(value) == "string" and value ~= "" then
+            summonRecordIds[value:lower()] = true
+        end
+    end
+    return summonRecordIds
+end
+
+local function nearSummonedServant()
+    local actors = nearby ~= nil and nearby.actors or nil
+    if actors == nil then
+        return false
+    end
+    local origin = stats.position()
+    if origin == nil then
+        return false
+    end
+    local ids = summonedRecordIds()
+    local rangeSquared = C.SOUL_RECLAMATION_RANGE * C.SOUL_RECLAMATION_RANGE
+    for _, actor in ipairs(actors) do
+        local recordId = actor ~= nil and actor.recordId or nil
+        if type(recordId) == "string" and ids[recordId:lower()] then
+            local okDead, dead = pcall(Actor.isDead, actor)
+            if not (okDead and dead == true) then
+                local distanceSquared = stats.distanceSquared(actor.position, origin)
+                if distanceSquared ~= nil and distanceSquared <= rangeSquared then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function applySoulReclamation(elapsed)
+    if elapsed <= 0 or not enabled(C.SOUL_RECLAMATION) then
+        return
+    end
+    local magicka = stats.dynamicStat("magicka")
+    if magicka == nil then
+        return
+    end
+    local maximum = math.max(0, (tonumber(magicka.base) or 0) + (tonumber(magicka.modifier) or 0))
+    if maximum <= 0 then
+        return
+    end
+    local current = tonumber(magicka.current) or 0
+    if current >= maximum * C.SOUL_RECLAMATION_THRESHOLD then
+        return
+    end
+    if not nearSummonedServant() then
+        return
+    end
+    restoreMagicka(maximum * C.SOUL_RECLAMATION_PER_SECOND * elapsed)
+end
+
+-- Watches for a granted pact power taking effect. Matching the granted record
+-- id rather than the summon effect means an ordinary summon spell the player
+-- also knows never spends the daily pact.
+local function notePactUse(day)
     local ok, active = pcall(function() return Actor.activeSpells(pself) end)
     if not ok or active == nil then
         return
     end
-
-    local heldPactIds = {}
-    local seenSummons = {}
-
-    local function noteSummonEffect(spellId, effect, index)
-        local effectId = type(effect) == "table" and effect.id or nil
-        if not isSummonEffectId(effectId) then
-            return
-        end
-        local key = tostring(spellId) .. "|" .. effectId .. "|" .. tostring(index)
-        seenSummons[key] = tonumber(effect.durationLeft) or 0
-    end
-
-    for _, entry in pairs(active) do
-        local entryId = type(entry) == "table" and entry.id or entry
-        if entryId ~= nil then
-            heldPactIds[entryId] = true
-        end
-        if type(entry) == "table" then
-            -- Iteration may yield whole spells (with an effects list) or the
-            -- individual effects, depending on engine version; handle both.
-            if type(entry.effects) == "table" then
-                for index, effect in pairs(entry.effects) do
-                    noteSummonEffect(entryId, effect, index)
+    for family, recordId in pairs(state.grantedPactIds) do
+        if recordId ~= nil and state.pactUsedDay[family] ~= day then
+            local isActive = false
+            if type(active.isSpellActive) == "function" then
+                local okActive, result = pcall(function() return active:isSpellActive(recordId) end)
+                isActive = okActive and result == true
+            end
+            if not isActive then
+                for _, entry in pairs(active) do
+                    local id = type(entry) == "table" and entry.id or entry
+                    if id == recordId then isActive = true break end
                 end
-            elseif isSummonEffectId(entryId) then
-                noteSummonEffect(entryId, entry, 1)
+            end
+            if isActive then
+                state.pactUsedDay[family] = day
             end
         end
-    end
-
-    for family, recordId in pairs(state.grantedPactIds) do
-        if recordId ~= nil and state.pactUsedDay[family] ~= day and heldPactIds[recordId] then
-            state.pactUsedDay[family] = day
-        end
-    end
-
-    local reclaimed = 0
-    for key, previousDuration in pairs(state.summonWatch) do
-        if seenSummons[key] == nil and previousDuration > C.SOUL_RECLAMATION_DEATH_MARGIN then
-            reclaimed = reclaimed + 1
-        end
-    end
-    state.summonWatch = seenSummons
-
-    if reclaimed > 0 and enabled(C.SOUL_RECLAMATION) then
-        restoreMagicka(reclaimed * C.SOUL_RECLAMATION_MAGICKA)
     end
 end
 
 local function publishGrants()
     local day = currentGameDay()
-    scanActiveSpells(day)
+    notePactUse(day)
 
     local undeadTier = pactTier(C.ANCESTRAL_PACT)
     local daedraTier = pactTier(C.DAEDRIC_PACT)
@@ -255,7 +299,9 @@ local function onGranted(data)
 end
 
 local function refresh(elapsed)
+    ensureSkillUsedHandler()
     publishGrants()
+    applySoulReclamation(elapsed)
 
 
     local skillId = enabled(C.SPECTRAL_EDGE) and boundWeaponSkill() or nil
@@ -295,10 +341,38 @@ local function onSkillUsed(skillId, params)
     restoreMagicka(maximum * C.GRAND_CONJURER_RESTORE_FRACTION)
 end
 
-do
+-- Registered from the poll rather than at module load. interfaces.* is
+-- populated as scripts come up, and this module is required early enough that
+-- SkillProgression was still absent, so a load-time registration silently did
+-- nothing no matter which function name it used. Retry until it takes, and if
+-- the interface appears without the expected function, say what it does have
+-- so the mismatch is visible in the log instead of failing quietly.
+skillHandlerRegistered = false
+skillHandlerReported = false
+
+ensureSkillUsedHandler = function()
+    if skillHandlerRegistered then
+        return
+    end
     local progression = interfaces.SkillProgression
-    if progression ~= nil and type(progression.addSkillUsedHandler) == "function" then
+    if progression == nil then
+        return
+    end
+    if type(progression.addSkillUsedHandler) == "function" then
         progression.addSkillUsedHandler(onSkillUsed)
+        skillHandlerRegistered = true
+        print(LOG_TAG .. " skill-used handler registered")
+        return
+    end
+    if not skillHandlerReported then
+        skillHandlerReported = true
+        local names = {}
+        for key, value in pairs(progression) do
+            names[#names + 1] = tostring(key) .. " (" .. type(value) .. ")"
+        end
+        table.sort(names)
+        print(LOG_TAG .. " SkillProgression has no addSkillUsedHandler; it exposes: "
+            .. table.concat(names, ", "))
     end
 end
 
@@ -333,7 +407,6 @@ __basepack_subsystem_result = {
                 and data.conjurationAppliedSkillId or nil
             state.appliedSkillBonus = math.max(0, math.floor(tonumber(data.conjurationAppliedSkillBonus) or 0))
             state.grantedPactIds = {}
-            state.summonWatch = {}
             state.pactUsedDay = {
                 undead = math.floor(tonumber(data.conjurationUndeadUsedDay) or -1),
                 daedra = math.floor(tonumber(data.conjurationDaedraUsedDay) or -1),

@@ -477,7 +477,7 @@ local ARMOR_SKILL_BY_TYPE = {
 -- up, and this script is attached to actors at runtime, so a load-time
 -- registration can silently find no SpellCasting interface and do nothing.
 local ensureSpellCastingHandler
-local stateLogged = false
+local stateLogged = nil
 
 local function setDestructionState(data)
     if type(data) ~= "table" then
@@ -491,10 +491,17 @@ local function setDestructionState(data)
     witheringCurse = data.witheringCurse == true
     annihilationMastery = data.annihilationMastery == true
 
-    if PROBE_EFFECT_PAYLOADS and not stateLogged then
-        stateLogged = true
+    -- Log every change, not just the first. The first call is the watcher's
+    -- empty init data, so latching on it hid the real state entirely.
+    local stateKey = table.concat({
+        tostring(destructionPlayerId), tostring(searingHeat), tostring(bitingCold),
+        tostring(stormChannel), tostring(sunderingRuin), tostring(witheringCurse),
+        tostring(annihilationMastery),
+    }, ":")
+    if PROBE_EFFECT_PAYLOADS and stateKey ~= stateLogged then
+        stateLogged = stateKey
         print(LOG_TAG .. string.format(
-            " rider state received on %s: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
+            " rider state on %s: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
             tostring(selfObj.recordId), tostring(destructionPlayerId),
             tostring(searingHeat), tostring(bitingCold), tostring(stormChannel),
             tostring(sunderingRuin), tostring(witheringCurse), tostring(annihilationMastery)))
@@ -714,7 +721,7 @@ local function onApplyMagicEffects(options)
 end
 
 local spellCastingRegistered = false
-local spellCastingReported = false
+local spellCastingReported = 0
 
 ensureSpellCastingHandler = function()
     if spellCastingRegistered then
@@ -727,10 +734,13 @@ ensureSpellCastingHandler = function()
         print(LOG_TAG .. " applyMagicEffects handler registered on " .. tostring(selfObj.recordId))
         return
     end
-    if not spellCastingReported then
-        spellCastingReported = true
+    -- interfaces are not fully resolved during onInit, so this legitimately
+    -- fails on the first attempt; report a few times rather than latching once.
+    if spellCastingReported < 3 then
+        spellCastingReported = spellCastingReported + 1
         if spellCasting == nil then
-            print(LOG_TAG .. " SpellCasting interface not available on this actor")
+            print(LOG_TAG .. " SpellCasting not resolved yet on " .. tostring(selfObj.recordId)
+                .. " (attempt " .. spellCastingReported .. ")")
         else
             local names = {}
             for key, value in pairs(spellCasting) do
@@ -746,9 +756,23 @@ end
 destruction.eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_RiderRefresh = setDestructionState,
 }
+-- The watcher attaches this script and immediately pushes state, but the
+-- script does not exist yet when that push is sent, so the push is lost and
+-- only the empty init data arrives. Ask for the state once we are actually
+-- running, rather than relying on a message that has already been sent.
+local function requestRiderState()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_RequestState", { target = selfObj })
+end
+
 destruction.engineHandlers = {
-    onInit = function(initData) setDestructionState(initData) end,
-    onLoad = function(_, initData) setDestructionState(initData) end,
+    onInit = function(initData)
+        setDestructionState(initData)
+        requestRiderState()
+    end,
+    onLoad = function(_, initData)
+        setDestructionState(initData)
+        requestRiderState()
+    end,
 }
 -- Event-only: no per-target update work, so this never keeps the combined
 -- target update loop alive.

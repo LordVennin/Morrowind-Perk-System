@@ -30,7 +30,7 @@ local C = {
     SPECTRAL_EDGE = "conjuration_spectral_edge",
     SPECTRAL_WARD = "conjuration_spectral_ward",
     SOUL_TETHER = "conjuration_soul_tether",
-    EBB_AND_FLOW = "conjuration_ebb_and_flow",
+    SOUL_RECLAMATION = "conjuration_soul_reclamation",
     GRAND_CONJURER = "conjuration_grand_conjurer",
 
     POLL_INTERVAL = 0.5,
@@ -39,10 +39,12 @@ local C = {
 
     SPECTRAL_EDGE_SKILL_BONUS = 15,
     SOUL_TETHER_MAX_MAGICKA = 30,
-    -- Fraction of maximum magicka returned per second while below the
-    -- Ebb and Flow threshold.
-    EBB_AND_FLOW_REGEN_PER_SECOND = 0.02,
-    EBB_AND_FLOW_THRESHOLD = 0.5,
+    SOUL_RECLAMATION_MAGICKA = 15,
+    -- A summon effect that vanishes with more than this much duration left
+    -- was cut short -- the engine purges the effect when the creature dies --
+    -- rather than having run its course. Comfortably above the poll interval
+    -- so a natural expiry is never mistaken for a death.
+    SOUL_RECLAMATION_DEATH_MARGIN = 1.0,
     -- Fraction of maximum magicka restored per Conjuration cast.
     GRAND_CONJURER_RESTORE_FRACTION = 0.10,
     -- In-game seconds in a day, for the once-per-day pact check.
@@ -69,6 +71,8 @@ local state = {
     -- the game day each pact was last seen actually taking effect.
     grantedPactIds = {},
     pactUsedDay = { undead = -1, daedra = -1 },
+    -- Duration remaining, per active summon effect, as of the last poll.
+    summonWatch = {},
 }
 
 local function isBoundRecordId(recordId)
@@ -134,37 +138,91 @@ local function currentGameDay()
     return math.floor(gameTime / C.SECONDS_PER_DAY)
 end
 
--- Watches for a granted pact power actually taking effect. Matching on the
--- granted record id rather than the summon effect means an ordinary summon
--- spell the player also knows never counts against the daily pact.
-local function notePactUse(day)
+local function isSummonEffectId(effectId)
+    return type(effectId) == "string" and effectId:sub(1, 6) == "summon"
+end
+
+local function restoreMagicka(amount)
+    local magicka = stats.dynamicStat("magicka")
+    if magicka == nil or amount <= 0 then
+        return
+    end
+    local maximum = math.max(0, (tonumber(magicka.base) or 0) + (tonumber(magicka.modifier) or 0))
+    if maximum <= 0 then
+        return
+    end
+    local current = tonumber(magicka.current) or 0
+    pcall(function()
+        magicka.current = math.min(maximum, current + amount)
+    end)
+end
+
+-- One pass over the player's active spells, serving two purposes.
+--
+-- Pact use: matching the granted record id rather than the summon effect means
+-- an ordinary summon spell the player also knows never spends the daily pact.
+--
+-- Soul Reclamation: the engine purges a summon effect from the summoner as
+-- soon as the creature dies, so an effect that disappears with duration still
+-- on it marks a death, while one that runs down to nothing simply expired.
+local function scanActiveSpells(day)
     local ok, active = pcall(function() return Actor.activeSpells(pself) end)
     if not ok or active == nil then
         return
     end
-    for family, recordId in pairs(state.grantedPactIds) do
-        if recordId ~= nil and state.pactUsedDay[family] ~= day then
-            local isActive = false
-            if type(active.isSpellActive) == "function" then
-                local okActive, result = pcall(function() return active:isSpellActive(recordId) end)
-                isActive = okActive and result == true
-            end
-            if not isActive then
-                for _, entry in pairs(active) do
-                    local id = type(entry) == "table" and entry.id or entry
-                    if id == recordId then isActive = true break end
+
+    local heldPactIds = {}
+    local seenSummons = {}
+
+    local function noteSummonEffect(spellId, effect, index)
+        local effectId = type(effect) == "table" and effect.id or nil
+        if not isSummonEffectId(effectId) then
+            return
+        end
+        local key = tostring(spellId) .. "|" .. effectId .. "|" .. tostring(index)
+        seenSummons[key] = tonumber(effect.durationLeft) or 0
+    end
+
+    for _, entry in pairs(active) do
+        local entryId = type(entry) == "table" and entry.id or entry
+        if entryId ~= nil then
+            heldPactIds[entryId] = true
+        end
+        if type(entry) == "table" then
+            -- Iteration may yield whole spells (with an effects list) or the
+            -- individual effects, depending on engine version; handle both.
+            if type(entry.effects) == "table" then
+                for index, effect in pairs(entry.effects) do
+                    noteSummonEffect(entryId, effect, index)
                 end
-            end
-            if isActive then
-                state.pactUsedDay[family] = day
+            elseif isSummonEffectId(entryId) then
+                noteSummonEffect(entryId, entry, 1)
             end
         end
+    end
+
+    for family, recordId in pairs(state.grantedPactIds) do
+        if recordId ~= nil and state.pactUsedDay[family] ~= day and heldPactIds[recordId] then
+            state.pactUsedDay[family] = day
+        end
+    end
+
+    local reclaimed = 0
+    for key, previousDuration in pairs(state.summonWatch) do
+        if seenSummons[key] == nil and previousDuration > C.SOUL_RECLAMATION_DEATH_MARGIN then
+            reclaimed = reclaimed + 1
+        end
+    end
+    state.summonWatch = seenSummons
+
+    if reclaimed > 0 and enabled(C.SOUL_RECLAMATION) then
+        restoreMagicka(reclaimed * C.SOUL_RECLAMATION_MAGICKA)
     end
 end
 
 local function publishGrants()
     local day = currentGameDay()
-    notePactUse(day)
+    scanActiveSpells(day)
 
     local undeadTier = pactTier(C.ANCESTRAL_PACT)
     local daedraTier = pactTier(C.DAEDRIC_PACT)
@@ -196,35 +254,11 @@ local function onGranted(data)
     }
 end
 
--- Ebb and Flow: a straight top-up while the pool is low, applied on the poll
--- rather than by a record, so it stops the moment the condition lapses.
-local function applyEbbAndFlow(elapsed)
-    if not enabled(C.EBB_AND_FLOW) or elapsed <= 0 then
-        return
-    end
-    local magicka = stats.dynamicStat("magicka")
-    if magicka == nil then
-        return
-    end
-    local maximum = math.max(0, (tonumber(magicka.base) or 0) + (tonumber(magicka.modifier) or 0))
-    if maximum <= 0 then
-        return
-    end
-    local current = tonumber(magicka.current) or 0
-    if current >= maximum * C.EBB_AND_FLOW_THRESHOLD then
-        return
-    end
-    pcall(function()
-        magicka.current = math.min(maximum, current + maximum * C.EBB_AND_FLOW_REGEN_PER_SECOND * elapsed)
-    end)
-end
-
 local function refresh(elapsed)
     publishGrants()
 
     state.appliedMaxMagicka = setModifier(stats.dynamicStat("magicka"), state.appliedMaxMagicka,
         enabled(C.SOUL_TETHER) and C.SOUL_TETHER_MAX_MAGICKA or 0)
-    applyEbbAndFlow(elapsed)
 
     local skillId = enabled(C.SPECTRAL_EDGE) and boundWeaponSkill() or nil
 
@@ -240,25 +274,16 @@ local function refresh(elapsed)
     end
 end
 
-local function restoreMagicka()
+local function onConjurationSkillUsed()
+    if not enabled(C.GRAND_CONJURER) then
+        return
+    end
     local magicka = stats.dynamicStat("magicka")
     if magicka == nil then
         return
     end
     local maximum = math.max(0, (tonumber(magicka.base) or 0) + (tonumber(magicka.modifier) or 0))
-    if maximum <= 0 then
-        return
-    end
-    local current = tonumber(magicka.current) or 0
-    pcall(function()
-        magicka.current = math.min(maximum, current + maximum * C.GRAND_CONJURER_RESTORE_FRACTION)
-    end)
-end
-
-local function onConjurationSkillUsed()
-    if enabled(C.GRAND_CONJURER) then
-        restoreMagicka()
-    end
+    restoreMagicka(maximum * C.GRAND_CONJURER_RESTORE_FRACTION)
 end
 
 do
@@ -300,6 +325,7 @@ __basepack_subsystem_result = {
             state.appliedSkillBonus = math.max(0, math.floor(tonumber(data.conjurationAppliedSkillBonus) or 0))
             state.appliedMaxMagicka = math.max(0, math.floor(tonumber(data.conjurationAppliedMaxMagicka) or 0))
             state.grantedPactIds = {}
+            state.summonWatch = {}
             state.pactUsedDay = {
                 undead = math.floor(tonumber(data.conjurationUndeadUsedDay) or -1),
                 daedra = math.floor(tonumber(data.conjurationDaedraUsedDay) or -1),

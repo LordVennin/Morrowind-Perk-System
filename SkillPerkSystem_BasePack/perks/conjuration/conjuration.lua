@@ -90,7 +90,7 @@ return {
             description = "Every pact you have formed calls a mighty servant: a Bonelord or a Dremora, for 180 seconds. A pact formed later is bound at your current mastery.",
         },
         {
-            id = "conjuration_ebb_and_flow",
+            id = "conjuration_soul_reclamation",
             tab = "Conjuration",
             minimumSkill = 65,
             effectId = "demo_noop",
@@ -98,8 +98,8 @@ return {
             cost = 1,
             x = 220,
             y = 280,
-            title = "Ebb and Flow",
-            description = "When your magicka runs low, it returns far more quickly: below half, you recover an extra 2% of your maximum each second.",
+            title = "Soul Reclamation",
+            description = "When a servant you summoned is destroyed, the power binding it returns to you: restore 15 magicka. A servant that simply returns home when its time runs out gives nothing back.",
         },
         {
             id = "conjuration_grand_conjurer",

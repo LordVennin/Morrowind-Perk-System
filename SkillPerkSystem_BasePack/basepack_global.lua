@@ -3047,8 +3047,14 @@ local function ridersActive()
             or riderState.annihilationMastery)
 end
 
+local attachLogged = 0
+
 local function sendState(actor)
     if actor ~= nil and type(actor.sendEvent) == "function" then
+        if attachLogged < 6 then
+            attachLogged = attachLogged + 1
+            log("sending rider state to " .. tostring(actor.recordId))
+        end
         actor:sendEvent("SkillPerkSystem_BasePack_Destruction_RiderRefresh", riderState)
     end
 end
@@ -3061,6 +3067,7 @@ local function onSetRiders(data)
     if type(data) ~= "table" then
         return
     end
+    log("rider state received from player; active=" .. tostring(data.playerId ~= nil))
     riderState = {
         playerId = type(data.playerId) == "string" and data.playerId or nil,
         searingHeat = data.searingHeat == true,
@@ -3071,6 +3078,7 @@ local function onSetRiders(data)
         annihilationMastery = data.annihilationMastery == true,
     }
     refreshWatchers()
+    log("riders active=" .. tostring(ridersActive()) .. "; watcher refresh requested")
     sendTargetWatcherStateToAttached(targetWatcher.providers["destruction"])
 end
 

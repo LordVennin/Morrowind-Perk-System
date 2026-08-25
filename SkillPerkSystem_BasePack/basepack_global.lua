@@ -2711,6 +2711,12 @@ local GRANTS = {
         effects = { selfEffect(conjEffectId("SummonDremora", "summondremora"), 1, 180) } },
     ward1 = { name = "Spectral Ward", type = "Ability",
         effects = { selfEffect(conjEffectId("Sanctuary", "sanctuary"), 10, 1) } },
+    -- Granted as an Ability so the engine raises maximum magicka through its
+    -- own effect path. Writing the dynamic stat's modifier directly does not
+    -- do this: for health, magicka and fatigue the engine drives the value
+    -- from active effects, and abilities are the mechanism that feeds it.
+    tether1 = { name = "Soul Tether", type = "Ability",
+        effects = { selfEffect(conjEffectId("FortifyMagicka", "fortifymagicka"), 30, 1) } },
 }
 
 -- Grant families: at most one member of a family is held at a time, selected
@@ -2719,6 +2725,7 @@ local FAMILIES = {
     undead = { "undead1", "undead2", "undead3" },
     daedra = { "daedra1", "daedra2", "daedra3" },
     ward = { "ward1" },
+    tether = { "tether1" },
 }
 
 -- Families whose grant is a once-per-day Power. Handing the player a record
@@ -2878,7 +2885,7 @@ local function onSetGrants(data)
     end
 
     local granted = {}
-    for _, family in ipairs({ "undead", "daedra", "ward" }) do
+    for _, family in ipairs({ "undead", "daedra", "ward", "tether" }) do
         local requested = tier(data[family .. "Tier"], #FAMILIES[family])
         local allowed = dailyGate(family, requested, currentDay)
         reconcileFamily(spells, family, allowed)

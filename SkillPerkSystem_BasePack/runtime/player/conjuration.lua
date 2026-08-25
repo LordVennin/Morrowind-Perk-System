@@ -38,7 +38,6 @@ local C = {
     GRANTED_EVENT = "SkillPerkSystem_BasePack_Conjuration_Granted",
 
     SPECTRAL_EDGE_SKILL_BONUS = 15,
-    SOUL_TETHER_MAX_MAGICKA = 30,
     SOUL_RECLAMATION_MAGICKA = 15,
     -- A summon effect that vanishes with more than this much duration left
     -- was cut short -- the engine purges the effect when the creature dies --
@@ -66,7 +65,6 @@ local state = {
     lastGrantsKey = nil,
     appliedSkillId = nil,
     appliedSkillBonus = 0,
-    appliedMaxMagicka = 0,
     -- Record ids the global side says we currently hold, per pact family, and
     -- the game day each pact was last seen actually taking effect.
     grantedPactIds = {},
@@ -227,9 +225,10 @@ local function publishGrants()
     local undeadTier = pactTier(C.ANCESTRAL_PACT)
     local daedraTier = pactTier(C.DAEDRIC_PACT)
     local wardTier = (enabled(C.SPECTRAL_WARD) and wearingBoundArmor()) and 1 or 0
+    local tetherTier = enabled(C.SOUL_TETHER) and 1 or 0
 
     local grantsKey = table.concat({
-        undeadTier, daedraTier, wardTier, day,
+        undeadTier, daedraTier, wardTier, tetherTier, day,
         state.pactUsedDay.undead, state.pactUsedDay.daedra,
     }, ":")
     if grantsKey == state.lastGrantsKey then
@@ -241,6 +240,7 @@ local function publishGrants()
         undeadTier = undeadTier,
         daedraTier = daedraTier,
         wardTier = wardTier,
+        tetherTier = tetherTier,
         currentDay = day,
         undeadUsedDay = state.pactUsedDay.undead,
         daedraUsedDay = state.pactUsedDay.daedra,
@@ -257,8 +257,6 @@ end
 local function refresh(elapsed)
     publishGrants()
 
-    state.appliedMaxMagicka = setModifier(stats.dynamicStat("magicka"), state.appliedMaxMagicka,
-        enabled(C.SOUL_TETHER) and C.SOUL_TETHER_MAX_MAGICKA or 0)
 
     local skillId = enabled(C.SPECTRAL_EDGE) and boundWeaponSkill() or nil
 
@@ -274,8 +272,19 @@ local function refresh(elapsed)
     end
 end
 
-local function onConjurationSkillUsed()
-    if not enabled(C.GRAND_CONJURER) then
+-- SkillProgression takes ONE handler for every skill, registered with no skill
+-- argument, and calls it as handler(skillId, params). Registering per-skill
+-- (addSkillUseHandler("conjuration", fn)) matches nothing and silently never
+-- fires, which is why this perk did nothing.
+local function onSkillUsed(skillId, params)
+    if skillId ~= "conjuration" or not enabled(C.GRAND_CONJURER) then
+        return
+    end
+    local useTypes = interfaces.SkillProgression ~= nil
+        and interfaces.SkillProgression.SKILL_USE_TYPES or nil
+    local castSuccess = useTypes ~= nil and useTypes.Spellcast_Success or nil
+    if castSuccess ~= nil and type(params) == "table" and params.useType ~= nil
+            and params.useType ~= castSuccess then
         return
     end
     local magicka = stats.dynamicStat("magicka")
@@ -288,8 +297,8 @@ end
 
 do
     local progression = interfaces.SkillProgression
-    if progression ~= nil and type(progression.addSkillUseHandler) == "function" then
-        progression.addSkillUseHandler("conjuration", onConjurationSkillUsed)
+    if progression ~= nil and type(progression.addSkillUsedHandler) == "function" then
+        progression.addSkillUsedHandler(onSkillUsed)
     end
 end
 
@@ -323,7 +332,6 @@ __basepack_subsystem_result = {
             state.appliedSkillId = type(data.conjurationAppliedSkillId) == "string"
                 and data.conjurationAppliedSkillId or nil
             state.appliedSkillBonus = math.max(0, math.floor(tonumber(data.conjurationAppliedSkillBonus) or 0))
-            state.appliedMaxMagicka = math.max(0, math.floor(tonumber(data.conjurationAppliedMaxMagicka) or 0))
             state.grantedPactIds = {}
             state.summonWatch = {}
             state.pactUsedDay = {
@@ -336,7 +344,6 @@ __basepack_subsystem_result = {
             return {
                 conjurationAppliedSkillId = state.appliedSkillId,
                 conjurationAppliedSkillBonus = state.appliedSkillBonus,
-                conjurationAppliedMaxMagicka = state.appliedMaxMagicka,
                 conjurationUndeadUsedDay = state.pactUsedDay.undead,
                 conjurationDaedraUsedDay = state.pactUsedDay.daedra,
             }

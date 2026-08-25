@@ -89,17 +89,36 @@ mocks["openmw.types"] = { NPC = { stats = { skills = setmetatable({}, {__index=f
     Actor = { stats = { attributes = {}, dynamic = {} } } }
 
 -- interfaces: MWUI templates + UI modes + the mod APIs perkpage looks up
--- A realistically tall tree: high-y nodes sit above the viewport centre, which
--- is exactly the shape that exposed the negative-canvas-coordinate cutoff.
-local perks = { athletics_steady_pace = { cost = 1 } }
-local treeNodes = {
-    { id="athletics_steady_pace", x=-180, y=0, requires={}, requiresAny={}, title="Steady Pace", description="d" },
-    { id="athletics_deep_lungs", x=180, y=0, requires={"athletics_steady_pace"}, requiresAny={}, title="Deep Lungs", description="d" },
-    { id="athletics_momentum", x=0, y=140, requires={"athletics_steady_pace"}, requiresAny={}, title="Momentum", description="d" },
-    { id="athletics_long_strider", x=-220, y=280, requires={"athletics_momentum"}, requiresAny={}, title="Long Strider", description="d" },
-    { id="athletics_relentless", x=0, y=420, requires={"athletics_long_strider"}, requiresAny={}, title="Relentless", description="d" },
-    { id="athletics_peerless", x=0, y=580, requires={"athletics_relentless"}, requiresAny={}, title="Peerless", description="d" },
-}
+-- Real tree data: the widest and tallest tree in the pack, so the layout
+-- assertions below run against the actual shape shipped to players rather
+-- than a hand-made stand-in.
+local function widestShippedTree()
+    local widest, widestSpan = nil, -1
+    local pipe = io.popen('ls SkillPerkSystem_BasePack/perks/*/*.lua')
+    for path in pipe:lines() do
+        if not path:match("_effect%.lua$") and not path:match("_config%.lua$") then
+            local ok, data = pcall(function() return assert(loadfile(path))() end)
+            if ok and type(data) == "table" and type(data.perks) == "table" and #data.perks > 0 then
+                local minX, maxX = data.perks[1].x, data.perks[1].x
+                for _, perk in ipairs(data.perks) do
+                    minX = math.min(minX, perk.x)
+                    maxX = math.max(maxX, perk.x)
+                end
+                if maxX - minX > widestSpan then widestSpan = maxX - minX; widest = data.perks end
+            end
+        end
+    end
+    pipe:close()
+    return assert(widest, "no perk trees found")
+end
+
+local treeNodes = widestShippedTree()
+local perks = {}
+for _, node in ipairs(treeNodes) do
+    node.requires = node.requires or {}
+    node.requiresAny = node.requiresAny or {}
+    perks[node.id] = { cost = node.cost or 1 }
+end
 local template = setmetatable({}, {__index=function(_,k) return {name=k} end})
 local currentMode = nil
 mocks["openmw.interfaces"] = setmetatable({
@@ -200,6 +219,59 @@ local function walkLayout(node, parent, path)
 end
 assert(lastCreatedLayout ~= nil, "ui.create was never called")
 walkLayout(lastCreatedLayout, nil, "root")
+
+-- Geometry of the scrolling tree canvas.
+--
+-- Two distinct failure modes are checked. MyGUI crops children to the parent
+-- rect INCLUSIVE of the edge, so a node touching the canvas boundary renders
+-- with that side's border missing -- which is why the canvas must be padded
+-- past the node extent, not sized flush to it. And a node whose required
+-- scroll offset falls outside the pan clamp can never be brought fully into
+-- view. The canvas is located by finding the widget that actually holds the
+-- node boxes, not merely the first clipping container in the layout.
+do
+    local canvas, viewport = nil, nil
+    local function findCanvas(node, parent)
+        if type(node) ~= "table" or canvas ~= nil then return end
+        if type(node.content) == "table" then
+            for _, child in ipairs(node.content) do
+                if type(child.userData) == "table" and child.userData.drawLayer == 1 then
+                    canvas, viewport = node, parent
+                    return
+                end
+            end
+            for _, child in ipairs(node.content) do findCanvas(child, node) end
+        end
+    end
+    findCanvas(lastCreatedLayout, nil)
+    assert(canvas, "tree canvas (widget holding the node boxes) not found in layout")
+    assert(viewport and viewport.props.clip == true, "tree canvas is not inside a clipping viewport")
+
+    local canvasW, canvasH = canvas.props.size.x, canvas.props.size.y
+    local viewW, viewH = viewport.props.size.x, viewport.props.size.y
+    local MAX_PAN = 600   -- perkpage clamps pan to +/- px(600)
+    -- canvas position is -pan - shift, and pan is 0 on a fresh open
+    local shiftX, shiftY = -canvas.props.position.x, -canvas.props.position.y
+
+    for _, child in ipairs(canvas.content) do
+        if type(child.userData) == "table" and child.userData.drawLayer == 1 then
+            local cx, cy = child.props.position.x, child.props.position.y
+            local w, h = child.props.size.x, child.props.size.y
+
+            assert(cx > 0 and cy > 0 and cx + w < canvasW and cy + h < canvasH,
+                string.format("node box touches the canvas edge and will lose a border: "
+                    .. "box (%d,%d)-(%d,%d) in canvas %dx%d",
+                    cx, cy, cx + w, cy + h, canvasW, canvasH))
+
+            local minPanX, maxPanX = cx - shiftX + w - viewW, cx - shiftX
+            local minPanY, maxPanY = cy - shiftY + h - viewH, cy - shiftY
+            assert(minPanX <= MAX_PAN and maxPanX >= -MAX_PAN and minPanX <= maxPanX
+                    and minPanY <= MAX_PAN and maxPanY >= -MAX_PAN and minPanY <= maxPanY,
+                string.format("node unreachable within pan limits: needs panX [%d,%d] panY [%d,%d]; "
+                    .. "clamp +/-%d, viewport %dx%d", minPanX, maxPanX, minPanY, maxPanY, MAX_PAN, viewW, viewH))
+        end
+    end
+end
 assert(nodeBoxes == #treeNodes,
     string.format("expected %d tree node boxes in the layout, found %d", #treeNodes, nodeBoxes))
 
@@ -249,12 +321,14 @@ local function clickAt(node, label)
 end
 
 menuElement = lastCreatedElement
-clickAt(menuElement.layout, "Steady Pace")            -- select the tree node
+local firstNodeTitle = treeNodes[1].title
+local firstNodeId = treeNodes[1].id
+clickAt(menuElement.layout, firstNodeTitle)           -- select the tree node
 assert(findText(menuElement.layout, "Unlock Perk"), "Unlock Perk button missing after selecting an affordable perk")
 clickAt(menuElement.layout, "Unlock Perk")            -- spend the point
 deliverEvents()                                       -- engine delivers addPerk next frame
 for i = 1, 25 do page.engineHandlers.onFrame(PAUSED) end  -- the game stays paused under the menu
-assert(ownedPerks["athletics_steady_pace"], "purchase event was not applied")
+assert(ownedPerks[firstNodeId], "purchase event was not applied")
 assert(findText(menuElement.layout, "Unlock Perk") == nil,
     "Unlock Perk button still shown after the purchase landed")
 assert(findText(menuElement.layout, "Disable") or findText(menuElement.layout, "Enable"),

@@ -183,7 +183,18 @@ do
     end
 end
 
+-- Buying, refunding or disabling a perk should hand the grants over at once
+-- rather than on the next poll tick; the dirty key is cleared so the republish
+-- is unconditional.
+local function onPerkStateChanged()
+    state.lastGrantsKey = nil
+    refresh()
+end
+
 __basepack_subsystem_result = {
+    eventHandlers = {
+        SkillPerkSystem_PerkStateChanged = onPerkStateChanged,
+    },
     engineHandlers = {
         shouldUpdate = function(dt)
             state.pollTimer = state.pollTimer + (tonumber(dt) or 0)

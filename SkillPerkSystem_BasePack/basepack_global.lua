@@ -2612,9 +2612,10 @@ end
 local function playerHasChameleon(player)
     local okSpells, spells = pcall(Actor.spells, player)
     if not okSpells or spells == nil then return false, nil end
+    -- As above: a "no" from has() is not authoritative for dynamic records.
     if type(spells.has) == "function" then
         local okHas, has = pcall(function() return spells:has(chameleonRecordId) end)
-        if okHas then return has == true, spells end
+        if okHas and has == true then return true, spells end
     end
     for _, spell in pairs(spells) do
         local id = type(spell) == "table" and spell.id or spell
@@ -2719,24 +2720,24 @@ local GRANTS = {
         effects = { selfEffect(conjEffectId("SummonClannfear", "summonclannfear"), 1, 120) } },
     daedra3 = { name = "Greater Daedric Pact", type = "Power",
         effects = { selfEffect(conjEffectId("SummonDremora", "summondremora"), 1, 180) } },
-    dominion1 = { name = "Voice of Dominion", type = "Spell", cost = 18,
+    -- Command magnitude is the maximum target level affected, so these stay
+    -- deliberately low: a tool for taming lesser beasts, not for turning any
+    -- NPC or high-level creature into an ally. Humanoids are not commanded at
+    -- all -- that is the part that trivialises encounters.
+    dominion1 = { name = "Beast Tongue", type = "Spell", cost = 25,
         effects = {
-            { id = conjEffectId("CommandHumanoid", "commandhumanoid"),
-                magnitudeMin = 15, magnitudeMax = 15, duration = 20, area = 0, range = core.magic.RANGE.Target },
             { id = conjEffectId("CommandCreature", "commandcreature"),
-                magnitudeMin = 15, magnitudeMax = 15, duration = 20, area = 0, range = core.magic.RANGE.Target },
+                magnitudeMin = 5, magnitudeMax = 5, duration = 15, area = 0, range = core.magic.RANGE.Target },
         } },
-    dominion2 = { name = "Voice of Dominion", type = "Spell", cost = 32,
+    dominion2 = { name = "Beast Tongue", type = "Spell", cost = 40,
         effects = {
-            { id = conjEffectId("CommandHumanoid", "commandhumanoid"),
-                magnitudeMin = 25, magnitudeMax = 25, duration = 30, area = 0, range = core.magic.RANGE.Target },
             { id = conjEffectId("CommandCreature", "commandcreature"),
-                magnitudeMin = 25, magnitudeMax = 25, duration = 30, area = 0, range = core.magic.RANGE.Target },
+                magnitudeMin = 10, magnitudeMax = 10, duration = 25, area = 0, range = core.magic.RANGE.Target },
         } },
-    rebuke1 = { name = "Rebuke the Dead", type = "Spell", cost = 22,
+    rebuke1 = { name = "Rebuke the Dead", type = "Spell", cost = 30,
         effects = {
             { id = conjEffectId("TurnUndead", "turnundead"),
-                magnitudeMin = 50, magnitudeMax = 50, duration = 30, area = 10, range = core.magic.RANGE.Touch },
+                magnitudeMin = 30, magnitudeMax = 30, duration = 20, area = 15, range = core.magic.RANGE.Touch },
         } },
     ward1 = { name = "Spectral Ward", type = "Ability",
         effects = { selfEffect(conjEffectId("Sanctuary", "sanctuary"), 10, 1) } },
@@ -2797,11 +2798,15 @@ local function playerSpellList(player)
     return ok and spells or nil
 end
 
+-- Only ever trust spells:has() when it answers "yes". A dynamic record id it
+-- does not recognise answers "no", and taking that at face value made removal
+-- unreachable: the reconciler saw the grant as absent and never took it back,
+-- so disabling an upgraded perk left the old power in the spell list.
 local function hasSpellId(spells, id)
     if id == nil then return false end
     if type(spells.has) == "function" then
         local ok, has = pcall(function() return spells:has(id) end)
-        if ok then return has == true end
+        if ok and has == true then return true end
     end
     for _, spell in pairs(spells) do
         local spellId = type(spell) == "table" and spell.id or spell
@@ -2824,8 +2829,20 @@ local function reconcileFamily(spells, family, desiredIndex)
                 local ok, err = pcall(function() spells:add(recordId) end)
                 if not ok then log("grant add failed " .. key .. ": " .. tostring(err)) end
             elseif not wanted and has then
-                local ok, err = pcall(function() spells:remove(recordId) end)
-                if not ok then log("grant remove failed " .. key .. ": " .. tostring(err)) end
+                local ok = pcall(function() spells:remove(recordId) end)
+                if not ok then
+                    -- Fall back to removing by record, in case the id form is
+                    -- not accepted for this record type.
+                    local okRecord, record = pcall(function() return core.magic.spells.records[recordId] end)
+                    if okRecord and record ~= nil then
+                        ok = pcall(function() spells:remove(record) end)
+                    end
+                end
+                if not ok then
+                    log("grant remove FAILED " .. key .. " id=" .. tostring(recordId))
+                elseif hasSpellId(spells, recordId) then
+                    log("grant remove did not take effect " .. key .. " id=" .. tostring(recordId))
+                end
             end
         end
     end

@@ -211,6 +211,35 @@ local function onWitheringReturn(data)
     end
 end
 
+-- Typing "spsdestruction" in the console dumps the whole rider pipeline and
+-- forces a republish. The state lines are printed once when they change, which
+-- makes them easy to miss in a running log; this puts the same information a
+-- keystroke away instead.
+local function onConsoleCommand(_, command)
+    local text = tostring(command or ""):lower():gsub("%s+", "")
+    if text ~= "spsdestruction" then
+        return
+    end
+
+    print(LOG_TAG .. " ---- diagnostic ----")
+    print(LOG_TAG .. " player id=" .. tostring(pself.id))
+    print(LOG_TAG .. " skill-used handler registered=" .. tostring(skillHandlerRegistered == true))
+    for label, perkId in pairs({
+        elementalFocus = C.ELEMENTAL_FOCUS, arcaneReservoir = C.ARCANE_RESERVOIR,
+        searingHeat = C.SEARING_HEAT, bitingCold = C.BITING_COLD,
+        stormChannel = C.STORM_CHANNEL, sunderingRuin = C.SUNDERING_RUIN,
+        witheringCurse = C.WITHERING_CURSE, annihilationMastery = C.ANNIHILATION_MASTERY,
+    }) do
+        print(LOG_TAG .. string.format("   %s (%s) enabled=%s", label, perkId, tostring(enabled(perkId))))
+    end
+
+    -- Force both publishes through, ignoring the change-detection keys.
+    state.lastGrantsKey = nil
+    state.lastRidersKey = nil
+    refresh()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_Diagnose", { player = pself })
+end
+
 __basepack_subsystem_result = {
     eventHandlers = {
         SkillPerkSystem_PerkStateChanged = onPerkStateChanged,
@@ -233,6 +262,7 @@ __basepack_subsystem_result = {
             state.appliedDestruction = math.max(0, math.floor(tonumber(data.destructionAppliedSkill) or 0))
             refresh()
         end,
+        onConsoleCommand = onConsoleCommand,
         onSave = function()
             return { destructionAppliedSkill = state.appliedDestruction }
         end,

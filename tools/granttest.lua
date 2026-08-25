@@ -12,6 +12,7 @@
 local FAMILIES = {
     undead = { "undead1", "undead2", "undead3" },
     daedra = { "daedra1", "daedra2", "daedra3" },
+    ward = { "ward1" },
 }
 local FAMILY_OF_KEY = {}
 for family, keys in pairs(FAMILIES) do
@@ -123,6 +124,56 @@ for _, scenario in ipairs(scenarios) do
     y.reconcile("undead", 2)
     assert(y.held[staleId] == nil, label .. " / stale record from a previous session was not removed")
     assertHolds(y, "undead", "undead2", label .. " / tier swapped after reload")
+end
+
+-- ---------------------------------------------------------------------------
+-- Daily pact gate: a spent pact must not come back through the perk menu.
+--
+-- Toggling a perk off and on, or moving to another tier, replaces the Power
+-- record and hands the player a fresh once-per-day use. The gate keys off our
+-- own "spent on day N" record, which lives in save data and is untouched by
+-- any of that.
+-- ---------------------------------------------------------------------------
+do
+    local DAILY = { undead = true }
+    local held, usedDay = {}, {}
+
+    local function dailyGate(family, tierIndex, currentDay)
+        if not DAILY[family] or tierIndex < 1 then return tierIndex end
+        local desiredKey = FAMILIES[family][tierIndex]
+        if desiredKey ~= nil and held[family] ~= desiredKey and usedDay[family] == currentDay then
+            return 0
+        end
+        return tierIndex
+    end
+
+    local function apply(family, tierIndex, currentDay)
+        local allowed = dailyGate(family, tierIndex, currentDay)
+        held[family] = allowed >= 1 and FAMILIES[family][allowed] or nil
+        return allowed
+    end
+
+    -- Day 1: buy the pact, get the power, spend it.
+    assert(apply("undead", 1, 1) == 1, "pact should be granted when unspent")
+    usedDay.undead = 1
+
+    -- Toggling the perk off and back on the same day must not return it.
+    assert(apply("undead", 0, 1) == 0, "toggling off should drop the power")
+    assert(apply("undead", 1, 1) == 0, "spent pact came back after a toggle")
+
+    -- Nor may a tier upgrade launder a fresh use out of it.
+    assert(apply("undead", 2, 1) == 0, "spent pact came back through a tier upgrade")
+
+    -- Next day it returns.
+    assert(apply("undead", 2, 2) == 2, "pact should return the following day")
+
+    -- Holding the same tier after spending is untouched: an honest player
+    -- keeps the record they already have, and the engine greys it out.
+    usedDay.undead = 2
+    assert(apply("undead", 2, 2) == 2, "unchanged holding should not be withheld")
+
+    -- A passive family is never gated.
+    assert(dailyGate("ward", 1, 2) == 1, "non-daily family must not be gated")
 end
 
 io.write("GRANT RECONCILER TEST PASSED\n")

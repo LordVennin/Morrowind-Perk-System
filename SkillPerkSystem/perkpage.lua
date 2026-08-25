@@ -1967,15 +1967,21 @@ local function buildPerkPane()
         -- at this point. Shift everything so the minimum is zero and size the
         -- canvas to the content bounds: MyGUI crops children to their parent's
         -- rect, so a child at a negative coordinate would never render.
+        --
+        -- The bounds are padded because that cropping is inclusive of the edge:
+        -- a node box sitting exactly on the canvas boundary loses the border
+        -- drawn on that side. Without the padding the outermost column of any
+        -- tree wider than the viewport renders with one border missing.
+        local canvasEdgePadding = 8
         local contentMinX, contentMinY = 0, 0
         local contentMaxX, contentMaxY = viewportSize.x, viewportSize.y
         for _, child in ipairs(treeCanvasContent) do
             local childPosition = child.props.position
             local childSize = child.props.size
-            contentMinX = math.min(contentMinX, childPosition.x)
-            contentMinY = math.min(contentMinY, childPosition.y)
-            contentMaxX = math.max(contentMaxX, childPosition.x + childSize.x)
-            contentMaxY = math.max(contentMaxY, childPosition.y + childSize.y)
+            contentMinX = math.min(contentMinX, childPosition.x - canvasEdgePadding)
+            contentMinY = math.min(contentMinY, childPosition.y - canvasEdgePadding)
+            contentMaxX = math.max(contentMaxX, childPosition.x + childSize.x + canvasEdgePadding)
+            contentMaxY = math.max(contentMaxY, childPosition.y + childSize.y + canvasEdgePadding)
         end
         local canvasShift = util.vector2(-contentMinX, -contentMinY)
         for _, child in ipairs(treeCanvasContent) do

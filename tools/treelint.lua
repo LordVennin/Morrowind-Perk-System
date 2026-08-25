@@ -24,6 +24,12 @@ do
     pipe:close()
 end
 
+-- The tree viewport is ~536px wide. A span past three columns at 220px means
+-- some panning; well past it means the outer columns sit half-off-screen and
+-- read as clipped. Warn at the convention, fail where it becomes unusable.
+local WARN_TREE_SPAN = 440
+local MAX_TREE_SPAN = 600
+
 local failures, warnings = 0, 0
 for _, path in ipairs(modules) do
     local chunk = assert(loadfile(path))
@@ -36,6 +42,21 @@ for _, path in ipairs(modules) do
             table.insert(byTab[tab], perk)
         end
         for tab, perks in pairs(byTab) do
+            local minX, maxX = perks[1].x, perks[1].x
+            for _, perk in ipairs(perks) do
+                minX = math.min(minX, tonumber(perk.x) or 0)
+                maxX = math.max(maxX, tonumber(perk.x) or 0)
+            end
+            local span = maxX - minX
+            if span > MAX_TREE_SPAN then
+                failures = failures + 1
+                io.write(string.format("TOO WIDE %s: columns span %dpx (x=%d..%d), max is %d\n",
+                    tab, span, minX, maxX, MAX_TREE_SPAN))
+            elseif span > WARN_TREE_SPAN then
+                warnings = warnings + 1
+                io.write(string.format("wide     %s: columns span %dpx (convention is %d)\n",
+                    tab, span, WARN_TREE_SPAN))
+            end
             for i = 1, #perks do
                 for j = i + 1, #perks do
                     local a, b = perks[i], perks[j]

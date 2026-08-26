@@ -3159,7 +3159,11 @@ local function riderRecord(name, effectName, effectFallback, magnitude, duration
     return record.id
 end
 
-local function applyRider(target, caster, recordId)
+-- stackable defaults to true: an elemental rider landing again while the last
+-- one burns is meant to pile up. Callers that must not stack pass false, which
+-- makes the engine replace any instance of the same record from the same
+-- caster instead of adding a second.
+local function applyRider(target, caster, recordId, stackable)
     if recordId == nil or target == nil then
         return
     end
@@ -3171,7 +3175,7 @@ local function applyRider(target, caster, recordId)
             id = recordId,
             effects = { 0 },
             caster = caster,
-            stackable = true,
+            stackable = stackable ~= false,
             ignoreSpellAbsorption = true,
             ignoreReflect = true,
             ignoreResistances = false,
@@ -3273,7 +3277,7 @@ local function onApplyRiders(data)
             magnitude, tonumber(data.sunderSeconds) or 20, data.sunderSkill)
         if recordId ~= nil then
             sunderRecordIds[recordId] = true
-            applyRider(target, caster, recordId)
+            applyRider(target, caster, recordId, false)
         end
     end
     if riderState.annihilationMastery and type(data.weaknessEffect) == "string" then
@@ -3302,6 +3306,24 @@ local WITHERING_FORTIFY = {
     { field = "magicka", name = "FortifyMagicka", fallback = "fortifymagicka" },
 }
 
+-- Every fortify record this perk has minted, filed under the pool it lifts.
+-- Drain does not stack in Morrowind, so neither does what it pays back:
+-- re-cursing a target refreshes the fortify on that pool instead of adding a
+-- second one. Passing stackable=false is not enough on its own, because that
+-- only replaces an instance of the *same* record, and a drain of a different
+-- magnitude is a different record.
+local witheringRecordIds = { health = {}, fatigue = {}, magicka = {} }
+
+local function clearWithering(player, field)
+    local ok, active = pcall(Actor.activeSpells, player)
+    if not ok or active == nil then
+        return
+    end
+    for recordId in pairs(witheringRecordIds[field]) do
+        pcall(function() active:remove(recordId) end)
+    end
+end
+
 local function onWitheringReturn(data)
     if type(data) ~= "table" or not riderState.witheringCurse then
         return
@@ -3316,9 +3338,16 @@ local function onWitheringReturn(data)
     for _, entry in ipairs(WITHERING_FORTIFY) do
         local amount = math.floor(tonumber(data[entry.field]) or 0)
         if amount > 0 then
-            applyRider(player, player, riderRecord("Withering Curse", entry.name, entry.fallback,
-                amount, seconds))
-            applied[#applied + 1] = entry.field .. "+" .. amount
+            local recordId = riderRecord("Withering Curse", entry.name, entry.fallback,
+                amount, seconds)
+            if recordId ~= nil then
+                -- Filed before the sweep so a repeat of the same drain is
+                -- cleared too, and comes back with its full duration.
+                witheringRecordIds[entry.field][recordId] = true
+                clearWithering(player, entry.field)
+                applyRider(player, player, recordId, false)
+                applied[#applied + 1] = entry.field .. "+" .. amount
+            end
         end
     end
 
@@ -3416,6 +3445,7 @@ subsystems.destruction = {
                 reservoirRecordId = reservoirRecordId,
                 riderRecords = riderRecords,
                 sunderRecordIds = sunderRecordIds,
+                witheringRecordIds = witheringRecordIds,
             }
         end,
         onLoad = function(data)
@@ -3438,6 +3468,22 @@ subsystems.destruction = {
                 for recordId in pairs(savedSunders) do
                     if type(recordId) == "string" then
                         sunderRecordIds[recordId] = true
+                    end
+                end
+            end
+            -- Same reasoning as the sunder registry: a fortify minted before
+            -- the save is one clearWithering could no longer strip, so it
+            -- would stack with whatever comes after the reload.
+            witheringRecordIds = { health = {}, fatigue = {}, magicka = {} }
+            local savedWithering = type(data) == "table" and data.witheringRecordIds or nil
+            if type(savedWithering) == "table" then
+                for field, recordIds in pairs(savedWithering) do
+                    if witheringRecordIds[field] ~= nil and type(recordIds) == "table" then
+                        for recordId in pairs(recordIds) do
+                            if type(recordId) == "string" then
+                                witheringRecordIds[field][recordId] = true
+                            end
+                        end
                     end
                 end
             end

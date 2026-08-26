@@ -439,13 +439,19 @@ local types = require("openmw.types")
 
 local LOG_TAG = "[SkillPerkSystem_BasePack][Destruction][Target]"
 
--- Set true to log the shape of every magic-effect payload this actor receives.
--- The SpellCasting options table is not documented field by field, so this is
--- how the classification below gets checked against what the engine actually
--- passes rather than against an assumption.
-local PROBE_EFFECT_PAYLOADS = true
+-- Verbose tracing of the rider pipeline. Off by default -- it prints on every
+-- cast and every state push, which is far too loud for a normal session --
+-- and switched on at runtime with "spsdestructiondebug" in the console when
+-- something needs diagnosing.
+local debugLogging = false
 local probesLogged = 0
 local PROBE_LOG_LIMIT = 12
+
+local function debugPrint(message)
+    if debugLogging then
+        print(LOG_TAG .. " " .. message)
+    end
+end
 
 local destructionPlayerId = nil
 local searingHeat, bitingCold, stormChannel = false, false, false
@@ -456,11 +462,17 @@ local SEARING_BURN_SECONDS = 6
 local BITING_SLOW_MAGNITUDE = 15
 local BITING_SLOW_SECONDS = 8
 local STORM_MAGICKA_FRACTION = 0.5
-local SUNDER_MAGNITUDE = 15
 local SUNDER_SECONDS = 20
 local WEAKNESS_MAGNITUDE = 10
 local WEAKNESS_SECONDS = 8
 local WITHERING_FORTIFY_SECONDS = 20
+
+-- Drain effects Withering Curse answers, and the pool each one lifts.
+local WITHERING_POOL = {
+    drainhealth = "health",
+    drainfatigue = "fatigue",
+    drainmagicka = "magicka",
+}
 
 local ELEMENT_WEAKNESS = {
     firedamage = "WeaknessToFire",
@@ -490,6 +502,9 @@ local function setDestructionState(data)
     sunderingRuin = data.sunderingRuin == true
     witheringCurse = data.witheringCurse == true
     annihilationMastery = data.annihilationMastery == true
+    if data.debugLogging ~= nil then
+        debugLogging = data.debugLogging == true
+    end
 
     -- Log every change, not just the first. The first call is the watcher's
     -- empty init data, so latching on it hid the real state entirely.
@@ -498,10 +513,10 @@ local function setDestructionState(data)
         tostring(stormChannel), tostring(sunderingRuin), tostring(witheringCurse),
         tostring(annihilationMastery),
     }, ":")
-    if PROBE_EFFECT_PAYLOADS and stateKey ~= stateLogged then
+    if debugLogging and stateKey ~= stateLogged then
         stateLogged = stateKey
-        print(LOG_TAG .. string.format(
-            " rider state on %s: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
+        debugPrint(string.format(
+            "rider state on %s: caster=%s fire=%s frost=%s shock=%s sunder=%s wither=%s weakness=%s",
             tostring(selfObj.recordId), tostring(destructionPlayerId),
             tostring(searingHeat), tostring(bitingCold), tostring(stormChannel),
             tostring(sunderingRuin), tostring(witheringCurse), tostring(annihilationMastery)))
@@ -516,7 +531,8 @@ local function normalizedEffectId(value)
     if type(value) ~= "string" then
         return nil
     end
-    return value:lower():gsub("%s+", "")
+    local id = value:lower():gsub("%s+", "")
+    return id
 end
 
 -- Reads the effect list out of whatever the engine hands us. The payload may
@@ -602,7 +618,7 @@ local function equippedWeaponSkill()
 end
 
 local function probePayload(options, effects)
-    if not PROBE_EFFECT_PAYLOADS or probesLogged >= PROBE_LOG_LIMIT then
+    if not debugLogging or probesLogged >= PROBE_LOG_LIMIT then
         return
     end
     probesLogged = probesLogged + 1
@@ -633,6 +649,26 @@ end
 -- Classifies an effect list (record effects or active-spell effects; the two
 -- spell magnitude fields differ, so both are read) and sends the rider and
 -- withering requests it calls for.
+-- Engine lists are userdata and do not all answer pairs(); flattening to a
+-- plain array first means one loop below works for record effects and
+-- active-spell effects alike.
+local function effectArray(effects)
+    local list = {}
+    if effects == nil then
+        return list
+    end
+    pcall(function()
+        for _, effect in ipairs(effects) do list[#list + 1] = effect end
+    end)
+    if #list > 0 then
+        return list
+    end
+    pcall(function()
+        for _, effect in pairs(effects) do list[#list + 1] = effect end
+    end)
+    return list
+end
+
 local function classifyAndRequest(effects)
     local request = { target = selfObj }
     local wanted = false
@@ -640,7 +676,7 @@ local function classifyAndRequest(effects)
     local witheringWanted = false
     local seenIds = {}
 
-    for _, effect in pairs(effects) do
+    for _, effect in ipairs(effectArray(effects)) do
         -- Active-spell effects are userdata, record effects tables; field
         -- access works identically on both. Requiring a table here silently
         -- dropped every effect on the active-spell path.
@@ -663,13 +699,14 @@ local function classifyAndRequest(effects)
                 request.magickaBurn = math.max(1, math.floor(magnitude * STORM_MAGICKA_FRACTION))
                 wanted = true
             elseif id == "disintegratearmor" and sunderingRuin then
+                -- How deep the sunder bites is set by the caster's Destruction,
+                -- which only the global side can read; the target only says
+                -- which skill is exposed.
                 request.sunderSkill = equippedArmorSkill()
-                request.sunderMagnitude = SUNDER_MAGNITUDE
                 request.sunderSeconds = SUNDER_SECONDS
                 wanted = wanted or request.sunderSkill ~= nil
             elseif id == "disintegrateweapon" and sunderingRuin then
                 request.sunderSkill = equippedWeaponSkill()
-                request.sunderMagnitude = SUNDER_MAGNITUDE
                 request.sunderSeconds = SUNDER_SECONDS
                 wanted = wanted or request.sunderSkill ~= nil
             end
@@ -681,40 +718,39 @@ local function classifyAndRequest(effects)
                 wanted = true
             end
 
-            -- Withering Curse: whatever the drain takes, the caster keeps.
-            if witheringCurse and magnitude > 0 and id ~= nil then
-                if id == "drainhealth" then
-                    withering.health = withering.health + magnitude
-                    witheringWanted = true
-                elseif id == "drainfatigue" then
-                    withering.fatigue = withering.fatigue + magnitude
-                    witheringWanted = true
-                elseif id == "drainmagicka" then
-                    withering.magicka = withering.magicka + magnitude
-                    witheringWanted = true
-                elseif id == "drainskill" and type(effect.affectedSkill) == "string" then
-                    withering.fortifySkill = effect.affectedSkill
-                    withering.fortifyMagnitude = magnitude
-                    witheringWanted = true
-                elseif id == "drainattribute" and type(effect.affectedAttribute) == "string" then
-                    withering.fortifyAttribute = effect.affectedAttribute
-                    withering.fortifyMagnitude = magnitude
-                    witheringWanted = true
+            -- Withering Curse: while the drain holds the target's pool down,
+            -- the caster's own maximum rises by the same amount, for the same
+            -- length of time.
+            --
+            -- Only the three pools. Drain Skill and Drain Attribute are read
+            -- and deliberately ignored: paying those back would leave Absorb
+            -- Skill and Absorb Attribute with nothing of their own to do, and
+            -- Mysticism should keep the business of taking stats off people.
+            if witheringCurse and magnitude > 0 and WITHERING_POOL[id or ""] ~= nil then
+                local field = WITHERING_POOL[id]
+                withering[field] = withering[field] + magnitude
+                witheringWanted = true
+                if withering.seconds == nil then
+                    local seconds = math.floor(tonumber(effect.duration) or 0)
+                    withering.seconds = seconds >= 1 and seconds or WITHERING_FORTIFY_SECONDS
                 end
             end
         end
     end
 
     if wanted then
-        if PROBE_EFFECT_PAYLOADS then
-            print(LOG_TAG .. " rider request sent from " .. tostring(selfObj.recordId))
-        end
+        debugPrint("rider request sent from " .. tostring(selfObj.recordId))
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_ApplyRiders", request)
-    elseif PROBE_EFFECT_PAYLOADS and not witheringWanted then
-        print(LOG_TAG .. " no rider matched; effect ids seen: " .. table.concat(seenIds, ", "))
+    elseif not witheringWanted then
+        debugPrint("no rider matched; effect ids seen: " .. table.concat(seenIds, ", "))
     end
     if witheringWanted then
-        withering.fortifySeconds = WITHERING_FORTIFY_SECONDS
+        withering.fortifySeconds = math.max(1, math.floor(tonumber(withering.seconds)
+            or WITHERING_FORTIFY_SECONDS))
+        withering.seconds = nil
+        debugPrint(string.format("withering request: health=%s fatigue=%s magicka=%s seconds=%s",
+            tostring(withering.health), tostring(withering.fatigue), tostring(withering.magicka),
+            tostring(withering.fortifySeconds)))
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_Withering", withering)
     end
 end
@@ -777,11 +813,9 @@ local function scanActiveSpellsForCasts()
             if spellId ~= nil and expectedSpellIds[spellId] and casterOk and not processedInstances[key] then
                 processedInstances[key] = true
                 local effects = entry.effects
-                if PROBE_EFFECT_PAYLOADS then
-                    print(LOG_TAG .. string.format(" matched cast %s on %s (effects=%s)",
-                        spellId, tostring(selfObj.recordId), effects == nil and "none" or "read"))
-                end
-                if type(effects) == "table" then
+                debugPrint(string.format("matched cast %s on %s (effects=%s)",
+                    spellId, tostring(selfObj.recordId), type(effects)))
+                if type(effects) == "table" or type(effects) == "userdata" then
                     classifyAndRequest(effects)
                 end
             end
@@ -805,9 +839,9 @@ local function onCastNotice(data)
     scanWindow = SCAN_WINDOW_SECONDS
     -- Also the right moment to try the payload hook on builds that have it.
     ensureSpellCastingHandler()
-    if PROBE_EFFECT_PAYLOADS and castNoticesLogged < 2 then
+    if debugLogging and castNoticesLogged < 2 then
         castNoticesLogged = castNoticesLogged + 1
-        print(LOG_TAG .. " cast notice on " .. tostring(selfObj.recordId)
+        debugPrint("cast notice on " .. tostring(selfObj.recordId)
             .. ": watching for " .. tostring(data.spellId))
     end
 end
@@ -825,16 +859,16 @@ ensureSpellCastingHandler = function()
     if spellCasting ~= nil and type(spellCasting.addApplyMagicEffectsHandler) == "function" then
         spellCasting.addApplyMagicEffectsHandler(onApplyMagicEffects)
         spellCastingRegistered = true
-        print(LOG_TAG .. " applyMagicEffects handler registered on " .. tostring(selfObj.recordId)
+        debugPrint("applyMagicEffects handler registered on " .. tostring(selfObj.recordId)
             .. " (attempt " .. spellCastingAttempts .. ")")
         return
     end
     -- interfaces are not fully resolved during onInit, so this legitimately
     -- fails on the first attempt; report a few times rather than latching once.
-    if spellCastingReported < 3 then
+    if debugLogging and spellCastingReported < 3 then
         spellCastingReported = spellCastingReported + 1
         if spellCasting == nil then
-            print(LOG_TAG .. " SpellCasting not resolved yet on " .. tostring(selfObj.recordId)
+            debugPrint("SpellCasting not resolved yet on " .. tostring(selfObj.recordId)
                 .. " (attempt " .. spellCastingReported .. ")")
         else
             local names = {}
@@ -842,7 +876,7 @@ ensureSpellCastingHandler = function()
                 names[#names + 1] = tostring(key) .. " (" .. type(value) .. ")"
             end
             table.sort(names)
-            print(LOG_TAG .. " SpellCasting has no addApplyMagicEffectsHandler; it exposes: "
+            debugPrint("SpellCasting has no addApplyMagicEffectsHandler; it exposes: "
                 .. table.concat(names, ", "))
         end
     end

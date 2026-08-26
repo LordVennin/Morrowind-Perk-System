@@ -86,7 +86,7 @@ return {
             x = 220,
             y = 280,
             title = "Withering Curse",
-            description = "What your Drain spells take, you keep. Drained health, fatigue, magicka, attributes and skills fortify your own for as long as the curse holds.",
+            description = "What your Drain spells hold down in others swells in you. While your Drain Health, Fatigue or Magicka spells sap a target's pool, your own maximum rises by as much, for as long as the drain lasts.",
         },
         {
             id = "destruction_efficient_ruin",

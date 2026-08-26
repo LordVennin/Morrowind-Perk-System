@@ -3283,15 +3283,19 @@ local function onApplyRiders(data)
     end
 end
 
--- Withering Curse: the target worked out what its Drain effects took, and the
--- caster keeps it for as long as the drain holds.
+-- Withering Curse: the target worked out how much its Drain effects took off
+-- its pools, and the caster's own maximums rise by the same amount for as
+-- long as the drain holds.
 --
--- Every payback is a Fortify active spell rather than a write to the caster's
--- current health or magicka. Topping a pool up is invisible whenever it is
--- already full -- which, right after casting a cheap Drain spell, it usually
--- is -- so the perk read as doing nothing at all. A fortify shows on the bar
--- no matter how full it was, and it rides the same rider machinery that the
--- elemental riders already prove works.
+-- Fortify raises the maximum and leaves the current value where it was, which
+-- is the point: it mirrors the drain rather than transferring anything, so
+-- Mysticism's Absorb line -- which does move real points across -- keeps its
+-- reason to exist. Skill and attribute drains are deliberately unpaid for the
+-- same reason.
+--
+-- It is also a Fortify rather than a write to the caster's current health or
+-- magicka because topping a pool up is invisible whenever it is already full,
+-- which right after casting a cheap Drain spell it usually is.
 local WITHERING_FORTIFY = {
     { field = "health", name = "FortifyHealth", fallback = "fortifyhealth" },
     { field = "fatigue", name = "FortifyFatigue", fallback = "fortifyfatigue" },
@@ -3316,21 +3320,6 @@ local function onWitheringReturn(data)
                 amount, seconds))
             applied[#applied + 1] = entry.field .. "+" .. amount
         end
-    end
-
-    -- A drain never touches a skill and an attribute at once, but asking about
-    -- each separately costs nothing and stops an attribute drain from minting
-    -- a skill record with no skill in it.
-    local magnitude = math.max(1, math.floor(tonumber(data.fortifyMagnitude) or 0))
-    if type(data.fortifySkill) == "string" then
-        applyRider(player, player, riderRecord("Withering Curse", "FortifySkill", "fortifyskill",
-            magnitude, seconds, data.fortifySkill, nil))
-        applied[#applied + 1] = data.fortifySkill .. "+" .. magnitude
-    end
-    if type(data.fortifyAttribute) == "string" then
-        applyRider(player, player, riderRecord("Withering Curse", "FortifyAttribute", "fortifyattribute",
-            magnitude, seconds, nil, data.fortifyAttribute))
-        applied[#applied + 1] = data.fortifyAttribute .. "+" .. magnitude
     end
 
     destrLog("withering payback for " .. seconds .. "s: "

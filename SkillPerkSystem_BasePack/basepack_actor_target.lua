@@ -467,6 +467,13 @@ local WEAKNESS_MAGNITUDE = 10
 local WEAKNESS_SECONDS = 8
 local WITHERING_FORTIFY_SECONDS = 20
 
+-- Drain effects Withering Curse answers, and the pool each one lifts.
+local WITHERING_POOL = {
+    drainhealth = "health",
+    drainfatigue = "fatigue",
+    drainmagicka = "magicka",
+}
+
 local ELEMENT_WEAKNESS = {
     firedamage = "WeaknessToFire",
     frostdamage = "WeaknessToFrost",
@@ -526,23 +533,6 @@ local function normalizedEffectId(value)
     end
     local id = value:lower():gsub("%s+", "")
     return id
-end
-
--- Drain Skill and Drain Attribute name their target in affectedSkill /
--- affectedAttribute. Record effects hold a plain id string there; active-spell
--- effects may hand back a record instead, so both shapes are unwrapped rather
--- than assuming the string and silently dropping every drain that is not one.
-local function affectedName(value)
-    if type(value) == "string" then
-        return value
-    end
-    if type(value) == "table" or type(value) == "userdata" then
-        local ok, id = pcall(function() return value.id end)
-        if ok and type(id) == "string" then
-            return id
-        end
-    end
-    return nil
 end
 
 -- Reads the effect list out of whatever the engine hands us. The payload may
@@ -728,32 +718,21 @@ local function classifyAndRequest(effects)
                 wanted = true
             end
 
-            -- Withering Curse: whatever the drain takes, the caster keeps.
-            -- The drain's own duration is carried across so the fortify lasts
-            -- exactly as long as the curse it mirrors.
-            if witheringCurse and magnitude > 0 and id ~= nil then
-                local seconds = math.floor(tonumber(effect.duration) or 0)
-                if seconds < 1 then seconds = WITHERING_FORTIFY_SECONDS end
-                if id == "drainhealth" then
-                    withering.health = withering.health + magnitude
-                    witheringWanted = true
-                elseif id == "drainfatigue" then
-                    withering.fatigue = withering.fatigue + magnitude
-                    witheringWanted = true
-                elseif id == "drainmagicka" then
-                    withering.magicka = withering.magicka + magnitude
-                    witheringWanted = true
-                elseif id == "drainskill" then
-                    withering.fortifySkill = affectedName(effect.affectedSkill)
-                    withering.fortifyMagnitude = magnitude
-                    witheringWanted = witheringWanted or withering.fortifySkill ~= nil
-                elseif id == "drainattribute" then
-                    withering.fortifyAttribute = affectedName(effect.affectedAttribute)
-                    withering.fortifyMagnitude = magnitude
-                    witheringWanted = witheringWanted or withering.fortifyAttribute ~= nil
-                end
-                if witheringWanted and withering.seconds == nil then
-                    withering.seconds = seconds
+            -- Withering Curse: while the drain holds the target's pool down,
+            -- the caster's own maximum rises by the same amount, for the same
+            -- length of time.
+            --
+            -- Only the three pools. Drain Skill and Drain Attribute are read
+            -- and deliberately ignored: paying those back would leave Absorb
+            -- Skill and Absorb Attribute with nothing of their own to do, and
+            -- Mysticism should keep the business of taking stats off people.
+            if witheringCurse and magnitude > 0 and WITHERING_POOL[id or ""] ~= nil then
+                local field = WITHERING_POOL[id]
+                withering[field] = withering[field] + magnitude
+                witheringWanted = true
+                if withering.seconds == nil then
+                    local seconds = math.floor(tonumber(effect.duration) or 0)
+                    withering.seconds = seconds >= 1 and seconds or WITHERING_FORTIFY_SECONDS
                 end
             end
         end
@@ -769,10 +748,8 @@ local function classifyAndRequest(effects)
         withering.fortifySeconds = math.max(1, math.floor(tonumber(withering.seconds)
             or WITHERING_FORTIFY_SECONDS))
         withering.seconds = nil
-        debugPrint(string.format(
-            "withering request: health=%s fatigue=%s magicka=%s skill=%s attribute=%s seconds=%s",
+        debugPrint(string.format("withering request: health=%s fatigue=%s magicka=%s seconds=%s",
             tostring(withering.health), tostring(withering.fatigue), tostring(withering.magicka),
-            tostring(withering.fortifySkill), tostring(withering.fortifyAttribute),
             tostring(withering.fortifySeconds)))
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_Withering", withering)
     end

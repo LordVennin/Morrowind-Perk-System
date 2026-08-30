@@ -8,6 +8,7 @@ local interfaces = require("openmw.interfaces")
 local shortBlade = {}
 local sneakCrit = {}
 local destruction = {}
+local mysticism = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -924,6 +925,238 @@ destruction.hasActiveState = function()
             or witheringCurse or annihilationMastery)
 end
 destruction.onHit = function() end
+
+end
+
+-- 2d. mysticism target state/effects
+do
+local core = require("openmw.core")
+local selfObj = require("openmw.self")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Mysticism][Target]"
+
+-- Verbose tracing, off by default; the global side pushes the flag with the
+-- rider state when "spsmysticismdebug" toggles it.
+local debugLogging = false
+
+local function debugPrint(message)
+    if debugLogging then
+        print(LOG_TAG .. " " .. message)
+    end
+end
+
+local mysticismPlayerId = nil
+local spellDrinker, soulSiphon = false, false
+
+local ABSORB_EFFECT_IDS = {
+    absorbhealth = true, absorbfatigue = true, absorbmagicka = true,
+    absorbskill = true, absorbattribute = true,
+}
+
+local SCAN_WINDOW_SECONDS = 3.0
+local DEATH_POLL_INTERVAL = 0.25
+-- Soultrap magnitude is meaningless; only its duration matters. Vanilla
+-- soultrap spells run 60 seconds, used when the duration cannot be read.
+local DEFAULT_TRAP_SECONDS = 60
+
+local scanWindow = 0
+local expectedSpellIds = {}
+local processedInstances = {}
+-- While a soultrap from the player holds this actor, its own death is watched
+-- for; one payout per death, however many traps were layered on.
+local trappedSeconds = 0
+local deathPollTimer = 0
+local siphoned = false
+
+local stateLogged = nil
+
+local function setMysticismState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    mysticismPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    spellDrinker = data.spellDrinker == true
+    soulSiphon = data.soulSiphon == true
+    if data.debugLogging ~= nil then
+        debugLogging = data.debugLogging == true
+    end
+    local stateKey = table.concat({
+        tostring(mysticismPlayerId), tostring(spellDrinker), tostring(soulSiphon),
+    }, ":")
+    if debugLogging and stateKey ~= stateLogged then
+        stateLogged = stateKey
+        debugPrint(string.format("rider state on %s: caster=%s drink=%s siphon=%s",
+            tostring(selfObj.recordId), tostring(mysticismPlayerId),
+            tostring(spellDrinker), tostring(soulSiphon)))
+    end
+end
+
+local function normalizedEffectId(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    local id = value:lower():gsub("%s+", "")
+    return id
+end
+
+-- Engine lists are userdata and do not all answer pairs(); flatten to a plain
+-- array first so one loop works for every shape.
+local function effectArray(effects)
+    local list = {}
+    if effects == nil then
+        return list
+    end
+    pcall(function()
+        for _, effect in ipairs(effects) do list[#list + 1] = effect end
+    end)
+    if #list > 0 then
+        return list
+    end
+    pcall(function()
+        for _, effect in pairs(effects) do list[#list + 1] = effect end
+    end)
+    return list
+end
+
+local function isAliveNow()
+    local ok, health = pcall(function()
+        return types.Actor.stats.dynamic.health(selfObj).current
+    end)
+    return ok and (tonumber(health) or 0) > 0
+end
+
+local function classify(effects)
+    local drinkWanted = false
+    for _, effect in ipairs(effectArray(effects)) do
+        if type(effect) == "table" or type(effect) == "userdata" then
+            local id = normalizedEffectId(effect.id)
+            if spellDrinker and id ~= nil and ABSORB_EFFECT_IDS[id] then
+                drinkWanted = true
+            end
+            -- Arm the death watch only on a living actor: a Soultrap cast at
+            -- a corpse must never count as a kill.
+            if soulSiphon and id == "soultrap" and isAliveNow() then
+                local seconds = math.floor(tonumber(effect.duration) or 0)
+                if seconds < 1 then seconds = DEFAULT_TRAP_SECONDS end
+                trappedSeconds = math.max(trappedSeconds, seconds)
+                siphoned = false
+                debugPrint("soultrap armed on " .. tostring(selfObj.recordId)
+                    .. " for " .. seconds .. "s")
+            end
+        end
+    end
+    if drinkWanted then
+        debugPrint("absorb landed on " .. tostring(selfObj.recordId) .. "; requesting ward")
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Mysticism_SpellDrink", { target = selfObj })
+    end
+end
+
+local function activeInstanceKey(entry)
+    local unique = entry.activeSpellId
+    if unique ~= nil then
+        return tostring(unique)
+    end
+    return normalizedEffectId(entry.id) or "?"
+end
+
+local function scanActiveSpellsForCasts()
+    local Actor = types.Actor
+    local ok, active = pcall(Actor.activeSpells, selfObj)
+    if not ok or active == nil then
+        return
+    end
+    local present = {}
+    for _, entry in pairs(active) do
+        if type(entry) == "table" or type(entry) == "userdata" then
+            local spellId = normalizedEffectId(entry.id)
+            local key = activeInstanceKey(entry)
+            present[key] = true
+            local casterOk = true
+            local okCaster, entryCaster = pcall(function() return entry.caster end)
+            if okCaster and entryCaster ~= nil and entryCaster.id ~= nil then
+                casterOk = entryCaster.id == mysticismPlayerId
+            end
+            if spellId ~= nil and expectedSpellIds[spellId] and casterOk and not processedInstances[key] then
+                processedInstances[key] = true
+                local effects = entry.effects
+                debugPrint(string.format("matched cast %s on %s (effects=%s)",
+                    spellId, tostring(selfObj.recordId), type(effects)))
+                if type(effects) == "table" or type(effects) == "userdata" then
+                    classify(effects)
+                end
+            end
+        end
+    end
+    for key in pairs(processedInstances) do
+        if not present[key] then
+            processedInstances[key] = nil
+        end
+    end
+end
+
+local function onCastNotice(data)
+    if type(data) ~= "table" or type(data.spellId) ~= "string" then
+        return
+    end
+    expectedSpellIds[normalizedEffectId(data.spellId) or ""] = true
+    scanWindow = SCAN_WINDOW_SECONDS
+end
+
+mysticism.eventHandlers = {
+    SkillPerkSystem_BasePack_Mysticism_RiderRefresh = setMysticismState,
+    SkillPerkSystem_BasePack_Mysticism_CastNotice = onCastNotice,
+}
+
+-- The watcher attaches this script and immediately pushes state, but the
+-- script does not exist yet when that push is sent; ask once actually running.
+local function requestRiderState()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Mysticism_RequestState", { target = selfObj })
+end
+
+mysticism.engineHandlers = {
+    onInit = function(initData)
+        setMysticismState(initData)
+        requestRiderState()
+    end,
+    onLoad = function(_, initData)
+        setMysticismState(initData)
+        requestRiderState()
+    end,
+}
+
+-- One comparison per frame unless a cast window or a death watch is open.
+mysticism.engineHandlers.onUpdate = function(dt)
+    local elapsed = tonumber(dt) or 0
+    if scanWindow > 0 then
+        scanWindow = scanWindow - elapsed
+        scanActiveSpellsForCasts()
+        if scanWindow <= 0 then
+            expectedSpellIds = {}
+        end
+    end
+    if trappedSeconds > 0 and not siphoned then
+        trappedSeconds = trappedSeconds - elapsed
+        deathPollTimer = deathPollTimer + elapsed
+        if deathPollTimer >= DEATH_POLL_INTERVAL then
+            deathPollTimer = 0
+            if not isAliveNow() then
+                siphoned = true
+                trappedSeconds = 0
+                debugPrint("trapped soul taken on " .. tostring(selfObj.recordId))
+                core.sendGlobalEvent("SkillPerkSystem_BasePack_Mysticism_SoulSiphon", {
+                    target = selfObj,
+                    targetRecordId = selfObj.recordId,
+                })
+            end
+        end
+    end
+end
+
+mysticism.hasActiveState = function()
+    return type(mysticismPlayerId) == "string" and mysticismPlayerId ~= ""
+        and (spellDrinker or soulSiphon)
+end
 
 end
 
@@ -3418,6 +3651,7 @@ end
 copyEventHandlers(shortBlade.eventHandlers)
 copyEventHandlers(sneakCrit.eventHandlers)
 copyEventHandlers(destruction.eventHandlers)
+copyEventHandlers(mysticism.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -3462,6 +3696,7 @@ local function hasAnyActiveTargetState()
     return subsystemHasActiveState(shortBlade)
         or subsystemHasActiveState(sneakCrit)
         or subsystemHasActiveState(destruction)
+        or subsystemHasActiveState(mysticism)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -3494,6 +3729,7 @@ return {
             callEngineHandler(shortBlade, "onInit", initData)
             callEngineHandler(sneakCrit, "onInit", initData)
             callEngineHandler(destruction, "onInit", initData)
+            callEngineHandler(mysticism, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -3516,6 +3752,7 @@ return {
             callEngineHandler(shortBlade, "onLoad", shortBladeData, initData)
             callEngineHandler(sneakCrit, "onLoad", nil, initData)
             callEngineHandler(destruction, "onLoad", nil, initData)
+            callEngineHandler(mysticism, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
@@ -3539,6 +3776,7 @@ return {
         end,
         onUpdate = function(dt)
             callActiveUpdate(destruction, dt)
+            callActiveUpdate(mysticism, dt)
             callActiveUpdate(shortBlade, dt)
             callActiveUpdate(axe, dt)
             callActiveUpdate(spear, dt)

@@ -35,6 +35,7 @@ local __basepack_subsystems = {
     require("scripts.SkillPerkSystem_BasePack.runtime.player.sneak"),
     require("scripts.SkillPerkSystem_BasePack.runtime.player.conjuration"),
     require("scripts.SkillPerkSystem_BasePack.runtime.player.destruction"),
+    require("scripts.SkillPerkSystem_BasePack.runtime.player.mysticism"),
 }
 
 -- Install the shared animation dispatchers only after every runtime module has

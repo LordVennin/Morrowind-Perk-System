@@ -162,6 +162,10 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.conjuration.conjuration",
         data = require("scripts.SkillPerkSystem_BasePack.perks.conjuration.conjuration"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.mysticism.mysticism",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.mysticism.mysticism"),
+    },
 }
 
 

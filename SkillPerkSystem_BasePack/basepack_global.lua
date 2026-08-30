@@ -3494,6 +3494,459 @@ subsystems.destruction = {
 
 end
 
+-- 5e. mysticism global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Mysticism][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+-- Verbose tracing is off by default and toggled at runtime with
+-- "spsmysticismdebug" in the console.
+local mystDebug = false
+
+local function mystLog(message)
+    if mystDebug then
+        log(message)
+    end
+end
+
+local function mystEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+local function selfEffect(id, magnitude, duration)
+    return {
+        id = id,
+        magnitudeMin = magnitude,
+        magnitudeMax = magnitude,
+        duration = duration,
+        area = 0,
+        range = core.magic.RANGE.Self,
+    }
+end
+
+-- ---- Grants: the wellspring ability and the two daily powers --------------
+--
+-- Same shape as the conjuration grants: dynamic records reconciled blindly
+-- against the player's spell list, cached and persisted so a save reuses its
+-- records, with the daily powers behind their own spent-today gate so a perk
+-- toggle can never hand back a fresh use.
+local GRANTS = {
+    wellspring1 = { name = "Deep Wellspring", type = "Ability",
+        effects = { selfEffect(mystEffectId("FortifyMagicka", "fortifymagicka"), 25, 1) } },
+    devour1 = { name = "Devour Magic", type = "Power",
+        effects = { selfEffect(mystEffectId("SpellAbsorption", "spellabsorption"), 50, 30) } },
+    omniscience1 = { name = "Omniscience", type = "Power",
+        effects = {
+            selfEffect(mystEffectId("DetectAnimal", "detectanimal"), 200, 60),
+            selfEffect(mystEffectId("DetectKey", "detectkey"), 200, 60),
+            selfEffect(mystEffectId("DetectEnchantment", "detectenchantment"), 200, 60),
+        } },
+}
+
+local FAMILIES = {
+    wellspring = { "wellspring1" },
+    devour = { "devour1" },
+    omniscience = { "omniscience1" },
+}
+
+local DAILY_FAMILIES = { devour = true, omniscience = true }
+
+local FAMILY_OF_KEY = {}
+for family, keys in pairs(FAMILIES) do
+    for _, key in ipairs(keys) do FAMILY_OF_KEY[key] = family end
+end
+
+local mystRecords = {}
+local mystIssued = {}
+local mystHeldKey = {}
+local mystUsedDay = {}
+
+local function spellTypeFor(kind)
+    if kind == "Power" then return core.magic.SPELL_TYPE.Power end
+    if kind == "Ability" then return core.magic.SPELL_TYPE.Ability end
+    return core.magic.SPELL_TYPE.Spell
+end
+
+local function ensureGrantRecord(key)
+    local grant = GRANTS[key]
+    if grant == nil then return nil end
+    -- Trust the cache: core.magic.spells.records does not reliably index
+    -- records created through world.createRecord, so a nil lookup is not
+    -- proof the record is gone.
+    local cachedId = mystRecords[key]
+    if cachedId ~= nil then
+        return cachedId
+    end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = grant.name,
+        type = spellTypeFor(grant.type),
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        starterSpellFlag = false,
+        effects = grant.effects,
+    })
+    if not okDraft or draft == nil then
+        log("draft failed for " .. key .. ": " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("record creation failed for " .. key .. ": " .. tostring(record))
+        return nil
+    end
+    mystRecords[key] = record.id
+    mystIssued[record.id] = FAMILY_OF_KEY[key]
+    log("created record " .. key .. "=" .. tostring(record.id))
+    return record.id
+end
+
+-- Blind reconcile: spells:has() answers "no" for dynamic ids, so every record
+-- this pack has issued for the family is removed except the one being kept,
+-- and the desired one is added regardless. Adding a held spell is a no-op and
+-- removing an unheld one is harmless.
+local function reconcileFamily(spells, family, desiredIndex)
+    local keys = FAMILIES[family]
+    if keys == nil then return end
+    local desiredId = nil
+    if desiredIndex >= 1 and keys[desiredIndex] ~= nil then
+        desiredId = ensureGrantRecord(keys[desiredIndex])
+    end
+    for recordId, issuedFamily in pairs(mystIssued) do
+        if issuedFamily == family and recordId ~= desiredId then
+            local ok = pcall(function() spells:remove(recordId) end)
+            if not ok then
+                local okRecord, record = pcall(function() return core.magic.spells.records[recordId] end)
+                if okRecord and record ~= nil then
+                    pcall(function() spells:remove(record) end)
+                end
+            end
+        end
+    end
+    if desiredId ~= nil then
+        local ok, err = pcall(function() spells:add(desiredId) end)
+        if not ok then log("grant add failed " .. family .. ": " .. tostring(err)) end
+    end
+end
+
+-- Refuses to hand back a daily power already spent today; re-granting a Power
+-- record resets the engine's own daily tracking, so the gate lives here.
+local function dailyGate(family, tierIndex, currentDay)
+    if not DAILY_FAMILIES[family] or tierIndex < 1 then
+        return tierIndex
+    end
+    local keys = FAMILIES[family]
+    local desiredKey = keys[tierIndex]
+    if desiredKey ~= nil and mystHeldKey[family] ~= desiredKey
+            and mystUsedDay[family] == currentDay then
+        mystLog(family .. " power already spent today; withholding until tomorrow")
+        return 0
+    end
+    return tierIndex
+end
+
+local function onSetGrants(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local okSpells, spells = pcall(Actor.spells, player)
+    if not okSpells or spells == nil then
+        return
+    end
+
+    local function tier(value, maximum)
+        local number = math.floor(tonumber(value) or 0)
+        return math.max(0, math.min(maximum, number))
+    end
+
+    local currentDay = math.floor(tonumber(data.currentDay) or 0)
+    for family in pairs(DAILY_FAMILIES) do
+        local reported = math.floor(tonumber(data[family .. "UsedDay"]) or -1)
+        if reported >= 0 and reported > (mystUsedDay[family] or -1) then
+            mystUsedDay[family] = reported
+        end
+    end
+
+    local granted = {}
+    for _, family in ipairs({ "wellspring", "devour", "omniscience" }) do
+        local requested = tier(data[family .. "Tier"], #FAMILIES[family])
+        local allowed = dailyGate(family, requested, currentDay)
+        reconcileFamily(spells, family, allowed)
+        local heldKey = allowed >= 1 and FAMILIES[family][allowed] or nil
+        mystHeldKey[family] = heldKey
+        granted[family] = heldKey and mystRecords[heldKey] or nil
+    end
+
+    if type(player.sendEvent) == "function" then
+        player:sendEvent("SkillPerkSystem_BasePack_Mysticism_Granted", {
+            devour = granted.devour,
+            omniscience = granted.omniscience,
+        })
+    end
+end
+
+-- ---- Rider state, shared with the actor-target script --------------------
+local riderState = {
+    playerId = nil,
+    spellDrinker = false,
+    soulSiphon = false,
+}
+
+local function ridersActive()
+    return type(riderState.playerId) == "string" and riderState.playerId ~= ""
+        and (riderState.spellDrinker or riderState.soulSiphon)
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BasePack_Mysticism_RiderRefresh", {
+            playerId = riderState.playerId,
+            spellDrinker = riderState.spellDrinker,
+            soulSiphon = riderState.soulSiphon,
+            debugLogging = mystDebug,
+        })
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("mysticism", ridersActive())
+end
+
+local function onSetRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    riderState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        spellDrinker = data.spellDrinker == true,
+        soulSiphon = data.soulSiphon == true,
+    }
+    refreshWatchers()
+    mystLog("riders active=" .. tostring(ridersActive()))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["mysticism"])
+end
+
+registerTargetWatcherProvider("mysticism", {
+    isActive = ridersActive,
+    sendState = sendState,
+})
+
+-- ---- Spell-Drinker --------------------------------------------------------
+--
+-- One fixed-shape Spell Absorption burst on the caster. A second Absorb
+-- landing refreshes it rather than stacking: the record shape never varies,
+-- so every application reuses one record, and the sweep plus stackable=false
+-- keeps at most one instance live even across shape changes in future
+-- versions.
+local DRINK_MAGNITUDE = 20
+local DRINK_SECONDS = 8
+
+local drinkRecordIds = {}
+
+local function ensureDrinkRecord()
+    for recordId in pairs(drinkRecordIds) do
+        return recordId
+    end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = "Spell-Drinker",
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { selfEffect(mystEffectId("SpellAbsorption", "spellabsorption"),
+            DRINK_MAGNITUDE, DRINK_SECONDS) },
+    })
+    if not okDraft or draft == nil then
+        log("Spell-Drinker draft failed: " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("Spell-Drinker record creation failed: " .. tostring(record))
+        return nil
+    end
+    drinkRecordIds[record.id] = true
+    return record.id
+end
+
+local function onSpellDrink(data)
+    if not riderState.spellDrinker then
+        return
+    end
+    local player = world.players[1]
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    local recordId = ensureDrinkRecord()
+    if recordId == nil then
+        return
+    end
+    local okActive, active = pcall(Actor.activeSpells, player)
+    if not okActive or active == nil then
+        return
+    end
+    for previousId in pairs(drinkRecordIds) do
+        pcall(function() active:remove(previousId) end)
+    end
+    local ok, err = pcall(function()
+        active:add({
+            id = recordId,
+            effects = { 0 },
+            caster = player,
+            stackable = false,
+            ignoreSpellAbsorption = true,
+            ignoreReflect = true,
+            ignoreResistances = true,
+        })
+    end)
+    if not ok then
+        log("Spell-Drinker application failed: " .. tostring(err))
+        return
+    end
+    mystLog("spell-drinker ward refreshed on the caster")
+end
+
+-- ---- Soul Siphon ----------------------------------------------------------
+--
+-- The dying target verified its own trap; this side only checks the caster
+-- still matches and forwards the payout to the player script, which knows
+-- the player's Mysticism.
+local function onSoulSiphon(data)
+    if type(data) ~= "table" or not riderState.soulSiphon then
+        return
+    end
+    local player = world.players[1]
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    mystLog("soul siphon reported by " .. tostring(type(data.target) == "userdata"
+        and data.target.recordId or data.targetRecordId))
+    if type(player.sendEvent) == "function" then
+        player:sendEvent("SkillPerkSystem_BasePack_Mysticism_SoulSiphon", {})
+    end
+end
+
+-- ---- Cast notice / state plumbing ----------------------------------------
+local function onCastNotice(data)
+    local player = type(data) == "table" and data.player or nil
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    mystLog("broadcasting cast notice for " .. tostring(data.spellId))
+    for _, actor in pairs(targetWatcher.attachedTargets) do
+        if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+            actor:sendEvent("SkillPerkSystem_BasePack_Mysticism_CastNotice", { spellId = data.spellId })
+        end
+    end
+end
+
+local function onRequestState(data)
+    local target = type(data) == "table" and data.target or nil
+    if target == nil then
+        return
+    end
+    sendState(target)
+end
+
+local function onSetDebug(data)
+    mystDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (mystDebug and "ON" or "OFF"))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["mysticism"])
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    log("rider caster=" .. tostring(riderState.playerId)
+        .. " drink=" .. tostring(riderState.spellDrinker)
+        .. " siphon=" .. tostring(riderState.soulSiphon)
+        .. " verboseLogging=" .. tostring(mystDebug))
+    local held = {}
+    for family, key in pairs(mystHeldKey) do
+        held[#held + 1] = family .. "=" .. tostring(key)
+    end
+    table.sort(held)
+    log("held grants: " .. (#held > 0 and table.concat(held, ", ") or "none"))
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["mysticism"])
+end
+
+subsystems.mysticism = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Mysticism_SetGrants = onSetGrants,
+        SkillPerkSystem_BasePack_Mysticism_SetRiders = onSetRiders,
+        SkillPerkSystem_BasePack_Mysticism_CastNotice = onCastNotice,
+        SkillPerkSystem_BasePack_Mysticism_SpellDrink = onSpellDrink,
+        SkillPerkSystem_BasePack_Mysticism_SoulSiphon = onSoulSiphon,
+        SkillPerkSystem_BasePack_Mysticism_RequestState = onRequestState,
+        SkillPerkSystem_BasePack_Mysticism_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Mysticism_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return {
+                mystRecords = mystRecords,
+                mystIssued = mystIssued,
+                mystHeldKey = mystHeldKey,
+                mystUsedDay = mystUsedDay,
+                drinkRecordIds = drinkRecordIds,
+            }
+        end,
+        onLoad = function(data)
+            mystRecords = {}
+            mystIssued = {}
+            mystHeldKey = {}
+            mystUsedDay = {}
+            drinkRecordIds = {}
+            local savedHeld = type(data) == "table" and data.mystHeldKey or nil
+            if type(savedHeld) == "table" then
+                for family, key in pairs(savedHeld) do
+                    if FAMILIES[family] ~= nil and GRANTS[key] ~= nil then mystHeldKey[family] = key end
+                end
+            end
+            local savedUsed = type(data) == "table" and data.mystUsedDay or nil
+            if type(savedUsed) == "table" then
+                for family, day in pairs(savedUsed) do
+                    if DAILY_FAMILIES[family] and type(day) == "number" then mystUsedDay[family] = day end
+                end
+            end
+            local saved = type(data) == "table" and data.mystRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" and GRANTS[key] ~= nil then
+                        mystRecords[key] = recordId
+                        mystIssued[recordId] = FAMILY_OF_KEY[key]
+                    end
+                end
+            end
+            local savedIssued = type(data) == "table" and data.mystIssued or nil
+            if type(savedIssued) == "table" then
+                for recordId, family in pairs(savedIssued) do
+                    if type(recordId) == "string" and FAMILIES[family] ~= nil then
+                        mystIssued[recordId] = family
+                    end
+                end
+            end
+            local savedDrink = type(data) == "table" and data.drinkRecordIds or nil
+            if type(savedDrink) == "table" then
+                for recordId in pairs(savedDrink) do
+                    if type(recordId) == "string" then drinkRecordIds[recordId] = true end
+                end
+            end
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -5071,6 +5524,15 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_ApplyRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_ApplyRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
     SkillPerkSystem_BasePack_Destruction_SetDebug = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetDebug", data) end,
+
+    SkillPerkSystem_BasePack_Mysticism_SetGrants = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SetGrants", data) end,
+    SkillPerkSystem_BasePack_Mysticism_SetRiders = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SetRiders", data) end,
+    SkillPerkSystem_BasePack_Mysticism_CastNotice = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_CastNotice", data) end,
+    SkillPerkSystem_BasePack_Mysticism_SpellDrink = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SpellDrink", data) end,
+    SkillPerkSystem_BasePack_Mysticism_SoulSiphon = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SoulSiphon", data) end,
+    SkillPerkSystem_BasePack_Mysticism_RequestState = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_RequestState", data) end,
+    SkillPerkSystem_BasePack_Mysticism_SetDebug = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Mysticism_Diagnose = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -5978,6 +6440,7 @@ local engineOrder = {
     "sneakcrit",
     "conjuration",
     "destruction",
+    "mysticism",
     "axe",
     "spear",
     "bluntweapon",

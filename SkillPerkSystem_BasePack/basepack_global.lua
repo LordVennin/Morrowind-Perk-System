@@ -4425,6 +4425,7 @@ local function enchLog(message)
 end
 
 local BRAND_MAGNITUDE, BRAND_SECONDS = 20, 5
+local SOUL_FED_PER_LEVEL = 6
 local REGEN_SKILL_DIVISOR = 10
 
 -- ---- Charge writes --------------------------------------------------------
@@ -4644,7 +4645,7 @@ local function onBrand(data)
     enchLog("branded " .. tostring(target.recordId))
 end
 
--- ---- Soul-Fed Blade: a kill with an enchanted weapon refills everything --
+-- ---- Soul-Fed Blade: a kill feeds every equipped item, by the foe's level --
 local function onSoulFed(data)
     if type(data) ~= "table" or not riderState.soulFed then
         return
@@ -4657,14 +4658,15 @@ local function onSoulFed(data)
     if not okEquipment or type(equipment) ~= "table" then
         return
     end
+    local level = math.max(1, math.floor(tonumber(data.level) or 1))
+    local amount = level * SOUL_FED_PER_LEVEL
     local total = 0
     for _, item in pairs(equipment) do
-        local enchantment = enchantmentOf(item)
-        if enchantment ~= nil then
-            total = total + addCharge(item, tonumber(enchantment.charge) or 0)
+        if enchantmentOf(item) ~= nil then
+            total = total + addCharge(item, amount)
         end
     end
-    enchLog("soul-fed blade: kill refilled " .. total .. " charge across equipment")
+    enchLog("soul-fed blade: level " .. level .. " kill, +" .. amount .. " per item, " .. total .. " in all")
 end
 
 -- ---- Plumbing ---------------------------------------------------------------

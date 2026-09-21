@@ -97,7 +97,7 @@ return {
             x = 0,
             y = 280,
             title = "Soul-Fed Blade",
-            description = "Killing a foe with an enchanted weapon fully recharges all equipped enchanted items.",
+            description = "Killing a foe with an enchanted weapon recharges every equipped enchanted item by 6 per level of the foe.",
         },
     },
 }

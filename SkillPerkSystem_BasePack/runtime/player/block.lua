@@ -1917,9 +1917,28 @@ if type(addOnHitHandler) == "function" then
     addOnHitHandler(processBlockPerks)
 end
 
+-- The override must answer for EVERYTHING the base interface exposes, not
+-- only the functions listed below: other mods read constants such as
+-- ATTACK_SOURCE_TYPES straight off I.Combat, and a Hit handler that throws on
+-- a missing one aborts the engine's whole handler chain before its default
+-- damage handler runs, so no melee hit lands while this mod is loaded.
+-- Anything not defined here falls through to the base, which is handed to us
+-- in onInterfaceOverride after load, hence the lazy lookup.
+local combatInterface = setmetatable({}, {
+    __index = function(_, key)
+        if baseCombatInterface ~= nil then
+            return baseCombatInterface[key]
+        end
+        return nil
+    end,
+})
+
 __basepack_subsystem_result = {
     interfaceName = "Combat",
-    interface = {
+    interface = combatInterface,
+}
+
+local combatOverrides = {
         version = 1,
 
         addOnHitHandler = passthrough("addOnHitHandler"),
@@ -1935,11 +1954,15 @@ __basepack_subsystem_result = {
         onHit = passthrough("onHit"),
         pickRandomArmor = passthrough("pickRandomArmor"),
         spawnBloodEffect = passthrough("spawnBloodEffect"),
-    },
-    eventHandlers = {
+}
+for name, value in pairs(combatOverrides) do
+    combatInterface[name] = value
+end
+
+__basepack_subsystem_result.eventHandlers = {
         SkillPerkSystem_TryConsumeAegisRite = onTryConsumeAegisRite,
-    },
-    engineHandlers = {
+}
+__basepack_subsystem_result.engineHandlers = {
         onLoad = function(data)
             initializeDefaults()
             runtimeTime = 0
@@ -1986,7 +2009,6 @@ __basepack_subsystem_result = {
         onInterfaceOverride = function(base)
             baseCombatInterface = base
         end,
-    },
 }
 
 

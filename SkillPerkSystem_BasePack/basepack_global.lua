@@ -5091,11 +5091,15 @@ local function mercLog(message)
 end
 
 local GOLD_ID = "gold_001"
-local INVEST_AMOUNT = 500
+-- Invested a hundred at a time, to a ceiling per merchant.
+local INVEST_AMOUNT = 100
+local INVEST_CAP, INVEST_CAP_PRINCE = 500, 1000
 local INVEST_DISPOSITION_BONUS = 10
 local INVEST_MIN_DISPOSITION = 60
 local MAX_MERCHANTS = 5
-local DIVIDEND_RATE, DIVIDEND_RATE_PRINCE = 0.02, 0.05
+-- Paid per whole week elapsed, as a share of the investment.
+local DIVIDEND_RATE, DIVIDEND_RATE_PRINCE = 0.10, 0.20
+local DAYS_PER_PAYOUT = 7
 local SECONDS_PER_DAY = 86400
 
 -- The ledger: one line per invested merchant, by object id. Persisted.
@@ -5152,7 +5156,7 @@ local function sendStatus(player, npc, extra)
     local status = {
         npcId = npc.id,
         amount = line and line.amount or 0,
-        maxAmount = (extra and extra.tradePrince) and INVEST_AMOUNT * 2 or INVEST_AMOUNT,
+        maxAmount = (extra and extra.tradePrince) and INVEST_CAP_PRINCE or INVEST_CAP,
         slotsLeft = math.max(0, MAX_MERCHANTS - merchantCount()),
         paid = extra and extra.paid or 0,
         invested = extra and extra.invested or false,
@@ -5162,23 +5166,24 @@ local function sendStatus(player, npc, extra)
     end
 end
 
--- Dividends: whole days since the last collection, at the rate the player's
--- perks allow, paid in gold on the way into the barter window.
+-- Dividends: whole weeks since the last collection, at the rate the
+-- player's perks allow, paid in gold on the way into the barter window. The
+-- unpaid remainder of a week carries over rather than being lost.
 local function payDividends(player, npc, tradePrince)
     local line = investments[npc.id]
     if line == nil or line.amount <= 0 then
         return 0
     end
     local today = currentDay()
-    local days = today - (line.lastPaidDay or today)
-    if days <= 0 then
+    local weeks = math.floor((today - (line.lastPaidDay or today)) / DAYS_PER_PAYOUT)
+    if weeks <= 0 then
         return 0
     end
     local rate = tradePrince and DIVIDEND_RATE_PRINCE or DIVIDEND_RATE
-    local paid = math.floor(line.amount * rate * days)
-    line.lastPaidDay = today
+    local paid = math.floor(line.amount * rate * weeks)
+    line.lastPaidDay = (line.lastPaidDay or today) + weeks * DAYS_PER_PAYOUT
     if paid > 0 and giveGold(player, paid) then
-        mercLog(string.format("%s paid %d gold for %d day(s)", tostring(npc.recordId), paid, days))
+        mercLog(string.format("%s paid %d gold for %d week(s)", tostring(npc.recordId), paid, weeks))
         return paid
     end
     return 0
@@ -5204,7 +5209,7 @@ local function onInvest(data)
         return
     end
     local tradePrince = data.tradePrince == true
-    local maxAmount = tradePrince and INVEST_AMOUNT * 2 or INVEST_AMOUNT
+    local maxAmount = tradePrince and INVEST_CAP_PRINCE or INVEST_CAP
     local line = investments[npc.id]
     local invested = line and line.amount or 0
     if invested >= maxAmount then

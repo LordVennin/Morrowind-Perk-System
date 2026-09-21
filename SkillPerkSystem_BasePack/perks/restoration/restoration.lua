@@ -1,0 +1,30 @@
+return {
+    schema = "skillperks.vNext",
+    perks = {
+        {
+            id = "restoration_practiced_healer",
+            tab = "Restoration",
+            tabDescription = "Restoration mends flesh and fortifies the body against poison, disease and harm.",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = -220,
+            y = 0,
+            title = "Practiced Healer",
+            description = "Every Restoration spell you cast returns a quarter of the magicka it cost you.",
+        },
+        {
+            id = "restoration_healers_reserve",
+            tab = "Restoration",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = 220,
+            y = 0,
+            title = "Healer's Reserve",
+            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+        },
+    },
+}

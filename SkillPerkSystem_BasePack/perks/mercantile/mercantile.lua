@@ -36,7 +36,7 @@ return {
             x = 0,
             y = 280,
             title = "Investor",
-            description = "While bartering with a merchant at disposition 60 or higher, you may invest 500 gold in them: +10 disposition permanently. Up to 5 merchants.",
+            description = "While bartering with a merchant at disposition 60 or higher, you may invest 100 gold at a time, up to 500: +10 disposition permanently per 100. Up to 5 merchants.",
         },
         {
             id = "mercantile_dividends",
@@ -48,7 +48,7 @@ return {
             x = 0,
             y = 420,
             title = "Dividends",
-            description = "Invested merchants pay 2% of your investment per day, collected when you next barter with them. Collecting counts as Mercantile use.",
+            description = "Invested merchants pay 10% of your investment per week, collected when you next barter with them. Collecting counts as four successful barters.",
         },
         {
             id = "mercantile_trade_prince",
@@ -60,7 +60,7 @@ return {
             x = 0,
             y = 560,
             title = "Trade Prince",
-            description = "Dividends rise to 5% per day, and you may invest a second 500 gold in each merchant.",
+            description = "Dividends rise to 20% per week, and you may invest up to 1000 gold in each merchant.",
         },
     },
 }

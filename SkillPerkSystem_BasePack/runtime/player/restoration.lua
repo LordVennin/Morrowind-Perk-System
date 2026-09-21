@@ -15,6 +15,7 @@ local pself = require("openmw.self")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
+local storage = require("openmw.storage")
 local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
 local enabled = stats.enabled
@@ -45,18 +46,22 @@ local C = {
     OVERFLOW_MIN_HEALTH_FRACTION = 0.9,
     OVERFLOW_CAP_FRACTION = 0.5,
     OVERFLOW_SECONDS = 30,
-    -- The bar is drawn at the default HUD's health bar position, measured
-    -- from the bottom-left of the screen. Lua cannot anchor to the vanilla
-    -- widget, so a moved HUD needs these adjusted.
+    -- The bar is drawn at an offset from the bottom-left of the screen. Lua
+    -- cannot anchor to the vanilla health widget, so the offset is a pair of
+    -- settings the player adjusts in the mod's settings page; these are the
+    -- defaults for the stock HUD.
     OVERFLOW_BAR_OFFSET_X = 13,
     OVERFLOW_BAR_OFFSET_Y = -63,
     OVERFLOW_BAR_WIDTH = 65,
     OVERFLOW_BAR_HEIGHT = 12,
+    HUD_SETTINGS_PAGE = "SkillPerkSystem",
+    HUD_SETTINGS_GROUP = "SettingsSkillPerkSystemBasePackHud",
 
     DESPERATE_MAX_HEALTH_FRACTION = 0.25,
     PURIFY_RESIST = 50,
     PURIFY_SECONDS = 120,
-    -- Bulwark of Faith, per second while the pair holds; refreshed each poll.
+    -- Bulwark of Faith: a Resist against an element while that element's
+    -- damage is on you. Per second, refreshed each poll while the pair holds.
     BULWARK_FIRE_HEALTH = 2,
     BULWARK_FROST_FATIGUE = 5,
     BULWARK_SHOCK_HEALTH = 2,
@@ -83,7 +88,58 @@ local state = {
     lastHealth = nil,
     bar = nil,
     barTexture = nil,
+    hudSettingsRegistered = false,
 }
+
+local hudSettings = storage.playerSection(C.HUD_SETTINGS_GROUP)
+
+-- The bar's offsets live in the mod's settings page, next to the framework's
+-- own group, so they can be adjusted in game rather than in a file.
+local function ensureHudSettings()
+    if state.hudSettingsRegistered then
+        return
+    end
+    local settings = interfaces.Settings
+    if settings == nil or type(settings.registerGroup) ~= "function" then
+        return
+    end
+    local ok, err = pcall(settings.registerGroup, {
+        key = C.HUD_SETTINGS_GROUP,
+        page = C.HUD_SETTINGS_PAGE,
+        l10n = "SkillPerkSystem",
+        name = "basePackHud",
+        permanentStorage = true,
+        settings = {
+            {
+                key = "overhealBarX",
+                name = "overhealBarXName",
+                description = "overhealBarXDescription",
+                default = C.OVERFLOW_BAR_OFFSET_X,
+                renderer = "number",
+                argument = { integer = true, min = -4000, max = 4000 },
+            },
+            {
+                key = "overhealBarY",
+                name = "overhealBarYName",
+                description = "overhealBarYDescription",
+                default = C.OVERFLOW_BAR_OFFSET_Y,
+                renderer = "number",
+                argument = { integer = true, min = -4000, max = 4000 },
+            },
+        },
+    })
+    if ok then
+        state.hudSettingsRegistered = true
+    else
+        print(LOG_TAG .. " could not register HUD settings: " .. tostring(err))
+    end
+end
+
+local function barOffset()
+    local x = tonumber(hudSettings:get("overhealBarX")) or C.OVERFLOW_BAR_OFFSET_X
+    local y = tonumber(hudSettings:get("overhealBarY")) or C.OVERFLOW_BAR_OFFSET_Y
+    return util.vector2(x, y)
+end
 
 local function debugPrint(message)
     if debugLogging then
@@ -185,7 +241,7 @@ local function updateBar()
                 color = util.color.rgb(0.45, 0.05, 0.05),
                 anchor = util.vector2(0, 1),
                 relativePosition = util.vector2(0, 1),
-                position = util.vector2(C.OVERFLOW_BAR_OFFSET_X, C.OVERFLOW_BAR_OFFSET_Y),
+                position = barOffset(),
                 size = util.vector2(width, C.OVERFLOW_BAR_HEIGHT),
             },
         })
@@ -198,6 +254,7 @@ local function updateBar()
     end
     pcall(function()
         state.bar.layout.props.size = util.vector2(width, C.OVERFLOW_BAR_HEIGHT)
+        state.bar.layout.props.position = barOffset()
         state.bar:update()
     end)
 end
@@ -266,9 +323,11 @@ local function tickOverheal(dt)
     state.lastHealth = current
 end
 
--- Weapon hits are seen before they land, so the pool takes them first and
--- health never dips. Either the pool covers the whole hit, or it empties and
--- the remainder goes through -- so the per-frame refund never double-counts.
+-- Weapon hits are seen before they land, so the pool takes them first. One
+-- point is always let through: a hit reduced to nothing is a miss to the
+-- engine (no hit sound, no flash), while a single point still plays as a
+-- hit, and the per-frame refund below hands that point straight back from
+-- the pool, so the pool pays for the whole blow either way.
 local function onHit(attack)
     if state.overheal <= 0 or type(attack) ~= "table" or attack.successful == false then
         return
@@ -277,10 +336,10 @@ local function onHit(attack)
         return
     end
     local damage = tonumber(attack.damage.health) or 0
-    if damage <= 0 then
+    if damage <= 1 then
         return
     end
-    local absorbed = math.min(damage, state.overheal)
+    local absorbed = math.min(damage - 1, state.overheal)
     attack.damage.health = damage - absorbed
     state.overheal = state.overheal - absorbed
     debugPrint("overflow took " .. absorbed .. " of a hit")
@@ -399,13 +458,13 @@ local function tickBulwark()
         return
     end
     local health, fatigue = 0, 0
-    if effectMagnitude("fireshield") > 0 and effectMagnitude("firedamage") > 0 then
+    if effectMagnitude("resistfire") > 0 and effectMagnitude("firedamage") > 0 then
         health = health + C.BULWARK_FIRE_HEALTH
     end
-    if effectMagnitude("frostshield") > 0 and effectMagnitude("frostdamage") > 0 then
+    if effectMagnitude("resistfrost") > 0 and effectMagnitude("frostdamage") > 0 then
         fatigue = fatigue + C.BULWARK_FROST_FATIGUE
     end
-    if effectMagnitude("lightningshield") > 0 and effectMagnitude("shockdamage") > 0 then
+    if effectMagnitude("resistshock") > 0 and effectMagnitude("shockdamage") > 0 then
         health = health + C.BULWARK_SHOCK_HEALTH
         fatigue = fatigue + C.BULWARK_SHOCK_FATIGUE
     end
@@ -448,6 +507,7 @@ end
 local function refresh()
     ensureSkillUsedHandler()
     ensureHitHandler()
+    ensureHudSettings()
     publishReservoir()
     publishRiders()
     tickBulwark()
@@ -484,9 +544,11 @@ local function onConsoleCommand(_, command)
     }) do
         print(LOG_TAG .. string.format("   %s (%s) enabled=%s", label, perkId, tostring(enabled(perkId))))
     end
-    print(LOG_TAG .. string.format(" shields fire=%d frost=%d shock=%d; fortify attack=%d",
-        effectMagnitude("fireshield"), effectMagnitude("frostshield"),
-        effectMagnitude("lightningshield"), effectMagnitude("fortifyattack")))
+    print(LOG_TAG .. string.format(" resists fire=%d frost=%d shock=%d; fortify attack=%d",
+        effectMagnitude("resistfire"), effectMagnitude("resistfrost"),
+        effectMagnitude("resistshock"), effectMagnitude("fortifyattack")))
+    local offset = barOffset()
+    print(LOG_TAG .. string.format(" overheal bar offset x=%d y=%d", offset.x, offset.y))
     state.lastReservoirKey = nil
     state.lastRidersKey = nil
     refresh()

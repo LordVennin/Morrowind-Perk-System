@@ -16,6 +16,7 @@ local types = require("openmw.types")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
 local async = require("openmw.async")
+local storage = require("openmw.storage")
 local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
 local enabled = stats.enabled
@@ -39,8 +40,16 @@ local C = {
     LOYALTY_DELTA = 2,
     LOYALTY_CAP = 90,
     INVEST_MIN_DISPOSITION = 60,
-    INVEST_AMOUNT = 500,
+    INVEST_AMOUNT = 100,
     GOLD_ID = "gold_001",
+    -- Collecting dividends is trade: it counts as this many successful barters.
+    DIVIDEND_SKILL_SCALE = 4,
+    -- Where the panel sits is a UI preference, not perk state, so it lives
+    -- in the player's storage section like the framework's own settings.
+    PANEL_SECTION = "SkillPerkSystem_BasePack_Mercantile",
+    PANEL_WIDTH = 320,
+    PANEL_ROW_HEIGHT = 22,
+    PANEL_BUTTON_HEIGHT = 30,
 }
 
 local debugLogging = false
@@ -54,7 +63,29 @@ local state = {
     -- Last status the global side reported for that merchant.
     status = nil,
     panel = nil,
+    -- Drag state for the panel.
+    dragging = false,
+    dragOffset = nil,
+    panelPosition = nil,
 }
+
+local panelSection = storage.playerSection(C.PANEL_SECTION)
+
+local function loadPanelPosition()
+    local saved = panelSection:get("investPanelPosition")
+    if type(saved) == "table" and tonumber(saved.x) and tonumber(saved.y) then
+        return util.vector2(tonumber(saved.x), tonumber(saved.y))
+    end
+    -- Top centre by default, clear of the barter window's title bar.
+    local screen = ui.screenSize()
+    return util.vector2(math.floor(screen.x / 2 - C.PANEL_WIDTH / 2), math.floor(screen.y * 0.06))
+end
+
+local function savePanelPosition(position)
+    pcall(function()
+        panelSection:set("investPanelPosition", { x = position.x, y = position.y })
+    end)
+end
 
 local function debugPrint(message)
     if debugLogging then
@@ -114,14 +145,10 @@ local function buildPanel(status)
     local npc = state.merchant
     local disposition = merchantDisposition(npc)
     local invested = tonumber(status and status.amount) or 0
-    local maximum = tonumber(status and status.maxAmount) or C.INVEST_AMOUNT
+    local maximum = tonumber(status and status.maxAmount) or C.INVEST_AMOUNT * 5
     local slotsLeft = tonumber(status and status.slotsLeft) or 0
     local gold = playerGold()
 
-    local lines = {
-        string.format("%s  (disposition %d)", merchantName(npc), disposition),
-        string.format("Invested: %d / %d", invested, maximum),
-    }
     local canInvest = disposition >= C.INVEST_MIN_DISPOSITION and invested < maximum
         and gold >= C.INVEST_AMOUNT and (invested > 0 or slotsLeft > 0)
     local reason = nil
@@ -135,26 +162,34 @@ local function buildPanel(status)
         reason = string.format("Needs %d gold", C.INVEST_AMOUNT)
     end
 
-    local content = {}
-    for _, line in ipairs(lines) do
-        content[#content + 1] = {
+    -- Every row is a fixed-size box so nothing depends on text auto-sizing,
+    -- which is what left the first version clipped.
+    local rowWidth = C.PANEL_WIDTH - 24
+    local function row(text, template)
+        return {
             type = ui.TYPE.Text,
-            template = templates.textNormal,
-            props = { text = line, textSize = 16 },
+            template = template or templates.textNormal,
+            props = {
+                text = text,
+                textSize = 16,
+                autoSize = false,
+                size = util.vector2(rowWidth, C.PANEL_ROW_HEIGHT),
+            },
         }
     end
+    local rows = {
+        row("Investments", templates.textHeader or templates.textNormal),
+        row(string.format("%s  (disposition %d)", merchantName(npc), disposition)),
+        row(string.format("Invested: %d / %d", invested, maximum)),
+    }
     if reason ~= nil then
-        content[#content + 1] = {
-            type = ui.TYPE.Text,
-            template = templates.textDisabled or templates.textNormal,
-            props = { text = reason, textSize = 16 },
-        }
+        rows[#rows + 1] = row(reason, templates.textDisabled or templates.textNormal)
     end
     if canInvest then
-        content[#content + 1] = {
+        rows[#rows + 1] = {
             type = ui.TYPE.Container,
             template = templates.boxButton or templates.boxTransparentThick,
-            props = { size = util.vector2(180, 28) },
+            props = { size = util.vector2(rowWidth, C.PANEL_BUTTON_HEIGHT) },
             content = ui.content {
                 {
                     type = ui.TYPE.Text,
@@ -162,8 +197,10 @@ local function buildPanel(status)
                     props = {
                         text = string.format("Invest %d gold", C.INVEST_AMOUNT),
                         textSize = 16,
-                        anchor = util.vector2(0.5, 0.5),
-                        relativePosition = util.vector2(0.5, 0.5),
+                        autoSize = false,
+                        size = util.vector2(rowWidth, C.PANEL_BUTTON_HEIGHT),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Center,
                     },
                 },
             },
@@ -176,20 +213,61 @@ local function buildPanel(status)
             },
         }
     end
+    local height = 0
+    for _, entry in ipairs(rows) do
+        height = height + entry.props.size.y
+    end
 
+    if state.panelPosition == nil then
+        state.panelPosition = loadPanelPosition()
+    end
+
+    -- The whole panel is the drag handle, like the framework's tree pane:
+    -- press records where the cursor sits inside it, move follows, release
+    -- lets go and remembers where it ended up.
     return {
         layer = "Windows",
         type = ui.TYPE.Container,
         template = templates.boxTransparentThick or templates.boxTransparent,
         props = {
-            anchor = util.vector2(0.5, 0),
-            relativePosition = util.vector2(0.5, 0.06),
+            position = state.panelPosition,
+        },
+        events = {
+            mousePress = async:callback(function(mouseEvent)
+                if mouseEvent.button ~= 1 then return end
+                state.dragging = true
+                state.dragOffset = mouseEvent.position - state.panelPosition
+            end),
+            mouseMove = async:callback(function(mouseEvent)
+                if not state.dragging or state.dragOffset == nil or state.panel == nil then return end
+                state.panelPosition = mouseEvent.position - state.dragOffset
+                pcall(function()
+                    state.panel.layout.props.position = state.panelPosition
+                    state.panel:update()
+                end)
+            end),
+            mouseRelease = async:callback(function(mouseEvent)
+                if mouseEvent.button ~= 1 or not state.dragging then return end
+                state.dragging = false
+                state.dragOffset = nil
+                savePanelPosition(state.panelPosition)
+            end),
         },
         content = ui.content {
             {
                 type = ui.TYPE.Flex,
-                props = { horizontal = false, autoSize = true },
-                content = ui.content(content),
+                props = {
+                    horizontal = false,
+                    autoSize = false,
+                    size = util.vector2(rowWidth, height),
+                    position = util.vector2(12, 8),
+                },
+                content = ui.content(rows),
+            },
+            -- Spacer so the container pads below the last row.
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(C.PANEL_WIDTH, height + 16) },
             },
         },
     }
@@ -258,11 +336,15 @@ local function onMerchantStatus(data)
     local paid = tonumber(data.paid) or 0
     if paid > 0 then
         ui.showMessage(string.format("%s pays you %d gold in dividends.", merchantName(state.merchant), paid))
-        -- Income is trade: award the skill use the collection represents.
+        -- Income is trade: the collection counts as several successful
+        -- barters' worth of skill use.
         local progression = interfaces.SkillProgression
         local useTypes = progression ~= nil and progression.SKILL_USE_TYPES or nil
         if progression ~= nil and type(progression.skillUsed) == "function" and useTypes ~= nil then
-            pcall(progression.skillUsed, "mercantile", { useType = useTypes.Mercantile_Success })
+            pcall(progression.skillUsed, "mercantile", {
+                useType = useTypes.Mercantile_Success,
+                scale = C.DIVIDEND_SKILL_SCALE,
+            })
         end
     end
     if data.invested == true then
@@ -349,6 +431,9 @@ __basepack_subsystem_result = {
             state.pollTimer = C.POLL_INTERVAL
             state.merchant = nil
             state.status = nil
+            state.dragging = false
+            state.dragOffset = nil
+            state.panelPosition = nil
             destroyPanel()
             ensureSkillUsedHandler()
         end,

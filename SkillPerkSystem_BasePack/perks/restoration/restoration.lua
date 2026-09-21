@@ -72,7 +72,7 @@ return {
             x = 220,
             y = 280,
             title = "Bulwark of Faith",
-            description = "While taking fire damage under a Fire Shield, restore 2 health per second; frost under a Frost Shield, 5 fatigue per second; shock under a Lightning Shield, 2 health and 2 fatigue per second.",
+            description = "While taking fire damage under Resist Fire, restore 2 health per second; frost under Resist Frost, 5 fatigue per second; shock under Resist Shock, 2 health and 2 fatigue per second.",
         },
         {
             id = "restoration_righteous_strike",

@@ -12,6 +12,7 @@ local mysticism = {}
 local alteration = {}
 local enchant = {}
 local illusion = {}
+local restoration = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -1741,6 +1742,62 @@ end
 illusion.hasActiveState = function()
     return type(illusionPlayerId) == "string" and illusionPlayerId ~= ""
         and (blind or sound or fear or helpless)
+end
+
+end
+
+-- 2h. restoration target state/effects
+do
+local core = require("openmw.core")
+local selfObj = require("openmw.self")
+
+local restorationPlayerId = nil
+local righteous = false
+local RIGHTEOUS_MULTIPLIER = 1.2
+
+local function setRestorationState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    restorationPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    righteous = data.righteous == true
+end
+
+-- Righteous Strike: the player's hits land harder while Fortify Attack is up.
+restoration.onHit = function(attack)
+    if not righteous or type(attack) ~= "table" or attack.successful == false then
+        return
+    end
+    local attacker = attack.attacker
+    if attacker == nil or attacker.id ~= restorationPlayerId or type(attack.damage) ~= "table" then
+        return
+    end
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * RIGHTEOUS_MULTIPLIER
+end
+
+restoration.eventHandlers = {
+    SkillPerkSystem_BasePack_Restoration_RiderRefresh = setRestorationState,
+}
+
+local function requestRiderState()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Restoration_RequestState", { target = selfObj })
+end
+
+restoration.engineHandlers = {
+    onInit = function(initData)
+        setRestorationState(initData)
+        requestRiderState()
+    end,
+    onLoad = function(_, initData)
+        setRestorationState(initData)
+        requestRiderState()
+    end,
+}
+
+-- Event-only: hasActiveState keeps the script attached while the bonus is
+-- live, but there is no per-target update work.
+restoration.hasActiveState = function()
+    return type(restorationPlayerId) == "string" and restorationPlayerId ~= "" and righteous
 end
 
 end
@@ -4240,6 +4297,7 @@ copyEventHandlers(mysticism.eventHandlers)
 copyEventHandlers(alteration.eventHandlers)
 copyEventHandlers(enchant.eventHandlers)
 copyEventHandlers(illusion.eventHandlers)
+copyEventHandlers(restoration.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -4256,6 +4314,7 @@ local function combinedOnHit(attack)
     handToHand.onHit(attack)
     enchant.onHit(attack)
     illusion.onHit(attack)
+    restoration.onHit(attack)
     axe.onHit(attack)
     spear.onHit(attack)
     blunt.onHit(attack)
@@ -4290,6 +4349,7 @@ local function hasAnyActiveTargetState()
         or subsystemHasActiveState(alteration)
         or subsystemHasActiveState(enchant)
         or subsystemHasActiveState(illusion)
+        or subsystemHasActiveState(restoration)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -4326,6 +4386,7 @@ return {
             callEngineHandler(alteration, "onInit", initData)
             callEngineHandler(enchant, "onInit", initData)
             callEngineHandler(illusion, "onInit", initData)
+            callEngineHandler(restoration, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -4352,6 +4413,7 @@ return {
             callEngineHandler(alteration, "onLoad", nil, initData)
             callEngineHandler(enchant, "onLoad", nil, initData)
             callEngineHandler(illusion, "onLoad", nil, initData)
+            callEngineHandler(restoration, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)

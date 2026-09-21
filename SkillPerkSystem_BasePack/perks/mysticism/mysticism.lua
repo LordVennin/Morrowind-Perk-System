@@ -60,7 +60,7 @@ return {
             x = -220,
             y = 280,
             title = "Soul Siphon",
-            description = "Slaying a foe held by your Soultrap tears loose a rush of power, restoring magicka scaled with your Mysticism.",
+            description = "Slaying a foe held by your Soultrap tears loose a rush of power, restoring 6 magicka for every level the foe had.",
         },
         {
             id = "mysticism_omniscience",

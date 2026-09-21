@@ -3816,9 +3816,8 @@ end
 
 -- ---- Soul Siphon ----------------------------------------------------------
 --
--- The dying target verified its own trap; this side only checks the caster
--- still matches and forwards the payout to the player script, which knows
--- the player's Mysticism.
+-- The dying target verified its own trap and reported its level; this side
+-- only checks the caster still matches and forwards it to the player script.
 local function onSoulSiphon(data)
     if type(data) ~= "table" or not riderState.soulSiphon then
         return
@@ -3827,10 +3826,10 @@ local function onSoulSiphon(data)
     if player == nil or player.id ~= riderState.playerId then
         return
     end
-    mystLog("soul siphon reported by " .. tostring(type(data.target) == "userdata"
-        and data.target.recordId or data.targetRecordId))
+    local level = math.max(1, math.floor(tonumber(data.level) or 1))
+    mystLog("soul siphon reported by " .. tostring(data.targetRecordId) .. " at level " .. level)
     if type(player.sendEvent) == "function" then
-        player:sendEvent("SkillPerkSystem_BasePack_Mysticism_SoulSiphon", {})
+        player:sendEvent("SkillPerkSystem_BasePack_Mysticism_SoulSiphon", { level = level })
     end
 end
 

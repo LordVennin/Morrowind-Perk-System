@@ -1143,10 +1143,19 @@ mysticism.engineHandlers.onUpdate = function(dt)
             if not isAliveNow() then
                 siphoned = true
                 trappedSeconds = 0
-                debugPrint("trapped soul taken on " .. tostring(selfObj.recordId))
+                -- The payout scales with what was killed, not with the
+                -- caster: a soul is worth its level, so trapping fodder
+                -- pays little and trapping something dangerous pays well.
+                local okLevel, level = pcall(function()
+                    return types.Actor.stats.level(selfObj).current
+                end)
+                level = okLevel and math.floor(tonumber(level) or 1) or 1
+                debugPrint("trapped soul taken on " .. tostring(selfObj.recordId)
+                    .. " (level " .. level .. ")")
                 core.sendGlobalEvent("SkillPerkSystem_BasePack_Mysticism_SoulSiphon", {
                     target = selfObj,
                     targetRecordId = selfObj.recordId,
+                    level = level,
                 })
             end
         end

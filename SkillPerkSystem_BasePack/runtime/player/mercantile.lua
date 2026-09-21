@@ -165,7 +165,7 @@ local function buildPanel(status)
     -- Every row is a fixed-size box so nothing depends on text auto-sizing,
     -- which is what left the first version clipped.
     local rowWidth = C.PANEL_WIDTH - 24
-    local function row(text, template)
+    local function row(text, template, events)
         return {
             type = ui.TYPE.Text,
             template = template or templates.textNormal,
@@ -175,10 +175,37 @@ local function buildPanel(status)
                 autoSize = false,
                 size = util.vector2(rowWidth, C.PANEL_ROW_HEIGHT),
             },
+            events = events,
         }
     end
+
+    -- The title row is the drag handle, and only the title row: with the
+    -- whole panel as the handle, a press on the button also began a drag,
+    -- the panel shifted under the cursor, and the release never reached the
+    -- button.
+    local dragEvents = {
+        mousePress = async:callback(function(mouseEvent)
+            if mouseEvent.button ~= 1 then return end
+            state.dragging = true
+            state.dragOffset = mouseEvent.position - state.panelPosition
+        end),
+        mouseMove = async:callback(function(mouseEvent)
+            if not state.dragging or state.dragOffset == nil or state.panel == nil then return end
+            state.panelPosition = mouseEvent.position - state.dragOffset
+            pcall(function()
+                state.panel.layout.props.position = state.panelPosition
+                state.panel:update()
+            end)
+        end),
+        mouseRelease = async:callback(function(mouseEvent)
+            if mouseEvent.button ~= 1 or not state.dragging then return end
+            state.dragging = false
+            state.dragOffset = nil
+            savePanelPosition(state.panelPosition)
+        end),
+    }
     local rows = {
-        row("Investments", templates.textHeader or templates.textNormal),
+        row("Investments  (drag here)", templates.textHeader or templates.textNormal, dragEvents),
         row(string.format("%s  (disposition %d)", merchantName(npc), disposition)),
         row(string.format("Invested: %d / %d", invested, maximum)),
     }
@@ -205,10 +232,9 @@ local function buildPanel(status)
                 },
             },
             events = {
-                mouseRelease = async:callback(function(mouseEvent)
-                    if mouseEvent.button == 1 then
-                        requestInvest()
-                    end
+                mouseClick = async:callback(function()
+                    debugPrint("invest button clicked")
+                    requestInvest()
                 end),
             },
         }
@@ -222,36 +248,12 @@ local function buildPanel(status)
         state.panelPosition = loadPanelPosition()
     end
 
-    -- The whole panel is the drag handle, like the framework's tree pane:
-    -- press records where the cursor sits inside it, move follows, release
-    -- lets go and remembers where it ended up.
     return {
         layer = "Windows",
         type = ui.TYPE.Container,
         template = templates.boxTransparentThick or templates.boxTransparent,
         props = {
             position = state.panelPosition,
-        },
-        events = {
-            mousePress = async:callback(function(mouseEvent)
-                if mouseEvent.button ~= 1 then return end
-                state.dragging = true
-                state.dragOffset = mouseEvent.position - state.panelPosition
-            end),
-            mouseMove = async:callback(function(mouseEvent)
-                if not state.dragging or state.dragOffset == nil or state.panel == nil then return end
-                state.panelPosition = mouseEvent.position - state.dragOffset
-                pcall(function()
-                    state.panel.layout.props.position = state.panelPosition
-                    state.panel:update()
-                end)
-            end),
-            mouseRelease = async:callback(function(mouseEvent)
-                if mouseEvent.button ~= 1 or not state.dragging then return end
-                state.dragging = false
-                state.dragOffset = nil
-                savePanelPosition(state.panelPosition)
-            end),
         },
         content = ui.content {
             {

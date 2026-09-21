@@ -15,6 +15,7 @@ local pself = require("openmw.self")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
 local util = require("openmw.util")
+local async = require("openmw.async")
 local storage = require("openmw.storage")
 local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
@@ -88,6 +89,9 @@ local state = {
     lastHealth = nil,
     bar = nil,
     barTexture = nil,
+    barUnlocked = false,
+    barDragging = false,
+    barDragOffset = nil,
     hudSettingsRegistered = false,
 }
 
@@ -126,6 +130,13 @@ local function ensureHudSettings()
                 renderer = "number",
                 argument = { integer = true, min = -4000, max = 4000 },
             },
+            {
+                key = "overhealBarUnlocked",
+                name = "overhealBarUnlockName",
+                description = "overhealBarUnlockDescription",
+                default = false,
+                renderer = "checkbox",
+            },
         },
     })
     if ok then
@@ -139,6 +150,17 @@ local function barOffset()
     local x = tonumber(hudSettings:get("overhealBarX")) or C.OVERFLOW_BAR_OFFSET_X
     local y = tonumber(hudSettings:get("overhealBarY")) or C.OVERFLOW_BAR_OFFSET_Y
     return util.vector2(x, y)
+end
+
+local function saveBarOffset(offset)
+    pcall(function()
+        hudSettings:set("overhealBarX", math.floor(offset.x))
+        hudSettings:set("overhealBarY", math.floor(offset.y))
+    end)
+end
+
+local function barUnlocked()
+    return hudSettings:get("overhealBarUnlocked") == true
 end
 
 local function debugPrint(message)
@@ -217,14 +239,55 @@ local function destroyBar()
     end
 end
 
+-- While the bar is unlocked in settings it is drawn full width on the
+-- window layer -- where the cursor exists -- and can be dragged into place
+-- with any menu open; where it is dropped is written back to the offset
+-- settings. Locked, it is the HUD bar sized to the pool.
+local function barDragEvents()
+    return {
+        mousePress = async:callback(function(mouseEvent)
+            if mouseEvent.button ~= 1 then return end
+            local screen = ui.screenSize()
+            local offset = barOffset()
+            local absolute = util.vector2(offset.x, screen.y + offset.y)
+            state.barDragging = true
+            state.barDragOffset = mouseEvent.position - absolute
+        end),
+        mouseMove = async:callback(function(mouseEvent)
+            if not state.barDragging or state.barDragOffset == nil or state.bar == nil then return end
+            local screen = ui.screenSize()
+            local absolute = mouseEvent.position - state.barDragOffset
+            local offset = util.vector2(absolute.x, absolute.y - screen.y)
+            saveBarOffset(offset)
+            pcall(function()
+                state.bar.layout.props.position = offset
+                state.bar:update()
+            end)
+        end),
+        mouseRelease = async:callback(function(mouseEvent)
+            if mouseEvent.button ~= 1 then return end
+            state.barDragging = false
+            state.barDragOffset = nil
+        end),
+    }
+end
+
 local function updateBar()
+    local unlocked = barUnlocked()
     local _, _, maximum = healthNumbers()
-    if state.overheal <= 0 or maximum <= 0 then
+    if unlocked ~= state.barUnlocked then
+        -- The layer changes with the mode, so the element is rebuilt.
+        destroyBar()
+        state.barUnlocked = unlocked
+    end
+    if not unlocked and (state.overheal <= 0 or maximum <= 0) then
         destroyBar()
         return
     end
-    local fraction = math.min(1, state.overheal / maximum)
-    local width = math.max(1, math.floor(C.OVERFLOW_BAR_WIDTH * fraction))
+    local width = C.OVERFLOW_BAR_WIDTH
+    if not unlocked then
+        width = math.max(1, math.floor(C.OVERFLOW_BAR_WIDTH * math.min(1, state.overheal / maximum)))
+    end
     if state.bar == nil then
         if state.barTexture == nil then
             local ok, texture = pcall(ui.texture, { path = "white" })
@@ -234,22 +297,26 @@ local function updateBar()
             state.barTexture = texture
         end
         local ok, element = pcall(ui.create, {
-            layer = "HUD",
+            layer = unlocked and "Windows" or "HUD",
             type = ui.TYPE.Image,
             props = {
                 resource = state.barTexture,
-                color = util.color.rgb(0.45, 0.05, 0.05),
+                color = unlocked and util.color.rgb(0.8, 0.15, 0.15) or util.color.rgb(0.45, 0.05, 0.05),
                 anchor = util.vector2(0, 1),
                 relativePosition = util.vector2(0, 1),
                 position = barOffset(),
                 size = util.vector2(width, C.OVERFLOW_BAR_HEIGHT),
             },
+            events = unlocked and barDragEvents() or nil,
         })
         if not ok then
             print(LOG_TAG .. " could not draw the overheal bar: " .. tostring(element))
             return
         end
         state.bar = element
+        return
+    end
+    if state.barDragging then
         return
     end
     pcall(function()
@@ -508,6 +575,9 @@ local function refresh()
     ensureSkillUsedHandler()
     ensureHitHandler()
     ensureHudSettings()
+    if barUnlocked() or state.barUnlocked then
+        updateBar()
+    end
     publishReservoir()
     publishRiders()
     tickBulwark()

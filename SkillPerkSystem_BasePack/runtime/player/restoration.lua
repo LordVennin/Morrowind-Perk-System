@@ -131,6 +131,14 @@ local function ensureHudSettings()
                 argument = { integer = true, min = -4000, max = 4000 },
             },
             {
+                key = "overhealBarScale",
+                name = "overhealBarScaleName",
+                description = "overhealBarScaleDescription",
+                default = 1,
+                renderer = "number",
+                argument = { min = 0.25, max = 10 },
+            },
+            {
                 key = "overhealBarUnlocked",
                 name = "overhealBarUnlockName",
                 description = "overhealBarUnlockDescription",
@@ -161,6 +169,12 @@ end
 
 local function barUnlocked()
     return hudSettings:get("overhealBarUnlocked") == true
+end
+
+-- Full length of the bar in pixels, after the scale setting.
+local function barFullWidth()
+    local scale = tonumber(hudSettings:get("overhealBarScale")) or 1
+    return math.max(4, math.floor(C.OVERFLOW_BAR_WIDTH * scale))
 end
 
 local function debugPrint(message)
@@ -284,9 +298,9 @@ local function updateBar()
         destroyBar()
         return
     end
-    local width = C.OVERFLOW_BAR_WIDTH
+    local width = barFullWidth()
     if not unlocked then
-        width = math.max(1, math.floor(C.OVERFLOW_BAR_WIDTH * math.min(1, state.overheal / maximum)))
+        width = math.max(1, math.floor(width * math.min(1, state.overheal / maximum)))
     end
     if state.bar == nil then
         if state.barTexture == nil then

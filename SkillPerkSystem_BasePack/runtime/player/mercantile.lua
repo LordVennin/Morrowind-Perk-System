@@ -126,15 +126,34 @@ local function destroyPanel()
     end
 end
 
+local lastInvestRequest = 0
+
 local function requestInvest()
     if state.merchant == nil then
         return
     end
+    -- click and release can both report the same press; one request per
+    -- press is enough.
+    local now = core.getRealTime()
+    if now - lastInvestRequest < 0.3 then
+        return
+    end
+    lastInvestRequest = now
     core.sendGlobalEvent("SkillPerkSystem_BasePack_Mercantile_Invest", {
         player = pself,
         npc = state.merchant,
         tradePrince = enabled(C.TRADE_PRINCE),
     })
+end
+
+local panelTexture = nil
+
+local function whiteTexture()
+    if panelTexture == nil then
+        local ok, texture = pcall(ui.texture, { path = "white" })
+        if ok then panelTexture = texture end
+    end
+    return panelTexture
 end
 
 local function buildPanel(status)
@@ -162,28 +181,85 @@ local function buildPanel(status)
         reason = string.format("Needs %d gold", C.INVEST_AMOUNT)
     end
 
-    -- Every row is a fixed-size box so nothing depends on text auto-sizing,
-    -- which is what left the first version clipped.
-    local rowWidth = C.PANEL_WIDTH - 24
-    local function row(text, template, events)
-        return {
+    if state.panelPosition == nil then
+        state.panelPosition = loadPanelPosition()
+    end
+
+    -- Text widgets neither raise mouse events nor pass them on, so the two
+    -- interactive spots -- the drag handle over the title and the invest
+    -- button -- are transparent Image widgets laid over the text. Image is
+    -- the widget type the overheal bar proved drags and clicks correctly.
+    -- Everything is placed at explicit positions inside the container.
+    local padX, padY = 12, 8
+    local rowWidth = C.PANEL_WIDTH - padX * 2
+    local y = padY
+    local content = {}
+    local function textRow(text, template)
+        content[#content + 1] = {
             type = ui.TYPE.Text,
             template = template or templates.textNormal,
             props = {
                 text = text,
                 textSize = 16,
                 autoSize = false,
+                position = util.vector2(padX, y),
                 size = util.vector2(rowWidth, C.PANEL_ROW_HEIGHT),
+            },
+        }
+        local top = y
+        y = y + C.PANEL_ROW_HEIGHT
+        return top
+    end
+    local function overlay(top, height, events)
+        content[#content + 1] = {
+            type = ui.TYPE.Image,
+            props = {
+                resource = whiteTexture(),
+                alpha = 0,
+                position = util.vector2(padX, top),
+                size = util.vector2(rowWidth, height),
             },
             events = events,
         }
     end
 
-    -- The title row is the drag handle, and only the title row: with the
-    -- whole panel as the handle, a press on the button also began a drag,
-    -- the panel shifted under the cursor, and the release never reached the
-    -- button.
-    local dragEvents = {
+    local titleTop = textRow("Investments  (drag here)", templates.textHeader or templates.textNormal)
+    textRow(string.format("%s  (disposition %d)", merchantName(npc), disposition))
+    textRow(string.format("Invested: %d / %d", invested, maximum))
+    if reason ~= nil then
+        textRow(reason, templates.textDisabled or templates.textNormal)
+    end
+    local buttonTop = nil
+    if canInvest then
+        buttonTop = y
+        content[#content + 1] = {
+            type = ui.TYPE.Container,
+            template = templates.boxButton or templates.boxTransparentThick,
+            props = {
+                position = util.vector2(padX, y),
+                size = util.vector2(rowWidth, C.PANEL_BUTTON_HEIGHT),
+            },
+            content = ui.content {
+                {
+                    type = ui.TYPE.Text,
+                    template = templates.textNormal,
+                    props = {
+                        text = string.format("Invest %d gold", C.INVEST_AMOUNT),
+                        textSize = 16,
+                        autoSize = false,
+                        size = util.vector2(rowWidth, C.PANEL_BUTTON_HEIGHT),
+                        textAlignH = ui.ALIGNMENT.Center,
+                        textAlignV = ui.ALIGNMENT.Center,
+                    },
+                },
+            },
+        }
+        y = y + C.PANEL_BUTTON_HEIGHT
+    end
+    local height = y + padY
+
+    -- Overlays go last so they sit above the text and the button box.
+    overlay(titleTop, C.PANEL_ROW_HEIGHT, {
         mousePress = async:callback(function(mouseEvent)
             if mouseEvent.button ~= 1 then return end
             state.dragging = true
@@ -203,49 +279,21 @@ local function buildPanel(status)
             state.dragOffset = nil
             savePanelPosition(state.panelPosition)
         end),
-    }
-    local rows = {
-        row("Investments  (drag here)", templates.textHeader or templates.textNormal, dragEvents),
-        row(string.format("%s  (disposition %d)", merchantName(npc), disposition)),
-        row(string.format("Invested: %d / %d", invested, maximum)),
-    }
-    if reason ~= nil then
-        rows[#rows + 1] = row(reason, templates.textDisabled or templates.textNormal)
-    end
-    if canInvest then
-        rows[#rows + 1] = {
-            type = ui.TYPE.Container,
-            template = templates.boxButton or templates.boxTransparentThick,
-            props = { size = util.vector2(rowWidth, C.PANEL_BUTTON_HEIGHT) },
-            content = ui.content {
-                {
-                    type = ui.TYPE.Text,
-                    template = templates.textNormal,
-                    props = {
-                        text = string.format("Invest %d gold", C.INVEST_AMOUNT),
-                        textSize = 16,
-                        autoSize = false,
-                        size = util.vector2(rowWidth, C.PANEL_BUTTON_HEIGHT),
-                        textAlignH = ui.ALIGNMENT.Center,
-                        textAlignV = ui.ALIGNMENT.Center,
-                    },
-                },
-            },
-            events = {
-                mouseClick = async:callback(function()
-                    debugPrint("invest button clicked")
+    })
+    if buttonTop ~= nil then
+        overlay(buttonTop, C.PANEL_BUTTON_HEIGHT, {
+            mouseClick = async:callback(function()
+                debugPrint("invest button clicked")
+                requestInvest()
+            end),
+            mouseRelease = async:callback(function(mouseEvent)
+                -- Belt and braces: some builds report release without click.
+                if mouseEvent.button == 1 and not state.dragging then
+                    debugPrint("invest button released")
                     requestInvest()
-                end),
-            },
-        }
-    end
-    local height = 0
-    for _, entry in ipairs(rows) do
-        height = height + entry.props.size.y
-    end
-
-    if state.panelPosition == nil then
-        state.panelPosition = loadPanelPosition()
+                end
+            end),
+        })
     end
 
     return {
@@ -257,19 +305,9 @@ local function buildPanel(status)
         },
         content = ui.content {
             {
-                type = ui.TYPE.Flex,
-                props = {
-                    horizontal = false,
-                    autoSize = false,
-                    size = util.vector2(rowWidth, height),
-                    position = util.vector2(12, 8),
-                },
-                content = ui.content(rows),
-            },
-            -- Spacer so the container pads below the last row.
-            {
                 type = ui.TYPE.Widget,
-                props = { size = util.vector2(C.PANEL_WIDTH, height + 16) },
+                props = { size = util.vector2(C.PANEL_WIDTH, height) },
+                content = ui.content(content),
             },
         },
     }

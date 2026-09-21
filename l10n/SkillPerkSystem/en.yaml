@@ -37,4 +37,6 @@ overhealBarXDescription: "Horizontal offset of the Overflow overheal bar, in pix
 overhealBarYName: "Overheal Bar Y"
 overhealBarYDescription: "Vertical offset of the Overflow overheal bar, in pixels from the bottom edge of the screen (negative moves it up)."
 overhealBarUnlockName: "Unlock Overheal Bar"
-overhealBarUnlockDescription: "While ticked, a sample overheal bar is always shown and can be dragged with any menu open (the inventory works well). Drop it over your health bar, then untick."
+overhealBarUnlockDescription: "While ticked, a sample overheal bar is always shown. Open the inventory so the mouse cursor appears, drag the bar with the mouse to where it should render (over your health bar), then untick."
+overhealBarScaleName: "Overheal Bar Scale"
+overhealBarScaleDescription: "Length multiplier for the overheal bar. 1 matches the default health bar width (65 pixels); 2 doubles it."

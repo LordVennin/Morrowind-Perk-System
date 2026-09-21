@@ -4056,6 +4056,356 @@ subsystems.skill_base = {
 
 end
 
+-- 5g. alteration global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Alteration][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local altDebug = false
+
+local function altLog(message)
+    if altDebug then
+        log(message)
+    end
+end
+
+local function altEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+-- ---- Tuning ---------------------------------------------------------------
+-- Burden riders scale with the burden's own magnitude.
+local CRUSHING_FRACTION = 0.5
+local CRUSHING_MIN, CRUSHING_MAX = 5, 40
+local GRINDING_DIVISOR = 10
+-- Ward riders: elemental retaliation is a third of the shield, floored at 5.
+local RETALIATE_FRACTION = 1 / 3
+local RETALIATE_MIN = 5
+local AEGIS_WEAKNESS, AEGIS_SECONDS = 25, 6
+local BASTION_SLOW, BASTION_SECONDS = 15, 5
+
+local ELEMENT_RIDERS = {
+    fire = { damage = "FireDamage", damageFallback = "firedamage",
+        weakness = "WeaknessToFire", weaknessFallback = "weaknesstofire" },
+    frost = { damage = "FrostDamage", damageFallback = "frostdamage",
+        weakness = "WeaknessToFrost", weaknessFallback = "weaknesstofrost" },
+    shock = { damage = "ShockDamage", damageFallback = "shockdamage",
+        weakness = "WeaknessToShock", weaknessFallback = "weaknesstoshock" },
+}
+
+-- ---- Rider state, shared with the actor-target script --------------------
+local riderState = {
+    playerId = nil,
+    crushingBurden = false,
+    grindingWeight = false,
+}
+
+local function ridersActive()
+    return type(riderState.playerId) == "string" and riderState.playerId ~= ""
+        and (riderState.crushingBurden or riderState.grindingWeight)
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BasePack_Alteration_RiderRefresh", {
+            playerId = riderState.playerId,
+            crushingBurden = riderState.crushingBurden,
+            grindingWeight = riderState.grindingWeight,
+            debugLogging = altDebug,
+        })
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("alteration", ridersActive())
+end
+
+local function onSetRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    riderState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        crushingBurden = data.crushingBurden == true,
+        grindingWeight = data.grindingWeight == true,
+    }
+    refreshWatchers()
+    altLog("riders active=" .. tostring(ridersActive()))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["alteration"])
+end
+
+registerTargetWatcherProvider("alteration", {
+    isActive = ridersActive,
+    sendState = sendState,
+})
+
+-- ---- Rider records ------------------------------------------------------
+--
+-- Cached by shape and persisted. Each rider kind also keeps the set of every
+-- record it has ever minted, which is what lets a fresh application of that
+-- kind strip the previous one off the same actor: stackable=false only
+-- replaces an instance of the *same* record, and a different magnitude is a
+-- different record.
+local riderRecords = {}
+local kindRecords = {
+    crushing = {}, grinding = {}, bastion = {}, aegis = {}, stride = {}, tidal = {},
+}
+
+local function riderRecord(name, effectName, effectFallback, magnitude, duration, affectedSkill, affectedAttribute)
+    magnitude = math.max(1, math.floor(tonumber(magnitude) or 0))
+    duration = math.max(1, math.floor(tonumber(duration) or 0))
+    local key = table.concat({
+        effectName, magnitude, duration,
+        tostring(affectedSkill or ""), tostring(affectedAttribute or ""),
+    }, "|")
+    local cached = riderRecords[key]
+    if cached ~= nil then
+        return cached
+    end
+    local effect = {
+        id = altEffectId(effectName, effectFallback),
+        magnitudeMin = magnitude, magnitudeMax = magnitude,
+        duration = duration, area = 0, range = core.magic.RANGE.Target,
+    }
+    if affectedSkill ~= nil then effect.affectedSkill = affectedSkill end
+    if affectedAttribute ~= nil then effect.affectedAttribute = affectedAttribute end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = name,
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { effect },
+    })
+    if not okDraft or draft == nil then
+        log("rider draft failed (" .. key .. "): " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("rider record creation failed (" .. key .. "): " .. tostring(record))
+        return nil
+    end
+    riderRecords[key] = record.id
+    return record.id
+end
+
+local function applyRider(target, caster, recordId, stackable)
+    if recordId == nil or target == nil then
+        return
+    end
+    if type(target.isValid) == "function" and not target:isValid() then
+        return
+    end
+    local ok, err = pcall(function()
+        Actor.activeSpells(target):add({
+            id = recordId,
+            effects = { 0 },
+            caster = caster,
+            stackable = stackable ~= false,
+            ignoreSpellAbsorption = true,
+            ignoreReflect = true,
+            ignoreResistances = false,
+        })
+    end)
+    if not ok then
+        log("rider application failed: " .. tostring(err))
+    end
+end
+
+-- Applies one rider of a kind, stripping that kind's previous instance off
+-- the actor first, so no kind ever stacks on one target.
+local function applyKind(kind, target, caster, recordId)
+    if recordId == nil or target == nil then
+        return
+    end
+    kindRecords[kind][recordId] = true
+    local ok, active = pcall(Actor.activeSpells, target)
+    if ok and active ~= nil then
+        for previousId in pairs(kindRecords[kind]) do
+            pcall(function() active:remove(previousId) end)
+        end
+    end
+    applyRider(target, caster, recordId, false)
+end
+
+-- ---- Burden riders (from the target) ---------------------------------------
+local function onApplyBurden(data)
+    if type(data) ~= "table" then
+        return
+    end
+    local target = data.target
+    local caster = world.players[1]
+    if target == nil or caster == nil or caster.id ~= riderState.playerId then
+        return
+    end
+    local magnitude = tonumber(data.magnitude) or 0
+    local seconds = math.max(1, math.floor(tonumber(data.seconds) or 30))
+    if magnitude <= 0 then
+        return
+    end
+    if riderState.crushingBurden then
+        local slow = math.max(CRUSHING_MIN, math.min(CRUSHING_MAX, math.floor(magnitude * CRUSHING_FRACTION)))
+        applyKind("crushing", target, caster, riderRecord("Crushing Burden", "DrainAttribute", "drainattribute",
+            slow, seconds, nil, "speed"))
+        altLog("crushing burden: speed -" .. slow .. " for " .. seconds .. "s")
+    end
+    if riderState.grindingWeight then
+        local bleed = math.max(1, math.floor(magnitude / GRINDING_DIVISOR))
+        applyKind("grinding", target, caster, riderRecord("Grinding Weight", "DamageFatigue", "damagefatigue",
+            bleed, seconds))
+        altLog("grinding weight: fatigue -" .. bleed .. "/s for " .. seconds .. "s")
+    end
+end
+
+-- ---- Self riders (from the player) -----------------------------------------
+-- Magnitudes arrive already capped by the player side.
+local function onSelfRider(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local acrobatics = math.floor(tonumber(data.acrobatics) or 0)
+    if acrobatics > 0 then
+        applyKind("stride", player, player, riderRecord("Long Stride", "FortifySkill", "fortifyskill",
+            acrobatics, tonumber(data.acrobaticsSeconds) or 10, "acrobatics", nil))
+    end
+    local speed = math.floor(tonumber(data.speed) or 0)
+    if speed > 0 then
+        applyKind("tidal", player, player, riderRecord("Tidal Stride", "FortifyAttribute", "fortifyattribute",
+            speed, tonumber(data.speedSeconds) or 10, nil, "speed"))
+    end
+    altLog("self rider: acrobatics+" .. acrobatics .. " speed+" .. speed)
+end
+
+-- ---- Ward riders (from the player's on-hit handler) -------------------------
+local function onRetaliate(data)
+    local player = type(data) == "table" and data.player or nil
+    local attacker = type(data) == "table" and data.attacker or nil
+    if not validPlayerObject(player) or attacker == nil or attacker == player then
+        return
+    end
+    if type(attacker.isValid) == "function" and not attacker:isValid() then
+        return
+    end
+    local applied = {}
+    for element, rider in pairs(ELEMENT_RIDERS) do
+        local shield = tonumber(data[element]) or 0
+        if shield > 0 then
+            if data.retaliate == true then
+                local damage = math.max(RETALIATE_MIN, math.floor(shield * RETALIATE_FRACTION))
+                -- Every hit taken burns the attacker again, so this one stacks.
+                applyRider(attacker, player, riderRecord("Retaliating Ward", rider.damage, rider.damageFallback,
+                    damage, 1), true)
+                applied[#applied + 1] = element .. " " .. damage
+            end
+            if data.aegis == true then
+                applyKind("aegis", attacker, player, riderRecord("Elemental Aegis", rider.weakness,
+                    rider.weaknessFallback, AEGIS_WEAKNESS, AEGIS_SECONDS))
+                applied[#applied + 1] = "weak to " .. element
+            end
+        end
+    end
+    if data.bastion == true and (tonumber(data.shield) or 0) > 0 then
+        applyKind("bastion", attacker, player, riderRecord("Bastion", "DrainAttribute", "drainattribute",
+            BASTION_SLOW, BASTION_SECONDS, nil, "speed"))
+        applied[#applied + 1] = "slowed"
+    end
+    if #applied > 0 then
+        altLog("retaliation on " .. tostring(attacker.recordId) .. ": " .. table.concat(applied, ", "))
+    end
+end
+
+-- ---- Plumbing ---------------------------------------------------------------
+local function onCastNotice(data)
+    local player = type(data) == "table" and data.player or nil
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    for _, actor in pairs(targetWatcher.attachedTargets) do
+        if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+            actor:sendEvent("SkillPerkSystem_BasePack_Alteration_CastNotice", { spellId = data.spellId })
+        end
+    end
+end
+
+local function onRequestState(data)
+    local target = type(data) == "table" and data.target or nil
+    if target ~= nil then
+        sendState(target)
+    end
+end
+
+local function onSetDebug(data)
+    altDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (altDebug and "ON" or "OFF"))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["alteration"])
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    log("rider caster=" .. tostring(riderState.playerId)
+        .. " crush=" .. tostring(riderState.crushingBurden)
+        .. " grind=" .. tostring(riderState.grindingWeight)
+        .. " verboseLogging=" .. tostring(altDebug))
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["alteration"])
+end
+
+subsystems.alteration = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Alteration_SetRiders = onSetRiders,
+        SkillPerkSystem_BasePack_Alteration_CastNotice = onCastNotice,
+        SkillPerkSystem_BasePack_Alteration_ApplyBurden = onApplyBurden,
+        SkillPerkSystem_BasePack_Alteration_SelfRider = onSelfRider,
+        SkillPerkSystem_BasePack_Alteration_Retaliate = onRetaliate,
+        SkillPerkSystem_BasePack_Alteration_RequestState = onRequestState,
+        SkillPerkSystem_BasePack_Alteration_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Alteration_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { riderRecords = riderRecords, kindRecords = kindRecords }
+        end,
+        onLoad = function(data)
+            riderRecords = {}
+            local saved = type(data) == "table" and data.riderRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" then
+                        riderRecords[key] = recordId
+                    end
+                end
+            end
+            -- Without these a rider minted before the save would survive a
+            -- reload as one the kind sweep can no longer strip.
+            for kind in pairs(kindRecords) do
+                kindRecords[kind] = {}
+            end
+            local savedKinds = type(data) == "table" and data.kindRecords or nil
+            if type(savedKinds) == "table" then
+                for kind, ids in pairs(savedKinds) do
+                    if kindRecords[kind] ~= nil and type(ids) == "table" then
+                        for recordId in pairs(ids) do
+                            if type(recordId) == "string" then kindRecords[kind][recordId] = true end
+                        end
+                    end
+                end
+            end
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -5644,6 +5994,15 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Mysticism_Diagnose = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_Diagnose", data) end,
 
     SkillPerkSystem_BasePack_SkillBase_SetReservoir = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SetReservoir", data) end,
+
+    SkillPerkSystem_BasePack_Alteration_SetRiders = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_SetRiders", data) end,
+    SkillPerkSystem_BasePack_Alteration_CastNotice = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_CastNotice", data) end,
+    SkillPerkSystem_BasePack_Alteration_ApplyBurden = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_ApplyBurden", data) end,
+    SkillPerkSystem_BasePack_Alteration_SelfRider = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_SelfRider", data) end,
+    SkillPerkSystem_BasePack_Alteration_Retaliate = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_Retaliate", data) end,
+    SkillPerkSystem_BasePack_Alteration_RequestState = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_RequestState", data) end,
+    SkillPerkSystem_BasePack_Alteration_SetDebug = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Alteration_Diagnose = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -6553,6 +6912,7 @@ local engineOrder = {
     "destruction",
     "mysticism",
     "skill_base",
+    "alteration",
     "axe",
     "spear",
     "bluntweapon",

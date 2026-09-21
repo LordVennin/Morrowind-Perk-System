@@ -9,6 +9,7 @@ local shortBlade = {}
 local sneakCrit = {}
 local destruction = {}
 local mysticism = {}
+local alteration = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -1165,6 +1166,194 @@ end
 mysticism.hasActiveState = function()
     return type(mysticismPlayerId) == "string" and mysticismPlayerId ~= ""
         and (spellDrinker or soulSiphon)
+end
+
+end
+
+-- 2e. alteration target state/effects
+do
+local core = require("openmw.core")
+local selfObj = require("openmw.self")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Alteration][Target]"
+
+local debugLogging = false
+
+local function debugPrint(message)
+    if debugLogging then
+        print(LOG_TAG .. " " .. message)
+    end
+end
+
+local alterationPlayerId = nil
+local crushingBurden, grindingWeight = false, false
+
+local SCAN_WINDOW_SECONDS = 3.0
+local DEFAULT_BURDEN_SECONDS = 30
+
+local scanWindow = 0
+local expectedSpellIds = {}
+local processedInstances = {}
+local stateLogged = nil
+
+local function setAlterationState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    alterationPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    crushingBurden = data.crushingBurden == true
+    grindingWeight = data.grindingWeight == true
+    if data.debugLogging ~= nil then
+        debugLogging = data.debugLogging == true
+    end
+    local stateKey = table.concat({
+        tostring(alterationPlayerId), tostring(crushingBurden), tostring(grindingWeight),
+    }, ":")
+    if debugLogging and stateKey ~= stateLogged then
+        stateLogged = stateKey
+        debugPrint(string.format("rider state on %s: caster=%s crush=%s grind=%s",
+            tostring(selfObj.recordId), tostring(alterationPlayerId),
+            tostring(crushingBurden), tostring(grindingWeight)))
+    end
+end
+
+local function normalizedEffectId(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    local id = value:lower():gsub("%s+", "")
+    return id
+end
+
+local function effectArray(effects)
+    local list = {}
+    if effects == nil then
+        return list
+    end
+    pcall(function()
+        for _, effect in ipairs(effects) do list[#list + 1] = effect end
+    end)
+    if #list > 0 then
+        return list
+    end
+    pcall(function()
+        for _, effect in pairs(effects) do list[#list + 1] = effect end
+    end)
+    return list
+end
+
+-- A burden landed: report its strength and duration, and the global side
+-- turns that into the slow and the fatigue bleed the perks call for.
+local function classify(effects)
+    local magnitude, seconds = 0, 0
+    for _, effect in ipairs(effectArray(effects)) do
+        if type(effect) == "table" or type(effect) == "userdata" then
+            if normalizedEffectId(effect.id) == "burden" then
+                local strength = math.max(
+                    tonumber(effect.magnitudeMin) or 0, tonumber(effect.magnitudeMax) or 0,
+                    tonumber(effect.minMagnitude) or 0, tonumber(effect.maxMagnitude) or 0)
+                magnitude = math.max(magnitude, strength)
+                seconds = math.max(seconds, math.floor(tonumber(effect.duration) or 0))
+            end
+        end
+    end
+    if magnitude <= 0 then
+        return
+    end
+    if seconds < 1 then seconds = DEFAULT_BURDEN_SECONDS end
+    debugPrint(string.format("burden %d for %ds landed on %s", magnitude, seconds,
+        tostring(selfObj.recordId)))
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Alteration_ApplyBurden", {
+        target = selfObj,
+        magnitude = magnitude,
+        seconds = seconds,
+    })
+end
+
+local function activeInstanceKey(entry)
+    local unique = entry.activeSpellId
+    if unique ~= nil then
+        return tostring(unique)
+    end
+    return normalizedEffectId(entry.id) or "?"
+end
+
+local function scanActiveSpellsForCasts()
+    local ok, active = pcall(types.Actor.activeSpells, selfObj)
+    if not ok or active == nil then
+        return
+    end
+    local present = {}
+    for _, entry in pairs(active) do
+        if type(entry) == "table" or type(entry) == "userdata" then
+            local spellId = normalizedEffectId(entry.id)
+            local key = activeInstanceKey(entry)
+            present[key] = true
+            local casterOk = true
+            local okCaster, entryCaster = pcall(function() return entry.caster end)
+            if okCaster and entryCaster ~= nil and entryCaster.id ~= nil then
+                casterOk = entryCaster.id == alterationPlayerId
+            end
+            if spellId ~= nil and expectedSpellIds[spellId] and casterOk and not processedInstances[key] then
+                processedInstances[key] = true
+                local effects = entry.effects
+                if type(effects) == "table" or type(effects) == "userdata" then
+                    classify(effects)
+                end
+            end
+        end
+    end
+    for key in pairs(processedInstances) do
+        if not present[key] then
+            processedInstances[key] = nil
+        end
+    end
+end
+
+local function onCastNotice(data)
+    if type(data) ~= "table" or type(data.spellId) ~= "string" then
+        return
+    end
+    expectedSpellIds[normalizedEffectId(data.spellId) or ""] = true
+    scanWindow = SCAN_WINDOW_SECONDS
+end
+
+alteration.eventHandlers = {
+    SkillPerkSystem_BasePack_Alteration_RiderRefresh = setAlterationState,
+    SkillPerkSystem_BasePack_Alteration_CastNotice = onCastNotice,
+}
+
+local function requestRiderState()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Alteration_RequestState", { target = selfObj })
+end
+
+alteration.engineHandlers = {
+    onInit = function(initData)
+        setAlterationState(initData)
+        requestRiderState()
+    end,
+    onLoad = function(_, initData)
+        setAlterationState(initData)
+        requestRiderState()
+    end,
+}
+
+-- One comparison per frame unless a cast window is open.
+alteration.engineHandlers.onUpdate = function(dt)
+    if scanWindow <= 0 then
+        return
+    end
+    scanWindow = scanWindow - (tonumber(dt) or 0)
+    scanActiveSpellsForCasts()
+    if scanWindow <= 0 then
+        expectedSpellIds = {}
+    end
+end
+
+alteration.hasActiveState = function()
+    return type(alterationPlayerId) == "string" and alterationPlayerId ~= ""
+        and (crushingBurden or grindingWeight)
 end
 
 end
@@ -3661,6 +3850,7 @@ copyEventHandlers(shortBlade.eventHandlers)
 copyEventHandlers(sneakCrit.eventHandlers)
 copyEventHandlers(destruction.eventHandlers)
 copyEventHandlers(mysticism.eventHandlers)
+copyEventHandlers(alteration.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -3706,6 +3896,7 @@ local function hasAnyActiveTargetState()
         or subsystemHasActiveState(sneakCrit)
         or subsystemHasActiveState(destruction)
         or subsystemHasActiveState(mysticism)
+        or subsystemHasActiveState(alteration)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -3739,6 +3930,7 @@ return {
             callEngineHandler(sneakCrit, "onInit", initData)
             callEngineHandler(destruction, "onInit", initData)
             callEngineHandler(mysticism, "onInit", initData)
+            callEngineHandler(alteration, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -3762,6 +3954,7 @@ return {
             callEngineHandler(sneakCrit, "onLoad", nil, initData)
             callEngineHandler(destruction, "onLoad", nil, initData)
             callEngineHandler(mysticism, "onLoad", nil, initData)
+            callEngineHandler(alteration, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
@@ -3786,6 +3979,7 @@ return {
         onUpdate = function(dt)
             callActiveUpdate(destruction, dt)
             callActiveUpdate(mysticism, dt)
+            callActiveUpdate(alteration, dt)
             callActiveUpdate(shortBlade, dt)
             callActiveUpdate(axe, dt)
             callActiveUpdate(spear, dt)

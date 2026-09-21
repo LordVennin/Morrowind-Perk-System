@@ -50,7 +50,7 @@ return {
             x = 0,
             y = 140,
             title = "Deepened Pact",
-            description = "Every pact you have formed calls a stronger servant for longer: a Bonewalker or a Clannfear, for 120 seconds. A pact formed later is bound at your current mastery.",
+            description = "Your pacts summon a Bonewalker or Clannfear for 120 seconds.",
         },
         {
             id = "conjuration_soul_tether",
@@ -63,7 +63,7 @@ return {
             x = 220,
             y = 140,
             title = "Soul Tether",
-            description = "The channels you have opened hold more power: your maximum magicka is increased by 30.",
+            description = "+30 maximum magicka.",
         },
         {
             id = "conjuration_spectral_ward",
@@ -75,7 +75,7 @@ return {
             x = -220,
             y = 280,
             title = "Spectral Ward",
-            description = "While wearing any piece of bound armor, you are harder to strike (Sanctuary 10).",
+            description = "Sanctuary 10 while wearing bound armor.",
         },
         {
             id = "conjuration_greater_pact",
@@ -87,7 +87,7 @@ return {
             x = 0,
             y = 280,
             title = "Greater Pact",
-            description = "Every pact you have formed calls a mighty servant: a Bonelord or a Dremora, for 180 seconds. A pact formed later is bound at your current mastery.",
+            description = "Your pacts summon a Bonelord or Dremora for 180 seconds.",
         },
         {
             id = "conjuration_soul_reclamation",
@@ -99,7 +99,7 @@ return {
             x = 220,
             y = 280,
             title = "Soul Reclamation",
-            description = "Stay close to a servant you have summoned and it feeds power back to you: while your magicka is below half, recover 1% of your maximum each second.",
+            description = "While below half magicka and near one of your summons, recover 1% of maximum magicka per second.",
         },
         {
             id = "conjuration_grand_conjurer",
@@ -111,7 +111,7 @@ return {
             x = 0,
             y = 420,
             title = "Grand Conjurer",
-            description = "Every Conjuration spell you cast returns a quarter of the magicka it cost you.",
+            description = "Conjuration spells refund a quarter of their cost.",
         },
     },
 }

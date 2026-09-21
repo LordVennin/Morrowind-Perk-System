@@ -12,7 +12,7 @@ return {
             x = -220,
             y = 0,
             title = "Attentive Enchanter",
-            description = "You learn from every enchantment you handle: Enchant skill progress is increased by a quarter.",
+            description = "Enchant skill progress is increased by a quarter.",
         },
         {
             id = "enchant_enchanters_reserve",
@@ -24,7 +24,7 @@ return {
             x = 220,
             y = 0,
             title = "Enchanter's Reserve",
-            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+            description = "+25 maximum magicka.",
         },
         {
             id = "enchant_thrifty_channeling",
@@ -36,7 +36,7 @@ return {
             x = -220,
             y = 140,
             title = "Thrifty Channeling",
-            description = "Casting from an enchanted item returns a quarter of the charge it spent.",
+            description = "Casting from an enchanted item refunds a quarter of the charge spent.",
         },
         {
             id = "enchant_brand_of_the_maker",
@@ -49,7 +49,7 @@ return {
             x = 0,
             y = 140,
             title = "Brand of the Maker",
-            description = "When a strike from your enchanted weapon sets off its enchantment, the target is also left weak to magicka for a few seconds, so what follows bites harder.",
+            description = "Strikes that trigger your weapon's enchantment also apply Weakness to Magicka 20 for 5 seconds. Does not stack.",
         },
         {
             id = "enchant_spare_vessel",
@@ -61,7 +61,19 @@ return {
             x = 220,
             y = 140,
             title = "Spare Vessel",
-            description = "When you recharge an item with a soul gem, half the time the emptied gem is returned to you.",
+            description = "Recharging with a soul gem has a 50% chance to return the gem empty.",
+        },
+        {
+            id = "enchant_practiced_binding",
+            tab = "Enchant",
+            effectId = "demo_noop",
+            minimumSkill = 65,
+            requires = { "enchant_spare_vessel" },
+            cost = 1,
+            x = 220,
+            y = 280,
+            title = "Practiced Binding",
+            description = "+25 Enchant while enchanting an item.",
         },
         {
             id = "enchant_living_enchantment",
@@ -73,7 +85,7 @@ return {
             x = -220,
             y = 280,
             title = "Living Enchantment",
-            description = "Enchanted items you wear or wield regain charge over time: a tenth of your Enchant skill every ten seconds, each.",
+            description = "Equipped enchanted items regain charge equal to a tenth of your Enchant every 10 seconds.",
         },
         {
             id = "enchant_soul_fed_blade",
@@ -85,7 +97,7 @@ return {
             x = 0,
             y = 280,
             title = "Soul-Fed Blade",
-            description = "Slaying a foe with an enchanted weapon feeds the weapon: it regains 6 charge for every level the foe had.",
+            description = "Killing a foe with an enchanted weapon fully recharges all equipped enchanted items.",
         },
     },
 }

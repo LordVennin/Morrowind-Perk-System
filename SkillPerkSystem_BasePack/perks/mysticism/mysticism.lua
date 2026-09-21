@@ -12,7 +12,7 @@ return {
             x = -220,
             y = 0,
             title = "Old Ways Initiate",
-            description = "Every Mysticism spell you cast returns a quarter of the magicka it cost you.",
+            description = "Mysticism spells refund a quarter of their cost.",
         },
         {
             id = "mysticism_deep_wellspring",
@@ -24,7 +24,7 @@ return {
             x = 220,
             y = 0,
             title = "Deep Wellspring",
-            description = "Your reserves deepen: your maximum magicka is increased by 25.",
+            description = "+25 maximum magicka.",
         },
         {
             id = "mysticism_spell_drinker",
@@ -36,7 +36,7 @@ return {
             x = -220,
             y = 140,
             title = "Spell-Drinker",
-            description = "When one of your Absorb spells strikes home you briefly drink in hostile magic, gaining Spell Absorption for a few seconds. Landing another Absorb refreshes the ward rather than stacking it.",
+            description = "Landing an Absorb spell grants Spell Absorption 20 for 8 seconds. Does not stack.",
         },
         {
             id = "mysticism_paths_between",
@@ -48,7 +48,7 @@ return {
             x = 220,
             y = 140,
             title = "Paths Between",
-            description = "The old roads open to you: Mark, Recall, Almsivi Intervention and Divine Intervention cost no magicka.",
+            description = "Mark, Recall, Almsivi Intervention and Divine Intervention cost no magicka.",
         },
         {
             id = "mysticism_soul_siphon",
@@ -60,7 +60,7 @@ return {
             x = -220,
             y = 280,
             title = "Soul Siphon",
-            description = "Slaying a foe held by your Soultrap tears loose a rush of power, restoring 6 magicka for every level the foe had.",
+            description = "Killing a foe under your Soultrap restores 6 magicka per level of the foe.",
         },
         {
             id = "mysticism_omniscience",
@@ -72,7 +72,7 @@ return {
             x = 220,
             y = 280,
             title = "Omniscience",
-            description = "Once a day, open your inner eye: nearby creatures, keys and enchantments are revealed to you for a full minute.",
+            description = "Grants a power: Detect Animal, Key and Enchantment for 60 seconds, once per day.",
         },
         {
             id = "mysticism_devour_magic",
@@ -84,7 +84,7 @@ return {
             x = -220,
             y = 420,
             title = "Devour Magic",
-            description = "Once a day, open your soul wide and swallow what is cast against you: gain Spell Absorption 50 for 30 seconds.",
+            description = "Grants a power: Spell Absorption 50 for 30 seconds, once per day.",
         },
     },
 }

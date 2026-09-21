@@ -12,7 +12,7 @@ return {
             x = -220,
             y = 0,
             title = "Practiced Shaper",
-            description = "Every Alteration spell you cast returns a quarter of the magicka it cost you.",
+            description = "Alteration spells refund a quarter of their cost.",
         },
         {
             id = "alteration_shapers_reserve",
@@ -24,7 +24,7 @@ return {
             x = 220,
             y = 0,
             title = "Shaper's Reserve",
-            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+            description = "+25 maximum magicka.",
         },
         {
             id = "alteration_crushing_burden",
@@ -36,7 +36,7 @@ return {
             x = -220,
             y = 140,
             title = "Crushing Burden",
-            description = "Your Burden spells also slow the target, the heavier the burden the more, for as long as it holds. A second burden replaces the first rather than stacking.",
+            description = "Burden also drains the target's Speed by half the burden's magnitude for its duration. Does not stack.",
         },
         {
             id = "alteration_retaliating_ward",
@@ -49,7 +49,7 @@ return {
             x = 0,
             y = 140,
             title = "Retaliating Ward",
-            description = "While a Fire, Frost or Lightning Shield is on you, anyone who strikes you in melee is burned, frozen or shocked for a third of the shield's strength, at least 5.",
+            description = "While an elemental Shield is active, melee attackers take that element's damage equal to a third of the shield's magnitude, minimum 5.",
         },
         {
             id = "alteration_long_stride",
@@ -61,7 +61,7 @@ return {
             x = 220,
             y = 140,
             title = "Long Stride",
-            description = "Your Jump spells also fortify your Acrobatics by half their strength while they last, so you leap higher and land softer.",
+            description = "Jump spells also fortify Acrobatics by half their magnitude for their duration.",
         },
         {
             id = "alteration_grinding_weight",
@@ -73,7 +73,7 @@ return {
             x = -220,
             y = 280,
             title = "Grinding Weight",
-            description = "A target under your Burden also bleeds fatigue every second while it holds, until they can barely swing or stand.",
+            description = "Burden also damages the target's fatigue by a tenth of its magnitude per second for its duration. Does not stack.",
         },
         {
             id = "alteration_bastion",
@@ -85,7 +85,7 @@ return {
             x = 0,
             y = 280,
             title = "Bastion",
-            description = "While a Shield spell is on you, anyone who strikes you in melee is briefly slowed.",
+            description = "While a Shield spell is active, melee attackers are slowed by 15 for 5 seconds.",
         },
         {
             id = "alteration_tidal_stride",
@@ -97,7 +97,7 @@ return {
             x = 220,
             y = 280,
             title = "Tidal Stride",
-            description = "Your Swift Swim spells also fortify your Speed by a quarter of their strength, and Water Walking by 10, for as long as they last.",
+            description = "Swift Swim fortifies Speed by a quarter of its magnitude, and Water Walking by 10, for their duration.",
         },
         {
             id = "alteration_elemental_aegis",
@@ -109,7 +109,7 @@ return {
             x = 0,
             y = 420,
             title = "Elemental Aegis",
-            description = "While a Fire, Frost or Lightning Shield is on you, anyone who strikes you in melee is left weak to that element for several seconds.",
+            description = "While an elemental Shield is active, melee attackers gain Weakness to that element 25 for 6 seconds.",
         },
     },
 }

@@ -12,7 +12,7 @@ return {
             x = -220,
             y = 0,
             title = "Elemental Focus",
-            description = "Your command of the elements sharpens: gain +10 Destruction while more than half your magicka remains.",
+            description = "+10 Destruction while above half magicka.",
         },
         {
             id = "destruction_arcane_reservoir",
@@ -24,7 +24,7 @@ return {
             x = 220,
             y = 0,
             title = "Arcane Reservoir",
-            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+            description = "+25 maximum magicka.",
         },
         {
             id = "destruction_searing_heat",
@@ -36,7 +36,7 @@ return {
             x = -220,
             y = 140,
             title = "Searing Heat",
-            description = "Your fire damage leaves the target burning, dealing further fire damage over several seconds.",
+            description = "Fire damage also burns the target for half the damage over 6 seconds.",
         },
         {
             id = "destruction_biting_cold",
@@ -48,7 +48,7 @@ return {
             x = 0,
             y = 140,
             title = "Biting Cold",
-            description = "Your frost damage leaves the target sluggish, slowing them for several seconds.",
+            description = "Frost damage also drains the target's Speed by 15 for 8 seconds.",
         },
         {
             id = "destruction_storm_channel",
@@ -60,7 +60,7 @@ return {
             x = 220,
             y = 140,
             title = "Storm Channel",
-            description = "Your shock damage burns away the target's magicka, half as much as the health it took.",
+            description = "Shock damage also damages the target's magicka by half the damage dealt.",
         },
         {
             id = "destruction_sundering_ruin",
@@ -73,7 +73,7 @@ return {
             x = -220,
             y = 280,
             title = "Sundering Ruin",
-            description = "Disintegrate Armor also saps the target's skill with the armor they wear, and Disintegrate Weapon their skill with the weapon they hold, by an amount set by your Destruction. A second cast replaces the first rather than stacking on it.",
+            description = "Disintegrate Armor drains the target's skill with their worn armor, and Disintegrate Weapon their skill with their held weapon, by a quarter of your Destruction. Does not stack.",
         },
         {
             id = "destruction_withering_curse",
@@ -86,7 +86,7 @@ return {
             x = 220,
             y = 280,
             title = "Withering Curse",
-            description = "What your Drain spells hold down in others swells in you. While your Drain Health, Fatigue or Magicka spells sap a target's pool, your own maximum rises by as much, for as long as the drain lasts.",
+            description = "Drain Health, Fatigue and Magicka spells fortify your matching maximum by the drained amount for the drain's duration. Does not stack.",
         },
         {
             id = "destruction_efficient_ruin",
@@ -98,7 +98,7 @@ return {
             x = 0,
             y = 420,
             title = "Efficient Ruin",
-            description = "Every Destruction spell you cast returns a quarter of the magicka it cost you.",
+            description = "Destruction spells refund a quarter of their cost.",
         },
         {
             id = "destruction_annihilation_mastery",
@@ -110,7 +110,7 @@ return {
             x = 0,
             y = 560,
             title = "Annihilation Mastery",
-            description = "Each elemental hit leaves the target raw to that element, stacking a brief weakness to fire, frost or shock with every strike.",
+            description = "Elemental damage also applies Weakness to that element, 10 for 8 seconds. Stacks.",
         },
     },
 }

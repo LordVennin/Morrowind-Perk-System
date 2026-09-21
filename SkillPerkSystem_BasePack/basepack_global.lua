@@ -5075,6 +5075,452 @@ subsystems.illusion = {
 
 end
 
+-- 5j. mercantile global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Mercantile][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local mercDebug = false
+local function mercLog(message)
+    if mercDebug then log(message) end
+end
+
+local GOLD_ID = "gold_001"
+local INVEST_AMOUNT = 500
+local INVEST_DISPOSITION_BONUS = 10
+local INVEST_MIN_DISPOSITION = 60
+local MAX_MERCHANTS = 5
+local DIVIDEND_RATE, DIVIDEND_RATE_PRINCE = 0.02, 0.05
+local SECONDS_PER_DAY = 86400
+
+-- The ledger: one line per invested merchant, by object id. Persisted.
+local investments = {}
+
+local function currentDay()
+    local ok, gameTime = pcall(core.getGameTime)
+    if not ok or type(gameTime) ~= "number" then return 0 end
+    return math.floor(gameTime / SECONDS_PER_DAY)
+end
+
+local function merchantCount()
+    local count = 0
+    for _ in pairs(investments) do count = count + 1 end
+    return count
+end
+
+local function goldOf(player)
+    local ok, count = pcall(function() return Actor.inventory(player):countOf(GOLD_ID) end)
+    return ok and (tonumber(count) or 0) or 0
+end
+
+-- Gold can sit in more than one stack; take from each until paid.
+local function takeGold(player, amount)
+    local remaining = amount
+    local ok = pcall(function()
+        for _, stack in ipairs(Actor.inventory(player):findAll(GOLD_ID)) do
+            if remaining <= 0 then break end
+            local take = math.min(remaining, tonumber(stack.count) or 0)
+            if take > 0 then
+                stack:remove(take)
+                remaining = remaining - take
+            end
+        end
+    end)
+    return ok and remaining <= 0
+end
+
+local function giveGold(player, amount)
+    if amount <= 0 then return false end
+    local ok = pcall(function()
+        world.createObject(GOLD_ID, amount):moveInto(Actor.inventory(player))
+    end)
+    return ok
+end
+
+local function disposition(npc, player)
+    local ok, value = pcall(types.NPC.getDisposition, npc, player)
+    return ok and (tonumber(value) or 0) or 0
+end
+
+local function sendStatus(player, npc, extra)
+    local line = investments[npc.id]
+    local status = {
+        npcId = npc.id,
+        amount = line and line.amount or 0,
+        maxAmount = (extra and extra.tradePrince) and INVEST_AMOUNT * 2 or INVEST_AMOUNT,
+        slotsLeft = math.max(0, MAX_MERCHANTS - merchantCount()),
+        paid = extra and extra.paid or 0,
+        invested = extra and extra.invested or false,
+    }
+    if type(player.sendEvent) == "function" then
+        player:sendEvent("SkillPerkSystem_BasePack_Mercantile_MerchantStatus", status)
+    end
+end
+
+-- Dividends: whole days since the last collection, at the rate the player's
+-- perks allow, paid in gold on the way into the barter window.
+local function payDividends(player, npc, tradePrince)
+    local line = investments[npc.id]
+    if line == nil or line.amount <= 0 then
+        return 0
+    end
+    local today = currentDay()
+    local days = today - (line.lastPaidDay or today)
+    if days <= 0 then
+        return 0
+    end
+    local rate = tradePrince and DIVIDEND_RATE_PRINCE or DIVIDEND_RATE
+    local paid = math.floor(line.amount * rate * days)
+    line.lastPaidDay = today
+    if paid > 0 and giveGold(player, paid) then
+        mercLog(string.format("%s paid %d gold for %d day(s)", tostring(npc.recordId), paid, days))
+        return paid
+    end
+    return 0
+end
+
+local function onBarterOpened(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) or npc == nil then
+        return
+    end
+    local paid = 0
+    if data.dividends == true then
+        paid = payDividends(player, npc, data.tradePrince == true)
+    end
+    sendStatus(player, npc, { paid = paid, tradePrince = data.tradePrince == true })
+end
+
+local function onInvest(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) or npc == nil then
+        return
+    end
+    local tradePrince = data.tradePrince == true
+    local maxAmount = tradePrince and INVEST_AMOUNT * 2 or INVEST_AMOUNT
+    local line = investments[npc.id]
+    local invested = line and line.amount or 0
+    if invested >= maxAmount then
+        return sendStatus(player, npc, { tradePrince = tradePrince })
+    end
+    if line == nil and merchantCount() >= MAX_MERCHANTS then
+        return sendStatus(player, npc, { tradePrince = tradePrince })
+    end
+    if disposition(npc, player) < INVEST_MIN_DISPOSITION or goldOf(player) < INVEST_AMOUNT then
+        return sendStatus(player, npc, { tradePrince = tradePrince })
+    end
+    if not takeGold(player, INVEST_AMOUNT) then
+        log("could not take the investment gold")
+        return sendStatus(player, npc, { tradePrince = tradePrince })
+    end
+    pcall(types.NPC.modifyBaseDisposition, npc, player, INVEST_DISPOSITION_BONUS)
+    if line == nil then
+        line = { amount = 0, lastPaidDay = currentDay(), recordId = npc.recordId }
+        investments[npc.id] = line
+    end
+    line.amount = line.amount + INVEST_AMOUNT
+    mercLog(string.format("invested in %s; now %d", tostring(npc.recordId), line.amount))
+    sendStatus(player, npc, { invested = true, tradePrince = tradePrince })
+end
+
+-- Regular Customer: a little more goodwill per deal, never past the cap.
+local function onLoyalty(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) or npc == nil then
+        return
+    end
+    local cap = tonumber(data.cap) or 90
+    local delta = tonumber(data.delta) or 0
+    local okBase, base = pcall(types.NPC.getBaseDisposition, npc, player)
+    if not okBase then
+        return
+    end
+    base = tonumber(base) or 0
+    local room = cap - base
+    if room <= 0 or delta <= 0 then
+        return
+    end
+    pcall(types.NPC.modifyBaseDisposition, npc, player, math.min(delta, room))
+    mercLog(string.format("loyalty +%d with %s", math.min(delta, room), tostring(npc.recordId)))
+end
+
+local function onSetDebug(data)
+    mercDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (mercDebug and "ON" or "OFF"))
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    local lines = {}
+    for id, line in pairs(investments) do
+        lines[#lines + 1] = string.format("%s (%s): %d gold, last paid day %d",
+            tostring(line.recordId), tostring(id), line.amount, line.lastPaidDay or -1)
+    end
+    table.sort(lines)
+    log("investments (" .. #lines .. "/" .. MAX_MERCHANTS .. "), day " .. currentDay())
+    for _, entry in ipairs(lines) do log("  " .. entry) end
+end
+
+subsystems.mercantile = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Mercantile_BarterOpened = onBarterOpened,
+        SkillPerkSystem_BasePack_Mercantile_Invest = onInvest,
+        SkillPerkSystem_BasePack_Mercantile_Loyalty = onLoyalty,
+        SkillPerkSystem_BasePack_Mercantile_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Mercantile_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { investments = investments }
+        end,
+        onLoad = function(data)
+            investments = {}
+            local saved = type(data) == "table" and data.investments or nil
+            if type(saved) == "table" then
+                for id, line in pairs(saved) do
+                    if type(id) == "string" and type(line) == "table" and (tonumber(line.amount) or 0) > 0 then
+                        investments[id] = {
+                            amount = math.floor(tonumber(line.amount) or 0),
+                            lastPaidDay = math.floor(tonumber(line.lastPaidDay) or 0),
+                            recordId = line.recordId,
+                        }
+                    end
+                end
+            end
+        end,
+    },
+}
+
+end
+
+-- 5k. restoration global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Restoration][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local restDebug = false
+local function restLog(message)
+    if restDebug then log(message) end
+end
+
+local function restEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+local BULWARK_SECONDS = 2
+
+-- ---- Rider state, shared with the actor-target script --------------------
+local riderState = { playerId = nil, righteous = false }
+
+local function ridersActive()
+    return type(riderState.playerId) == "string" and riderState.playerId ~= "" and riderState.righteous
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BasePack_Restoration_RiderRefresh", {
+            playerId = riderState.playerId,
+            righteous = riderState.righteous,
+        })
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("restoration", ridersActive())
+end
+
+local function onSetRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    riderState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        righteous = data.righteous == true,
+    }
+    refreshWatchers()
+    restLog("righteous strike active=" .. tostring(ridersActive()))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["restoration"])
+end
+
+registerTargetWatcherProvider("restoration", {
+    isActive = ridersActive,
+    sendState = sendState,
+})
+
+-- ---- Self riders -----------------------------------------------------------
+local riderRecords = {}
+local kindRecords = { desperate = {}, resistPoison = {}, resistCommonDisease = {},
+    resistBlightDisease = {}, bulwarkHealth = {}, bulwarkFatigue = {} }
+
+local function riderRecord(name, effectName, effectFallback, magnitude, duration)
+    magnitude = math.max(1, math.floor(tonumber(magnitude) or 0))
+    duration = math.max(1, math.floor(tonumber(duration) or 0))
+    local key = table.concat({ effectName, magnitude, duration }, "|")
+    local cached = riderRecords[key]
+    if cached ~= nil then
+        return cached
+    end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = name,
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { {
+            id = restEffectId(effectName, effectFallback),
+            magnitudeMin = magnitude, magnitudeMax = magnitude,
+            duration = duration, area = 0, range = core.magic.RANGE.Self,
+        } },
+    })
+    if not okDraft or draft == nil then
+        log("rider draft failed (" .. key .. "): " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("rider record creation failed (" .. key .. "): " .. tostring(record))
+        return nil
+    end
+    riderRecords[key] = record.id
+    return record.id
+end
+
+local function applyKind(kind, player, recordId)
+    if recordId == nil then
+        return
+    end
+    kindRecords[kind][recordId] = true
+    local okActive, active = pcall(Actor.activeSpells, player)
+    if not okActive or active == nil then
+        return
+    end
+    for previousId in pairs(kindRecords[kind]) do
+        pcall(function() active:remove(previousId) end)
+    end
+    local ok, err = pcall(function()
+        active:add({
+            id = recordId, effects = { 0 }, caster = player, stackable = false,
+            ignoreSpellAbsorption = true, ignoreReflect = true, ignoreResistances = true,
+        })
+    end)
+    if not ok then
+        log("rider application failed: " .. tostring(err))
+    end
+end
+
+local RESIST_EFFECTS = {
+    resistPoison = { "ResistPoison", "resistpoison", "Purifying Touch" },
+    resistCommonDisease = { "ResistCommonDisease", "resistcommondisease", "Purifying Touch" },
+    resistBlightDisease = { "ResistBlightDisease", "resistblightdisease", "Purifying Touch" },
+}
+
+local function onSelfRider(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local heal = tonumber(data.restoreHealth) or 0
+    if heal > 0 then
+        applyKind("desperate", player, riderRecord("Desperate Prayer", "RestoreHealth", "restorehealth",
+            heal, tonumber(data.restoreSeconds) or 1))
+        restLog("desperate prayer: +" .. heal .. "/s")
+    end
+    for kind, spec in pairs(RESIST_EFFECTS) do
+        local magnitude = tonumber(data[kind]) or 0
+        if magnitude > 0 then
+            applyKind(kind, player, riderRecord(spec[3], spec[1], spec[2], magnitude,
+                tonumber(data.resistSeconds) or 120))
+            restLog(kind .. " " .. magnitude)
+        end
+    end
+    local bulwarkHealth = tonumber(data.bulwarkHealth) or 0
+    if bulwarkHealth > 0 then
+        applyKind("bulwarkHealth", player, riderRecord("Bulwark of Faith", "RestoreHealth", "restorehealth",
+            bulwarkHealth, BULWARK_SECONDS))
+    end
+    local bulwarkFatigue = tonumber(data.bulwarkFatigue) or 0
+    if bulwarkFatigue > 0 then
+        applyKind("bulwarkFatigue", player, riderRecord("Bulwark of Faith", "RestoreFatigue", "restorefatigue",
+            bulwarkFatigue, BULWARK_SECONDS))
+    end
+end
+
+local function onRequestState(data)
+    local target = type(data) == "table" and data.target or nil
+    if target ~= nil then
+        sendState(target)
+    end
+end
+
+local function onSetDebug(data)
+    restDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (restDebug and "ON" or "OFF"))
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    log("righteous caster=" .. tostring(riderState.playerId) .. " active=" .. tostring(riderState.righteous))
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["restoration"])
+end
+
+subsystems.restoration = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Restoration_SetRiders = onSetRiders,
+        SkillPerkSystem_BasePack_Restoration_SelfRider = onSelfRider,
+        SkillPerkSystem_BasePack_Restoration_RequestState = onRequestState,
+        SkillPerkSystem_BasePack_Restoration_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Restoration_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { riderRecords = riderRecords, kindRecords = kindRecords }
+        end,
+        onLoad = function(data)
+            riderRecords = {}
+            local saved = type(data) == "table" and data.riderRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" then
+                        riderRecords[key] = recordId
+                    end
+                end
+            end
+            for kind in pairs(kindRecords) do
+                kindRecords[kind] = {}
+            end
+            local savedKinds = type(data) == "table" and data.kindRecords or nil
+            if type(savedKinds) == "table" then
+                for kind, ids in pairs(savedKinds) do
+                    if kindRecords[kind] ~= nil and type(ids) == "table" then
+                        for recordId in pairs(ids) do
+                            if type(recordId) == "string" then kindRecords[kind][recordId] = true end
+                        end
+                    end
+                end
+            end
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -6690,6 +7136,18 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Illusion_RequestState = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_RequestState", data) end,
     SkillPerkSystem_BasePack_Illusion_SetDebug = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_SetDebug", data) end,
     SkillPerkSystem_BasePack_Illusion_Diagnose = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_Diagnose", data) end,
+
+    SkillPerkSystem_BasePack_Mercantile_BarterOpened = function(data) dispatchEvent("mercantile", "SkillPerkSystem_BasePack_Mercantile_BarterOpened", data) end,
+    SkillPerkSystem_BasePack_Mercantile_Invest = function(data) dispatchEvent("mercantile", "SkillPerkSystem_BasePack_Mercantile_Invest", data) end,
+    SkillPerkSystem_BasePack_Mercantile_Loyalty = function(data) dispatchEvent("mercantile", "SkillPerkSystem_BasePack_Mercantile_Loyalty", data) end,
+    SkillPerkSystem_BasePack_Mercantile_SetDebug = function(data) dispatchEvent("mercantile", "SkillPerkSystem_BasePack_Mercantile_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Mercantile_Diagnose = function(data) dispatchEvent("mercantile", "SkillPerkSystem_BasePack_Mercantile_Diagnose", data) end,
+
+    SkillPerkSystem_BasePack_Restoration_SetRiders = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_SetRiders", data) end,
+    SkillPerkSystem_BasePack_Restoration_SelfRider = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_SelfRider", data) end,
+    SkillPerkSystem_BasePack_Restoration_RequestState = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_RequestState", data) end,
+    SkillPerkSystem_BasePack_Restoration_SetDebug = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Restoration_Diagnose = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -7602,6 +8060,8 @@ local engineOrder = {
     "alteration",
     "enchant",
     "illusion",
+    "mercantile",
+    "restoration",
     "axe",
     "spear",
     "bluntweapon",

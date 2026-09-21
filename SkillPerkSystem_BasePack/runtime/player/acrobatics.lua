@@ -7,7 +7,15 @@
 --
 -- Swimming reads as "not on ground" in the engine, so it is excluded explicitly;
 -- otherwise swimming would grant the whole airborne half of the tree.
+--
+-- Rooftop Runner is the exception to sampling: it keys off the Jump input,
+-- and while a jump is in flight the subsystem runs per frame (bounded to a
+-- few seconds) so the airborne phase and the landing cannot slip between two
+-- samples. Landing after a fall that was not a jump pays nothing -- the
+-- engine's isOnGround flickers on stairs and slopes, and the old "was not
+-- grounded, now is" test paid out on terrain every cooldown.
 
+local input = require("openmw.input")
 local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
 local enabled = stats.enabled
@@ -42,6 +50,10 @@ local C = {
     ROOFTOP_RESTORE_FRACTION = 0.10,
     ROOFTOP_RESTORE_FRACTION_IMPROVED = 0.20,
     ROOFTOP_COOLDOWN = 10.0,
+    -- A jump that has neither left the ground nor landed by then was not a
+    -- jump (encumbered, or pressed mid-air); a long fall off a cliff lasts
+    -- less than this.
+    ROOFTOP_JUMP_TIMEOUT = 4.0,
 
     WEIGHTLESS_ACROBATICS = 15,
     WEIGHTLESS_AIRBORNE_GRACE = 2.0,
@@ -52,6 +64,11 @@ local state = {
     wasAirborne = false,
     airborneGrace = 0,
     rooftopCooldown = 0,
+    -- Set by the Jump input; cleared on landing or timeout.
+    jumpArmed = false,
+    jumpArmedFor = 0,
+    jumpSawAirborne = false,
+    jumpHandlerRegistered = false,
     appliedAcrobatics = 0,
     appliedAgility = 0,
     appliedSpeed = 0,
@@ -80,8 +97,38 @@ local function restoreFatigueOnLanding()
     end
 end
 
+-- The Jump input fired. Arm the landing watch only for a jump that can
+-- actually happen: on the ground and not swimming.
+local function onJumpPressed()
+    if not enabled(C.ROOFTOP_RUNNER) or state.jumpArmed then
+        return
+    end
+    if not stats.isOnGround() or stats.isSwimming() then
+        return
+    end
+    state.jumpArmed = true
+    state.jumpArmedFor = 0
+    state.jumpSawAirborne = false
+end
+
+local function ensureJumpHandler()
+    if state.jumpHandlerRegistered then
+        return
+    end
+    if type(input.registerActionHandler) ~= "function" then
+        return
+    end
+    local ok = pcall(input.registerActionHandler, "Jump", function(value)
+        if value then
+            onJumpPressed()
+        end
+    end)
+    state.jumpHandlerRegistered = ok
+end
+
 local function refresh(elapsed)
     elapsed = math.max(0, tonumber(elapsed) or 0)
+    ensureJumpHandler()
 
     if state.rooftopCooldown > 0 then
         state.rooftopCooldown = math.max(0, state.rooftopCooldown - elapsed)
@@ -91,12 +138,23 @@ local function refresh(elapsed)
     local swimming = stats.isSwimming()
     local airborne = not grounded and not swimming
 
+    if state.jumpArmed then
+        state.jumpArmedFor = state.jumpArmedFor + elapsed
+        if airborne then
+            state.jumpSawAirborne = true
+        elseif state.jumpSawAirborne then
+            -- Left the ground after the press and is back on it: a landing.
+            state.jumpArmed = false
+            restoreFatigueOnLanding()
+        end
+        if state.jumpArmed and state.jumpArmedFor >= C.ROOFTOP_JUMP_TIMEOUT then
+            state.jumpArmed = false
+        end
+    end
+
     if airborne then
         state.airborneGrace = C.WEIGHTLESS_AIRBORNE_GRACE
     else
-        if state.wasAirborne then
-            restoreFatigueOnLanding()
-        end
         state.airborneGrace = math.max(0, state.airborneGrace - elapsed)
     end
     state.wasAirborne = airborne
@@ -147,7 +205,9 @@ __basepack_subsystem_result = {
     engineHandlers = {
         shouldUpdate = function(dt)
             state.pollTimer = state.pollTimer + (tonumber(dt) or 0)
-            return state.pollTimer >= C.POLL_INTERVAL
+            -- Per frame only while a jump is in flight, so the landing is
+            -- never missed; bounded by ROOFTOP_JUMP_TIMEOUT.
+            return state.jumpArmed or state.pollTimer >= C.POLL_INTERVAL
         end,
         onUpdate = function()
             local elapsed = state.pollTimer
@@ -159,6 +219,9 @@ __basepack_subsystem_result = {
             state.pollTimer = C.POLL_INTERVAL
             state.wasAirborne = false
             state.airborneGrace = 0
+            state.jumpArmed = false
+            state.jumpArmedFor = 0
+            state.jumpSawAirborne = false
             state.rooftopCooldown = math.max(0, tonumber(data.acrobaticsRooftopCooldown) or 0)
             state.appliedAcrobatics = math.max(0, math.floor(tonumber(data.acrobaticsAppliedAcrobatics) or 0))
             state.appliedAgility = math.max(0, math.floor(tonumber(data.acrobaticsAppliedAgility) or 0))

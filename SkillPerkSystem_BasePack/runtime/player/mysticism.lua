@@ -44,9 +44,10 @@ local C = {
     -- out against the pool lets the cheapest possible spell refund more than
     -- it costs. Below 1, so a cast can never turn a profit.
     OLD_WAYS_REFUND_FRACTION = 0.25,
-    -- Soul Siphon pays out against the skill, not against anything the kill
-    -- itself produced, so it is a fixed share of Mysticism per soul taken.
-    SOUL_SIPHON_SKILL_FRACTION = 0.5,
+    -- Soul Siphon pays per level of the foe that died, never a fixed sum:
+    -- a fixed sum per trapped kill made a Soultrap folded into every attack
+    -- spell an unlimited magicka engine against rats and mudcrabs.
+    SOUL_SIPHON_MAGICKA_PER_LEVEL = 6,
     -- In-game seconds in a day, for the once-per-day power checks.
     SECONDS_PER_DAY = 86400,
 }
@@ -310,21 +311,17 @@ local function onPerkStateChanged()
     refresh()
 end
 
--- A trapped soul was taken: the global side verified the kill and the trap,
--- this side pays out against the player's own Mysticism.
+-- A trapped soul was taken: the target verified the kill and reported its
+-- level, and the payout is that level times a fixed rate.
 local function onSoulSiphon(data)
     if not enabled(C.SOUL_SIPHON) then
         return
     end
-    local skill = stats.skillStat("mysticism")
-    local level = skill ~= nil and (tonumber(skill.modified) or tonumber(skill.base)) or 0
-    local amount = math.floor((level or 0) * C.SOUL_SIPHON_SKILL_FRACTION)
-    if amount <= 0 then
-        return
-    end
+    local level = math.max(1, math.floor(tonumber(type(data) == "table" and data.level) or 1))
+    local amount = level * C.SOUL_SIPHON_MAGICKA_PER_LEVEL
     restoreMagicka(amount)
     if debugLogging then
-        print(LOG_TAG .. " soul siphon: restored " .. amount .. " magicka")
+        print(LOG_TAG .. " soul siphon: level " .. level .. " soul restored " .. amount .. " magicka")
     end
 end
 

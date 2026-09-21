@@ -4876,9 +4876,12 @@ local function applyKind(kind, target, caster, recordId)
 end
 
 -- ---- Cold Fear: the target drops what it holds --------------------------
--- Unequipped first so the engine does not think it is still wielded, then
--- moved out of the inventory onto the ground beside the actor. The AI never
--- picks weapons back up, so the fight continues bare-handed.
+-- The weapon is taken out of the inventory and a copy is put on the ground
+-- beside the actor, condition and charge carried over. Moving the wielded
+-- object itself does not work: teleport is deferred, and the AI re-equips
+-- the best weapon it holds every frame, so the unequip is undone before the
+-- move lands. Removing it leaves nothing to re-equip. The AI never picks
+-- weapons back up, so the fight continues bare-handed.
 local function dropWeapon(target)
     local slots = Actor.EQUIPMENT_SLOT
     if slots == nil then
@@ -4890,22 +4893,39 @@ local function dropWeapon(target)
     end
     local weapon = equipment[slots.CarriedRight]
     if weapon == nil or types.Weapon == nil or not types.Weapon.objectIsInstance(weapon) then
+        illLog(tostring(target.recordId) .. " holds no weapon to drop")
         return false
     end
+    local recordId = weapon.recordId
+    local condition, charge = nil, nil
+    pcall(function()
+        local data = types.Item.itemData(weapon)
+        condition, charge = data.condition, data.enchantmentCharge
+    end)
+    local cell, position = target.cell, target.position
+
     equipment[slots.CarriedRight] = nil
-    local okUnequip = pcall(Actor.setEquipment, target, equipment)
-    if not okUnequip then
+    pcall(Actor.setEquipment, target, equipment)
+    local okRemove, removeErr = pcall(function() weapon:remove(1) end)
+    if not okRemove then
+        log("could not take " .. tostring(recordId) .. " from " .. tostring(target.recordId)
+            .. ": " .. tostring(removeErr))
         return false
     end
-    local okDrop, err = pcall(function()
-        local offset = util.vector3(40, 40, 10)
-        weapon:teleport(target.cell, target.position + offset)
+    local okDrop, dropErr = pcall(function()
+        local dropped = world.createObject(recordId, 1)
+        pcall(function()
+            local data = types.Item.itemData(dropped)
+            if condition ~= nil then data.condition = condition end
+            if charge ~= nil then data.enchantmentCharge = charge end
+        end)
+        dropped:teleport(cell, position + util.vector3(40, 40, 10))
     end)
     if not okDrop then
-        log("could not drop " .. tostring(weapon.recordId) .. ": " .. tostring(err))
+        log("took " .. tostring(recordId) .. " but could not place it: " .. tostring(dropErr))
         return false
     end
-    illLog(tostring(target.recordId) .. " dropped " .. tostring(weapon.recordId))
+    illLog(tostring(target.recordId) .. " dropped " .. tostring(recordId))
     return true
 end
 
@@ -4934,10 +4954,9 @@ local function onApplyRiders(data)
     if riderState.fear and (tonumber(data.fearMagnitude) or 0) > 0 then
         local chance = math.min(100, data.fearMagnitude * FEAR_CHANCE_FRACTION)
         local roll = math.random() * 100
+        illLog(string.format("cold fear: demoralize %d, rolled %.0f against %.0f", data.fearMagnitude, roll, chance))
         if roll < chance then
             dropWeapon(target)
-        else
-            illLog(string.format("cold fear: rolled %.0f against %.0f, weapon kept", roll, chance))
         end
     end
 end

@@ -97,7 +97,7 @@ return {
             x = 220,
             y = 280,
             title = "Fading Step",
-            description = "Invisibility grants Sanctuary 20, and Chameleon Sanctuary equal to half its magnitude (up to 20), for their duration. Does not stack.",
+            description = "Invisibility and Chameleon also grant Sanctuary (up to 20) for their duration.",
         },
     },
 }

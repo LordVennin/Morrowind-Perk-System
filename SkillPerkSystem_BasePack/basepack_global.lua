@@ -4406,6 +4406,314 @@ subsystems.alteration = {
 
 end
 
+-- 5h. enchant global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Enchant][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local enchDebug = false
+
+local function enchLog(message)
+    if enchDebug then
+        log(message)
+    end
+end
+
+local BRAND_MAGNITUDE, BRAND_SECONDS = 20, 5
+local SOUL_FED_PER_LEVEL = 6
+local REGEN_SKILL_DIVISOR = 10
+
+-- ---- Charge writes --------------------------------------------------------
+-- Everything this tree pays out lands in an item's charge. nil charge means
+-- the item has never been drawn on (full), and a write never exceeds the
+-- enchantment's capacity.
+local function enchantmentOf(item)
+    local ok, enchantment = pcall(function()
+        local record = item.type.record(item)
+        local id = record ~= nil and record.enchant or nil
+        if type(id) ~= "string" or id == "" then return nil end
+        return core.magic.enchantments.records[id]
+    end)
+    return ok and enchantment or nil
+end
+
+local function addCharge(item, amount)
+    if item == nil or amount <= 0 then
+        return 0
+    end
+    if type(item.isValid) == "function" and not item:isValid() then
+        return 0
+    end
+    local enchantment = enchantmentOf(item)
+    if enchantment == nil then
+        return 0
+    end
+    local capacity = tonumber(enchantment.charge) or 0
+    if capacity <= 0 then
+        return 0
+    end
+    local added = 0
+    pcall(function()
+        local data = types.Item.itemData(item)
+        local current = data.enchantmentCharge
+        if current == nil then
+            return
+        end
+        current = tonumber(current) or 0
+        local target = math.min(capacity, current + amount)
+        added = target - current
+        if added > 0 then
+            data.enchantmentCharge = target
+        end
+    end)
+    return added
+end
+
+local function onAddCharge(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local added = addCharge(data.item, math.floor(tonumber(data.amount) or 0))
+    if added > 0 then
+        enchLog("charge +" .. added .. " on " .. tostring(data.item.recordId))
+    end
+end
+
+-- Living Enchantment: every equipped item with a rechargeable enchantment
+-- regains a share of the player's Enchant skill.
+local function onRegen(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local skill = 0
+    local okSkill, stat = pcall(function() return types.NPC.stats.skills.enchant(player) end)
+    if okSkill and stat ~= nil then
+        skill = tonumber(stat.modified) or tonumber(stat.base) or 0
+    end
+    local amount = math.floor(skill / REGEN_SKILL_DIVISOR)
+    if amount <= 0 then
+        return
+    end
+    local okEquipment, equipment = pcall(Actor.getEquipment, player)
+    if not okEquipment or type(equipment) ~= "table" then
+        return
+    end
+    local total = 0
+    for _, item in pairs(equipment) do
+        local enchantment = enchantmentOf(item)
+        if enchantment ~= nil and (enchantment.type == core.magic.ENCHANTMENT_TYPE.CastOnUse
+                or enchantment.type == core.magic.ENCHANTMENT_TYPE.CastOnStrike) then
+            total = total + addCharge(item, amount)
+        end
+    end
+    if total > 0 then
+        enchLog("living enchantment: +" .. total .. " charge across equipment")
+    end
+end
+
+-- Spare Vessel: an empty gem of the kind just consumed goes back to the
+-- player. Setting no soul on a fresh object is what "empty" means.
+local function onReturnGem(data)
+    local player = type(data) == "table" and data.player or nil
+    local recordId = type(data) == "table" and data.recordId or nil
+    if not validPlayerObject(player) or type(recordId) ~= "string" then
+        return
+    end
+    local ok, err = pcall(function()
+        local gem = world.createObject(recordId, 1)
+        gem:moveInto(Actor.inventory(player))
+    end)
+    if ok then
+        enchLog("returned an empty " .. recordId)
+    else
+        log("could not return " .. recordId .. ": " .. tostring(err))
+    end
+end
+
+-- ---- Rider state, shared with the actor-target script --------------------
+local riderState = { playerId = nil, brand = false, soulFed = false }
+
+local function ridersActive()
+    return type(riderState.playerId) == "string" and riderState.playerId ~= ""
+        and (riderState.brand or riderState.soulFed)
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BasePack_Enchant_RiderRefresh", {
+            playerId = riderState.playerId,
+            brand = riderState.brand,
+            soulFed = riderState.soulFed,
+            debugLogging = enchDebug,
+        })
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("enchant", ridersActive())
+end
+
+local function onSetRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    riderState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        brand = data.brand == true,
+        soulFed = data.soulFed == true,
+    }
+    refreshWatchers()
+    enchLog("riders active=" .. tostring(ridersActive()))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["enchant"])
+end
+
+registerTargetWatcherProvider("enchant", {
+    isActive = ridersActive,
+    sendState = sendState,
+})
+
+-- ---- Brand of the Maker: one fixed-shape weakness, non-stacking -----------
+local brandRecordIds = {}
+
+local function ensureBrandRecord()
+    for recordId in pairs(brandRecordIds) do
+        return recordId
+    end
+    local okId, effectId = pcall(function() return core.magic.EFFECT_TYPE.WeaknessToMagicka end)
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = "Brand of the Maker",
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { {
+            id = (okId and effectId) or "weaknesstomagicka",
+            magnitudeMin = BRAND_MAGNITUDE, magnitudeMax = BRAND_MAGNITUDE,
+            duration = BRAND_SECONDS, area = 0, range = core.magic.RANGE.Target,
+        } },
+    })
+    if not okDraft or draft == nil then
+        log("brand draft failed: " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("brand record creation failed: " .. tostring(record))
+        return nil
+    end
+    brandRecordIds[record.id] = true
+    return record.id
+end
+
+local function onBrand(data)
+    local target = type(data) == "table" and data.target or nil
+    local player = world.players[1]
+    if target == nil or player == nil or player.id ~= riderState.playerId or not riderState.brand then
+        return
+    end
+    if type(target.isValid) == "function" and not target:isValid() then
+        return
+    end
+    local recordId = ensureBrandRecord()
+    if recordId == nil then
+        return
+    end
+    local okActive, active = pcall(Actor.activeSpells, target)
+    if not okActive or active == nil then
+        return
+    end
+    for previousId in pairs(brandRecordIds) do
+        pcall(function() active:remove(previousId) end)
+    end
+    local ok, err = pcall(function()
+        active:add({
+            id = recordId, effects = { 0 }, caster = player, stackable = false,
+            ignoreSpellAbsorption = true, ignoreReflect = true, ignoreResistances = false,
+        })
+    end)
+    if not ok then
+        log("brand application failed: " .. tostring(err))
+        return
+    end
+    enchLog("branded " .. tostring(target.recordId))
+end
+
+-- ---- Soul-Fed Blade -------------------------------------------------------
+local function onSoulFed(data)
+    if type(data) ~= "table" or not riderState.soulFed then
+        return
+    end
+    local player = world.players[1]
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    local level = math.max(1, math.floor(tonumber(data.level) or 1))
+    local added = addCharge(data.weapon, level * SOUL_FED_PER_LEVEL)
+    enchLog("soul-fed blade: level " .. level .. " kill, +" .. added .. " charge")
+end
+
+-- ---- Plumbing ---------------------------------------------------------------
+local function onRequestState(data)
+    local target = type(data) == "table" and data.target or nil
+    if target ~= nil then
+        sendState(target)
+    end
+end
+
+local function onSetDebug(data)
+    enchDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (enchDebug and "ON" or "OFF"))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["enchant"])
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    log("rider caster=" .. tostring(riderState.playerId)
+        .. " brand=" .. tostring(riderState.brand)
+        .. " soulFed=" .. tostring(riderState.soulFed)
+        .. " verboseLogging=" .. tostring(enchDebug))
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["enchant"])
+end
+
+subsystems.enchant = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Enchant_SetRiders = onSetRiders,
+        SkillPerkSystem_BasePack_Enchant_AddCharge = onAddCharge,
+        SkillPerkSystem_BasePack_Enchant_Regen = onRegen,
+        SkillPerkSystem_BasePack_Enchant_ReturnGem = onReturnGem,
+        SkillPerkSystem_BasePack_Enchant_Brand = onBrand,
+        SkillPerkSystem_BasePack_Enchant_SoulFed = onSoulFed,
+        SkillPerkSystem_BasePack_Enchant_RequestState = onRequestState,
+        SkillPerkSystem_BasePack_Enchant_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Enchant_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { brandRecordIds = brandRecordIds }
+        end,
+        onLoad = function(data)
+            brandRecordIds = {}
+            local saved = type(data) == "table" and data.brandRecordIds or nil
+            if type(saved) == "table" then
+                for recordId in pairs(saved) do
+                    if type(recordId) == "string" then brandRecordIds[recordId] = true end
+                end
+            end
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -6003,6 +6311,16 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Alteration_RequestState = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_RequestState", data) end,
     SkillPerkSystem_BasePack_Alteration_SetDebug = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_SetDebug", data) end,
     SkillPerkSystem_BasePack_Alteration_Diagnose = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_Diagnose", data) end,
+
+    SkillPerkSystem_BasePack_Enchant_SetRiders = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_SetRiders", data) end,
+    SkillPerkSystem_BasePack_Enchant_AddCharge = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_AddCharge", data) end,
+    SkillPerkSystem_BasePack_Enchant_Regen = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_Regen", data) end,
+    SkillPerkSystem_BasePack_Enchant_ReturnGem = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_ReturnGem", data) end,
+    SkillPerkSystem_BasePack_Enchant_Brand = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_Brand", data) end,
+    SkillPerkSystem_BasePack_Enchant_SoulFed = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_SoulFed", data) end,
+    SkillPerkSystem_BasePack_Enchant_RequestState = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_RequestState", data) end,
+    SkillPerkSystem_BasePack_Enchant_SetDebug = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Enchant_Diagnose = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -6913,6 +7231,7 @@ local engineOrder = {
     "mysticism",
     "skill_base",
     "alteration",
+    "enchant",
     "axe",
     "spear",
     "bluntweapon",

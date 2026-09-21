@@ -41,9 +41,8 @@ local C = {
     -- A share of the charge ACTUALLY SPENT, measured off the item, never of
     -- the enchantment's listed cost: the engine scales the cost down with
     -- Enchant skill, so the listed cost over-refunded -- a 4-cost item got
-    -- its whole cast back. The share accrues fractionally per item and pays
-    -- out in whole points, so a 1-cost item refunds 1 after 4 casts instead
-    -- of 1 per cast.
+    -- its whole cast back. Paid per cast, rounded down, so a cast that spent
+    -- under 4 refunds nothing and can never loop for free.
     THRIFTY_REFUND_FRACTION = 0.25,
     -- Practiced Binding: applied while the enchanting menu is open.
     BINDING_SKILL_BONUS = 25,
@@ -71,7 +70,6 @@ local state = {
     watchedItemId = nil,
     watchedCharge = nil,
     pendingCast = nil,
-    owed = {},
     appliedBinding = 0,
 }
 
@@ -142,9 +140,9 @@ local function noteCast()
     state.pendingCast = { item = item, before = state.watchedCharge }
 end
 
--- Half two, from the poll: measure the drop, accrue the share, pay out whole
--- points. The drop is capped at the enchantment's listed cost so two casts
--- inside one poll cannot be read as one large one.
+-- Half two, from the poll: measure the drop and refund a share of it,
+-- rounded down. The drop is capped at the enchantment's listed cost so two
+-- casts inside one poll cannot be read as one large one.
 local function settleCast()
     local pending = state.pendingCast
     state.pendingCast = nil
@@ -156,17 +154,11 @@ local function settleCast()
         return nil
     end
     local spent = math.min(pending.before - after, tonumber(enchantment.cost) or 0)
-    if spent <= 0 then
-        return after
-    end
-    local id = pending.item.id
-    state.owed[id] = (state.owed[id] or 0) + spent * C.THRIFTY_REFUND_FRACTION
-    local pay = math.floor(state.owed[id])
+    local pay = math.floor(spent * C.THRIFTY_REFUND_FRACTION)
     if pay < 1 then
-        debugPrint(string.format("spent %d charge; %.2f owed, not yet a whole point", spent, state.owed[id]))
+        debugPrint(string.format("spent %d charge; nothing to refund", spent))
         return after
     end
-    state.owed[id] = state.owed[id] - pay
     debugPrint(string.format("spent %d charge; refunding %d", spent, pay))
     core.sendGlobalEvent("SkillPerkSystem_BasePack_Enchant_AddCharge", {
         player = pself,
@@ -437,7 +429,6 @@ __basepack_subsystem_result = {
             state.lastRidersKey = nil
             state.filledGems = {}
             state.watchedItemId, state.watchedCharge, state.pendingCast = nil, nil, nil
-            state.owed = {}
             -- A menu cannot be open on load, so any bonus carried in the
             -- save is stale and comes off.
             state.appliedBinding = math.max(0, math.floor(tonumber(data.enchantAppliedBinding) or 0))

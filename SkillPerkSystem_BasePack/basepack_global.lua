@@ -3947,6 +3947,116 @@ subsystems.mysticism = {
 
 end
 
+-- 5f. skill base reservoirs (Alteration, Illusion, Restoration, Enchant)
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][SkillBase][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local RESERVOIR_MAGICKA = 25
+
+-- One Fortify Magicka Ability per school, cached by school and persisted so
+-- a save reuses its record instead of minting another. Granted as an
+-- Ability because the engine drives maximum magicka from active effects;
+-- writing the dynamic stat's modifier does nothing for it.
+local reservoirRecords = {}
+
+local function fortifyMagickaId()
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE.FortifyMagicka end)
+    if ok and value ~= nil then return value end
+    return "fortifymagicka"
+end
+
+local function ensureReservoirRecord(school, tag)
+    local cached = reservoirRecords[school]
+    if cached ~= nil then
+        return cached
+    end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = tostring(tag) .. " Reserve",
+        type = core.magic.SPELL_TYPE.Ability,
+        cost = 0,
+        isAutocalc = false,
+        effects = {
+            {
+                id = fortifyMagickaId(),
+                magnitudeMin = RESERVOIR_MAGICKA, magnitudeMax = RESERVOIR_MAGICKA, duration = 1,
+                area = 0, range = core.magic.RANGE.Self,
+            },
+        },
+    })
+    if not okDraft or draft == nil then
+        log(tostring(school) .. " reserve draft failed: " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log(tostring(school) .. " reserve record creation failed: " .. tostring(record))
+        return nil
+    end
+    reservoirRecords[school] = record.id
+    log("created " .. tostring(school) .. " reserve record=" .. tostring(record.id))
+    return record.id
+end
+
+-- Acts without asking whether the ability is held: the engine does not
+-- reliably report holdings for dynamically created records, so the wanted
+-- state is simply applied (add is a no-op when held, remove when not).
+local function onSetReservoir(data)
+    if type(data) ~= "table" or type(data.school) ~= "string" then
+        return
+    end
+    local player = data.player
+    if not validPlayerObject(player) then
+        return
+    end
+    local okSpells, spells = pcall(Actor.spells, player)
+    if not okSpells or spells == nil then
+        return
+    end
+    local wanted = data.wanted == true
+    local recordId = reservoirRecords[data.school]
+    if wanted and recordId == nil then
+        recordId = ensureReservoirRecord(data.school, data.tag or data.school)
+    end
+    if recordId == nil then
+        return
+    end
+    if wanted then
+        pcall(function() spells:add(recordId) end)
+    else
+        pcall(function() spells:remove(recordId) end)
+    end
+end
+
+subsystems.skill_base = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_SkillBase_SetReservoir = onSetReservoir,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { reservoirRecords = reservoirRecords }
+        end,
+        onLoad = function(data)
+            reservoirRecords = {}
+            local saved = type(data) == "table" and data.reservoirRecords or nil
+            if type(saved) == "table" then
+                for school, recordId in pairs(saved) do
+                    if type(school) == "string" and type(recordId) == "string" then
+                        reservoirRecords[school] = recordId
+                    end
+                end
+            end
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -5533,6 +5643,8 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Mysticism_RequestState = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_RequestState", data) end,
     SkillPerkSystem_BasePack_Mysticism_SetDebug = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SetDebug", data) end,
     SkillPerkSystem_BasePack_Mysticism_Diagnose = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_Diagnose", data) end,
+
+    SkillPerkSystem_BasePack_SkillBase_SetReservoir = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SetReservoir", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -6441,6 +6553,7 @@ local engineOrder = {
     "conjuration",
     "destruction",
     "mysticism",
+    "skill_base",
     "axe",
     "spear",
     "bluntweapon",

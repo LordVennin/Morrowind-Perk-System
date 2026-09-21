@@ -166,6 +166,30 @@ local modules = {
         source = "scripts.SkillPerkSystem_BasePack.perks.mysticism.mysticism",
         data = require("scripts.SkillPerkSystem_BasePack.perks.mysticism.mysticism"),
     },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.alteration.alteration",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.alteration.alteration"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.illusion.illusion",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.illusion.illusion"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.restoration.restoration",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.restoration.restoration"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.enchant.enchant",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.enchant.enchant"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.mercantile.mercantile",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.mercantile.mercantile"),
+    },
+    {
+        source = "scripts.SkillPerkSystem_BasePack.perks.speechcraft.speechcraft",
+        data = require("scripts.SkillPerkSystem_BasePack.perks.speechcraft.speechcraft"),
+    },
 }
 
 

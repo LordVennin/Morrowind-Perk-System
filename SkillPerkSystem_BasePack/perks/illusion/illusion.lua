@@ -1,0 +1,30 @@
+return {
+    schema = "skillperks.vNext",
+    perks = {
+        {
+            id = "illusion_practiced_illusionist",
+            tab = "Illusion",
+            tabDescription = "Illusion bends light, sound and the mind: hiding, charming, calming and terrifying.",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = -220,
+            y = 0,
+            title = "Practiced Illusionist",
+            description = "Every Illusion spell you cast returns a quarter of the magicka it cost you.",
+        },
+        {
+            id = "illusion_illusionists_reserve",
+            tab = "Illusion",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = 220,
+            y = 0,
+            title = "Illusionist's Reserve",
+            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+        },
+    },
+}

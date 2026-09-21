@@ -1,0 +1,30 @@
+return {
+    schema = "skillperks.vNext",
+    perks = {
+        {
+            id = "alteration_practiced_shaper",
+            tab = "Alteration",
+            tabDescription = "Alteration reshapes the physical world: locks and burdens, water and air, and the body's own resilience.",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = -220,
+            y = 0,
+            title = "Practiced Shaper",
+            description = "Every Alteration spell you cast returns a quarter of the magicka it cost you.",
+        },
+        {
+            id = "alteration_shapers_reserve",
+            tab = "Alteration",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = 220,
+            y = 0,
+            title = "Shaper's Reserve",
+            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+        },
+    },
+}

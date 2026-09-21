@@ -1,0 +1,30 @@
+return {
+    schema = "skillperks.vNext",
+    perks = {
+        {
+            id = "enchant_attentive_enchanter",
+            tab = "Enchant",
+            tabDescription = "Enchant binds magic into objects: charging and recharging them, and crafting enchanted gear.",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = -220,
+            y = 0,
+            title = "Attentive Enchanter",
+            description = "You learn from every enchantment you handle: Enchant skill progress is increased by a quarter.",
+        },
+        {
+            id = "enchant_enchanters_reserve",
+            tab = "Enchant",
+            effectId = "demo_noop",
+            minimumSkill = 20,
+            requires = {},
+            cost = 1,
+            x = 220,
+            y = 0,
+            title = "Enchanter's Reserve",
+            description = "You hold more power in reserve: your maximum magicka is increased by 25.",
+        },
+    },
+}

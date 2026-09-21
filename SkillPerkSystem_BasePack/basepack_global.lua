@@ -4724,6 +4724,338 @@ subsystems.enchant = {
 
 end
 
+-- 5i. illusion global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+local util = require("openmw.util")
+local world = require("openmw.world")
+local Actor = types.Actor
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Illusion][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local illDebug = false
+
+local function illLog(message)
+    if illDebug then
+        log(message)
+    end
+end
+
+local function illEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+-- ---- Tuning ---------------------------------------------------------------
+local BLIND_FRACTION = 0.5
+local SOUND_FRACTION = 0.25
+local FEAR_CHANCE_FRACTION = 0.5
+local LIGHT_FRACTION = 0.2
+-- Harsh Light reaches as far as the light does, within sane bounds.
+local LIGHT_UNITS_PER_POINT = 20
+local LIGHT_RADIUS_MIN, LIGHT_RADIUS_MAX = 300, 2000
+
+-- ---- Rider state, shared with the actor-target script --------------------
+local riderState = { playerId = nil, blind = false, sound = false, fear = false, helpless = false }
+
+local function ridersActive()
+    return type(riderState.playerId) == "string" and riderState.playerId ~= ""
+        and (riderState.blind or riderState.sound or riderState.fear or riderState.helpless)
+end
+
+local function sendState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_BasePack_Illusion_RiderRefresh", {
+            playerId = riderState.playerId,
+            blind = riderState.blind,
+            sound = riderState.sound,
+            fear = riderState.fear,
+            helpless = riderState.helpless,
+            debugLogging = illDebug,
+        })
+    end
+end
+
+local function refreshWatchers()
+    onTargetWatcherProviderStateChanged("illusion", ridersActive())
+end
+
+local function onSetRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    riderState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        blind = data.blind == true,
+        sound = data.sound == true,
+        fear = data.fear == true,
+        helpless = data.helpless == true,
+    }
+    refreshWatchers()
+    illLog("riders active=" .. tostring(ridersActive()))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["illusion"])
+end
+
+registerTargetWatcherProvider("illusion", {
+    isActive = ridersActive,
+    sendState = sendState,
+})
+
+-- ---- Rider records ------------------------------------------------------
+local riderRecords = {}
+local kindRecords = { blind = {}, sound = {}, light = {}, fading = {} }
+
+local function riderRecord(name, effectName, effectFallback, magnitude, duration, affectedSkill, affectedAttribute)
+    magnitude = math.max(1, math.floor(tonumber(magnitude) or 0))
+    duration = math.max(1, math.floor(tonumber(duration) or 0))
+    local key = table.concat({
+        effectName, magnitude, duration,
+        tostring(affectedSkill or ""), tostring(affectedAttribute or ""),
+    }, "|")
+    local cached = riderRecords[key]
+    if cached ~= nil then
+        return cached
+    end
+    local effect = {
+        id = illEffectId(effectName, effectFallback),
+        magnitudeMin = magnitude, magnitudeMax = magnitude,
+        duration = duration, area = 0, range = core.magic.RANGE.Target,
+    }
+    if affectedSkill ~= nil then effect.affectedSkill = affectedSkill end
+    if affectedAttribute ~= nil then effect.affectedAttribute = affectedAttribute end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = name,
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { effect },
+    })
+    if not okDraft or draft == nil then
+        log("rider draft failed (" .. key .. "): " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("rider record creation failed (" .. key .. "): " .. tostring(record))
+        return nil
+    end
+    riderRecords[key] = record.id
+    return record.id
+end
+
+-- Applies one rider of a kind, stripping that kind's previous instance off
+-- the actor first, so no kind ever stacks on one target.
+local function applyKind(kind, target, caster, recordId)
+    if recordId == nil or target == nil then
+        return
+    end
+    if type(target.isValid) == "function" and not target:isValid() then
+        return
+    end
+    kindRecords[kind][recordId] = true
+    local okActive, active = pcall(Actor.activeSpells, target)
+    if not okActive or active == nil then
+        return
+    end
+    for previousId in pairs(kindRecords[kind]) do
+        pcall(function() active:remove(previousId) end)
+    end
+    local ok, err = pcall(function()
+        active:add({
+            id = recordId, effects = { 0 }, caster = caster, stackable = false,
+            ignoreSpellAbsorption = true, ignoreReflect = true, ignoreResistances = false,
+        })
+    end)
+    if not ok then
+        log("rider application failed: " .. tostring(err))
+    end
+end
+
+-- ---- Cold Fear: the target drops what it holds --------------------------
+-- Unequipped first so the engine does not think it is still wielded, then
+-- moved out of the inventory onto the ground beside the actor. The AI never
+-- picks weapons back up, so the fight continues bare-handed.
+local function dropWeapon(target)
+    local slots = Actor.EQUIPMENT_SLOT
+    if slots == nil then
+        return false
+    end
+    local okEquipment, equipment = pcall(Actor.getEquipment, target)
+    if not okEquipment or type(equipment) ~= "table" then
+        return false
+    end
+    local weapon = equipment[slots.CarriedRight]
+    if weapon == nil or types.Weapon == nil or not types.Weapon.objectIsInstance(weapon) then
+        return false
+    end
+    equipment[slots.CarriedRight] = nil
+    local okUnequip = pcall(Actor.setEquipment, target, equipment)
+    if not okUnequip then
+        return false
+    end
+    local okDrop, err = pcall(function()
+        local offset = util.vector3(40, 40, 10)
+        weapon:teleport(target.cell, target.position + offset)
+    end)
+    if not okDrop then
+        log("could not drop " .. tostring(weapon.recordId) .. ": " .. tostring(err))
+        return false
+    end
+    illLog(tostring(target.recordId) .. " dropped " .. tostring(weapon.recordId))
+    return true
+end
+
+-- ---- Target riders (from the target script) -------------------------------
+local function onApplyRiders(data)
+    if type(data) ~= "table" then
+        return
+    end
+    local target = data.target
+    local caster = world.players[1]
+    if target == nil or caster == nil or caster.id ~= riderState.playerId then
+        return
+    end
+    if riderState.blind and (tonumber(data.blindMagnitude) or 0) > 0 then
+        local drain = math.max(1, math.floor(data.blindMagnitude * BLIND_FRACTION))
+        applyKind("blind", target, caster, riderRecord("Blinding Light", "DrainAttribute", "drainattribute",
+            drain, tonumber(data.blindSeconds) or 30, nil, "agility"))
+        illLog("blinding light: agility -" .. drain)
+    end
+    if riderState.sound and (tonumber(data.soundMagnitude) or 0) > 0 then
+        local burn = math.max(1, math.floor(data.soundMagnitude * SOUND_FRACTION))
+        applyKind("sound", target, caster, riderRecord("Deafening Roar", "DamageMagicka", "damagemagicka",
+            burn, tonumber(data.soundSeconds) or 30))
+        illLog("deafening roar: magicka -" .. burn .. "/s")
+    end
+    if riderState.fear and (tonumber(data.fearMagnitude) or 0) > 0 then
+        local chance = math.min(100, data.fearMagnitude * FEAR_CHANCE_FRACTION)
+        local roll = math.random() * 100
+        if roll < chance then
+            dropWeapon(target)
+        else
+            illLog(string.format("cold fear: rolled %.0f against %.0f, weapon kept", roll, chance))
+        end
+    end
+end
+
+-- ---- Self riders (from the player) -----------------------------------------
+local function onSelfRider(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local light = tonumber(data.lightMagnitude) or 0
+    if light > 0 then
+        local drain = math.max(1, math.floor(light * LIGHT_FRACTION))
+        local seconds = tonumber(data.lightSeconds) or 10
+        local radius = math.max(LIGHT_RADIUS_MIN, math.min(LIGHT_RADIUS_MAX, light * LIGHT_UNITS_PER_POINT))
+        local recordId = riderRecord("Harsh Light", "DrainAttribute", "drainattribute",
+            drain, seconds, nil, "agility")
+        local touched = 0
+        for _, actor in ipairs(world.activeActors) do
+            if actor.id ~= player.id and actor.cell == player.cell
+                    and types.NPC.objectIsInstance(actor)
+                    and (actor.position - player.position):length() <= radius then
+                applyKind("light", actor, player, recordId)
+                touched = touched + 1
+            end
+        end
+        illLog("harsh light: agility -" .. drain .. " on " .. touched .. " nearby")
+    end
+    local sanctuary = tonumber(data.sanctuary) or 0
+    if sanctuary > 0 then
+        applyKind("fading", player, player, riderRecord("Fading Step", "Sanctuary", "sanctuary",
+            sanctuary, tonumber(data.sanctuarySeconds) or 10))
+        illLog("fading step: sanctuary " .. sanctuary)
+    end
+end
+
+-- ---- Plumbing ---------------------------------------------------------------
+local function onCastNotice(data)
+    local player = type(data) == "table" and data.player or nil
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    for _, actor in pairs(targetWatcher.attachedTargets) do
+        if isValidTargetWatcherActor(actor) and actor:hasScript(BASEPACK_ACTOR_TARGET_SCRIPT) then
+            actor:sendEvent("SkillPerkSystem_BasePack_Illusion_CastNotice", { spellId = data.spellId })
+        end
+    end
+end
+
+local function onRequestState(data)
+    local target = type(data) == "table" and data.target or nil
+    if target ~= nil then
+        sendState(target)
+    end
+end
+
+local function onSetDebug(data)
+    illDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (illDebug and "ON" or "OFF"))
+    sendTargetWatcherStateToAttached(targetWatcher.providers["illusion"])
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    log("rider caster=" .. tostring(riderState.playerId)
+        .. " blind=" .. tostring(riderState.blind)
+        .. " sound=" .. tostring(riderState.sound)
+        .. " fear=" .. tostring(riderState.fear)
+        .. " helpless=" .. tostring(riderState.helpless)
+        .. " verboseLogging=" .. tostring(illDebug))
+    refreshWatchers()
+    sendTargetWatcherStateToAttached(targetWatcher.providers["illusion"])
+end
+
+subsystems.illusion = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Illusion_SetRiders = onSetRiders,
+        SkillPerkSystem_BasePack_Illusion_CastNotice = onCastNotice,
+        SkillPerkSystem_BasePack_Illusion_ApplyRiders = onApplyRiders,
+        SkillPerkSystem_BasePack_Illusion_SelfRider = onSelfRider,
+        SkillPerkSystem_BasePack_Illusion_RequestState = onRequestState,
+        SkillPerkSystem_BasePack_Illusion_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Illusion_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { riderRecords = riderRecords, kindRecords = kindRecords }
+        end,
+        onLoad = function(data)
+            riderRecords = {}
+            local saved = type(data) == "table" and data.riderRecords or nil
+            if type(saved) == "table" then
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" then
+                        riderRecords[key] = recordId
+                    end
+                end
+            end
+            for kind in pairs(kindRecords) do
+                kindRecords[kind] = {}
+            end
+            local savedKinds = type(data) == "table" and data.kindRecords or nil
+            if type(savedKinds) == "table" then
+                for kind, ids in pairs(savedKinds) do
+                    if kindRecords[kind] ~= nil and type(ids) == "table" then
+                        for recordId in pairs(ids) do
+                            if type(recordId) == "string" then kindRecords[kind][recordId] = true end
+                        end
+                    end
+                end
+            end
+            refreshWatchers()
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -6331,6 +6663,14 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Enchant_RequestState = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_RequestState", data) end,
     SkillPerkSystem_BasePack_Enchant_SetDebug = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_SetDebug", data) end,
     SkillPerkSystem_BasePack_Enchant_Diagnose = function(data) dispatchEvent("enchant", "SkillPerkSystem_BasePack_Enchant_Diagnose", data) end,
+
+    SkillPerkSystem_BasePack_Illusion_SetRiders = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_SetRiders", data) end,
+    SkillPerkSystem_BasePack_Illusion_CastNotice = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_CastNotice", data) end,
+    SkillPerkSystem_BasePack_Illusion_ApplyRiders = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_ApplyRiders", data) end,
+    SkillPerkSystem_BasePack_Illusion_SelfRider = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_SelfRider", data) end,
+    SkillPerkSystem_BasePack_Illusion_RequestState = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_RequestState", data) end,
+    SkillPerkSystem_BasePack_Illusion_SetDebug = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Illusion_Diagnose = function(data) dispatchEvent("illusion", "SkillPerkSystem_BasePack_Illusion_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -7242,6 +7582,7 @@ local engineOrder = {
     "skill_base",
     "alteration",
     "enchant",
+    "illusion",
     "axe",
     "spear",
     "bluntweapon",

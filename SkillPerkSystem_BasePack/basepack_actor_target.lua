@@ -11,6 +11,7 @@ local destruction = {}
 local mysticism = {}
 local alteration = {}
 local enchant = {}
+local illusion = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -1517,6 +1518,229 @@ end
 
 enchant.hasActiveState = function()
     return type(enchantPlayerId) == "string" and enchantPlayerId ~= "" and (brand or soulFed)
+end
+
+end
+
+-- 2g. illusion target state/effects
+do
+local core = require("openmw.core")
+local selfObj = require("openmw.self")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Illusion][Target]"
+
+local debugLogging = false
+
+local function debugPrint(message)
+    if debugLogging then
+        print(LOG_TAG .. " " .. message)
+    end
+end
+
+local illusionPlayerId = nil
+local blind, sound, fear, helpless = false, false, false, false
+
+local SCAN_WINDOW_SECONDS = 3.0
+local DEFAULT_SECONDS = 30
+local HELPLESS_MULTIPLIER = 1.5
+
+local scanWindow = 0
+local expectedSpellIds = {}
+local processedInstances = {}
+local stateLogged = nil
+
+local function setIllusionState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    illusionPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    blind = data.blind == true
+    sound = data.sound == true
+    fear = data.fear == true
+    helpless = data.helpless == true
+    if data.debugLogging ~= nil then
+        debugLogging = data.debugLogging == true
+    end
+    local stateKey = table.concat({
+        tostring(illusionPlayerId), tostring(blind), tostring(sound), tostring(fear), tostring(helpless),
+    }, ":")
+    if debugLogging and stateKey ~= stateLogged then
+        stateLogged = stateKey
+        debugPrint(string.format("rider state on %s: caster=%s blind=%s sound=%s fear=%s helpless=%s",
+            tostring(selfObj.recordId), tostring(illusionPlayerId), tostring(blind),
+            tostring(sound), tostring(fear), tostring(helpless)))
+    end
+end
+
+local function normalizedEffectId(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    local id = value:lower():gsub("%s+", "")
+    return id
+end
+
+local function effectArray(effects)
+    local list = {}
+    if effects == nil then
+        return list
+    end
+    pcall(function()
+        for _, effect in ipairs(effects) do list[#list + 1] = effect end
+    end)
+    if #list > 0 then
+        return list
+    end
+    pcall(function()
+        for _, effect in pairs(effects) do list[#list + 1] = effect end
+    end)
+    return list
+end
+
+-- Reports what landed: magnitude and duration per effect the perks care
+-- about. The global side turns those into the riders (and the weapon roll).
+local function classify(effects)
+    local request = { target = selfObj }
+    local wanted = false
+    for _, effect in ipairs(effectArray(effects)) do
+        if type(effect) == "table" or type(effect) == "userdata" then
+            local id = normalizedEffectId(effect.id)
+            local magnitude = math.max(
+                tonumber(effect.magnitudeMin) or 0, tonumber(effect.magnitudeMax) or 0,
+                tonumber(effect.minMagnitude) or 0, tonumber(effect.maxMagnitude) or 0)
+            local seconds = math.floor(tonumber(effect.duration) or 0)
+            if seconds < 1 then seconds = DEFAULT_SECONDS end
+            if magnitude > 0 then
+                if id == "blind" and blind then
+                    request.blindMagnitude, request.blindSeconds = magnitude, seconds
+                    wanted = true
+                elseif id == "sound" and sound then
+                    request.soundMagnitude, request.soundSeconds = magnitude, seconds
+                    wanted = true
+                elseif id == "demoralizehumanoid" or id == "demoralizecreature" then
+                    if fear then
+                        request.fearMagnitude = math.max(request.fearMagnitude or 0, magnitude)
+                        wanted = true
+                    end
+                end
+            end
+        end
+    end
+    if wanted then
+        debugPrint("rider request sent from " .. tostring(selfObj.recordId))
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Illusion_ApplyRiders", request)
+    end
+end
+
+local function activeInstanceKey(entry)
+    local unique = entry.activeSpellId
+    if unique ~= nil then
+        return tostring(unique)
+    end
+    return normalizedEffectId(entry.id) or "?"
+end
+
+local function scanActiveSpellsForCasts()
+    local ok, active = pcall(types.Actor.activeSpells, selfObj)
+    if not ok or active == nil then
+        return
+    end
+    local present = {}
+    for _, entry in pairs(active) do
+        if type(entry) == "table" or type(entry) == "userdata" then
+            local spellId = normalizedEffectId(entry.id)
+            local key = activeInstanceKey(entry)
+            present[key] = true
+            local casterOk = true
+            local okCaster, entryCaster = pcall(function() return entry.caster end)
+            if okCaster and entryCaster ~= nil and entryCaster.id ~= nil then
+                casterOk = entryCaster.id == illusionPlayerId
+            end
+            if spellId ~= nil and expectedSpellIds[spellId] and casterOk and not processedInstances[key] then
+                processedInstances[key] = true
+                local effects = entry.effects
+                if type(effects) == "table" or type(effects) == "userdata" then
+                    classify(effects)
+                end
+            end
+        end
+    end
+    for key in pairs(processedInstances) do
+        if not present[key] then
+            processedInstances[key] = nil
+        end
+    end
+end
+
+local function onCastNotice(data)
+    if type(data) ~= "table" or type(data.spellId) ~= "string" then
+        return
+    end
+    expectedSpellIds[normalizedEffectId(data.spellId) or ""] = true
+    scanWindow = SCAN_WINDOW_SECONDS
+end
+
+local function isParalyzed()
+    local ok, magnitude = pcall(function()
+        local active = types.Actor.activeEffects(selfObj)
+        local effect = active:getEffect("paralyze")
+        return effect ~= nil and effect.magnitude or 0
+    end)
+    return ok and (tonumber(magnitude) or 0) > 0
+end
+
+-- Helpless: the player's hits on a paralyzed actor land harder.
+illusion.onHit = function(attack)
+    if not helpless or type(attack) ~= "table" or attack.successful == false then
+        return
+    end
+    local attacker = attack.attacker
+    if attacker == nil or attacker.id ~= illusionPlayerId then
+        return
+    end
+    if type(attack.damage) ~= "table" or not isParalyzed() then
+        return
+    end
+    attack.damage.health = (tonumber(attack.damage.health) or 0) * HELPLESS_MULTIPLIER
+    debugPrint("helpless: paralyzed hit multiplied")
+end
+
+illusion.eventHandlers = {
+    SkillPerkSystem_BasePack_Illusion_RiderRefresh = setIllusionState,
+    SkillPerkSystem_BasePack_Illusion_CastNotice = onCastNotice,
+}
+
+local function requestRiderState()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Illusion_RequestState", { target = selfObj })
+end
+
+illusion.engineHandlers = {
+    onInit = function(initData)
+        setIllusionState(initData)
+        requestRiderState()
+    end,
+    onLoad = function(_, initData)
+        setIllusionState(initData)
+        requestRiderState()
+    end,
+}
+
+-- One comparison per frame unless a cast window is open.
+illusion.engineHandlers.onUpdate = function(dt)
+    if scanWindow <= 0 then
+        return
+    end
+    scanWindow = scanWindow - (tonumber(dt) or 0)
+    scanActiveSpellsForCasts()
+    if scanWindow <= 0 then
+        expectedSpellIds = {}
+    end
+end
+
+illusion.hasActiveState = function()
+    return type(illusionPlayerId) == "string" and illusionPlayerId ~= ""
+        and (blind or sound or fear or helpless)
 end
 
 end
@@ -4015,6 +4239,7 @@ copyEventHandlers(destruction.eventHandlers)
 copyEventHandlers(mysticism.eventHandlers)
 copyEventHandlers(alteration.eventHandlers)
 copyEventHandlers(enchant.eventHandlers)
+copyEventHandlers(illusion.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -4030,6 +4255,7 @@ local function combinedOnHit(attack)
     shortBlade.onHit(attack)
     handToHand.onHit(attack)
     enchant.onHit(attack)
+    illusion.onHit(attack)
     axe.onHit(attack)
     spear.onHit(attack)
     blunt.onHit(attack)
@@ -4063,6 +4289,7 @@ local function hasAnyActiveTargetState()
         or subsystemHasActiveState(mysticism)
         or subsystemHasActiveState(alteration)
         or subsystemHasActiveState(enchant)
+        or subsystemHasActiveState(illusion)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -4098,6 +4325,7 @@ return {
             callEngineHandler(mysticism, "onInit", initData)
             callEngineHandler(alteration, "onInit", initData)
             callEngineHandler(enchant, "onInit", initData)
+            callEngineHandler(illusion, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -4123,6 +4351,7 @@ return {
             callEngineHandler(mysticism, "onLoad", nil, initData)
             callEngineHandler(alteration, "onLoad", nil, initData)
             callEngineHandler(enchant, "onLoad", nil, initData)
+            callEngineHandler(illusion, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
@@ -4149,6 +4378,7 @@ return {
             callActiveUpdate(mysticism, dt)
             callActiveUpdate(alteration, dt)
             callActiveUpdate(enchant, dt)
+            callActiveUpdate(illusion, dt)
             callActiveUpdate(shortBlade, dt)
             callActiveUpdate(axe, dt)
             callActiveUpdate(spear, dt)

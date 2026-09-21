@@ -10,6 +10,7 @@ local sneakCrit = {}
 local destruction = {}
 local mysticism = {}
 local alteration = {}
+local enchant = {}
 local axe = {}
 local spear = {}
 local blunt = {}
@@ -1354,6 +1355,168 @@ end
 alteration.hasActiveState = function()
     return type(alterationPlayerId) == "string" and alterationPlayerId ~= ""
         and (crushingBurden or grindingWeight)
+end
+
+end
+
+-- 2f. enchant target state/effects
+do
+local core = require("openmw.core")
+local selfObj = require("openmw.self")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Enchant][Target]"
+
+local debugLogging = false
+
+local function debugPrint(message)
+    if debugLogging then
+        print(LOG_TAG .. " " .. message)
+    end
+end
+
+local enchantPlayerId = nil
+local brand, soulFed = false, false
+
+local DEATH_POLL_INTERVAL = 0.25
+-- How long after an enchanted-weapon hit a death still counts as that
+-- weapon's kill.
+local KILL_WINDOW_SECONDS = 4.0
+
+local killWindow = 0
+local killWeapon = nil
+local deathPollTimer = 0
+local fed = false
+local stateLogged = nil
+
+local function setEnchantState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    enchantPlayerId = type(data.playerId) == "string" and data.playerId or nil
+    brand = data.brand == true
+    soulFed = data.soulFed == true
+    if data.debugLogging ~= nil then
+        debugLogging = data.debugLogging == true
+    end
+    local stateKey = table.concat({ tostring(enchantPlayerId), tostring(brand), tostring(soulFed) }, ":")
+    if debugLogging and stateKey ~= stateLogged then
+        stateLogged = stateKey
+        debugPrint(string.format("rider state on %s: caster=%s brand=%s soulFed=%s",
+            tostring(selfObj.recordId), tostring(enchantPlayerId), tostring(brand), tostring(soulFed)))
+    end
+end
+
+-- The cast-on-strike enchantment behind a weapon, and whether it has the
+-- charge to fire on this hit; nil for anything else.
+local function strikeEnchantment(weapon)
+    if weapon == nil then
+        return nil, false
+    end
+    local ok, enchantment, willFire = pcall(function()
+        local record = weapon.type.record(weapon)
+        local id = record ~= nil and record.enchant or nil
+        if type(id) ~= "string" or id == "" then
+            return nil, false
+        end
+        local enchantment = core.magic.enchantments.records[id]
+        if enchantment == nil or enchantment.type ~= core.magic.ENCHANTMENT_TYPE.CastOnStrike then
+            return nil, false
+        end
+        local data = types.Item.itemData(weapon)
+        local charge = data ~= nil and data.enchantmentCharge or nil
+        -- nil charge means the item has never been drawn on: it is full.
+        local willFire = charge == nil or (tonumber(charge) or 0) >= (tonumber(enchantment.cost) or 0)
+        return enchantment, willFire
+    end)
+    if not ok then
+        return nil, false
+    end
+    return enchantment, willFire
+end
+
+local function isAliveNow()
+    local ok, health = pcall(function()
+        return types.Actor.stats.dynamic.health(selfObj).current
+    end)
+    return ok and (tonumber(health) or 0) > 0
+end
+
+enchant.onHit = function(attack)
+    if type(attack) ~= "table" or attack.successful == false then
+        return
+    end
+    if not brand and not soulFed then
+        return
+    end
+    local attacker = attack.attacker
+    if attacker == nil or attacker.id ~= enchantPlayerId then
+        return
+    end
+    local enchantment, willFire = strikeEnchantment(attack.weapon)
+    if enchantment == nil then
+        return
+    end
+    if brand and willFire then
+        debugPrint("branded by a firing strike enchantment")
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_Enchant_Brand", { target = selfObj })
+    end
+    if soulFed and isAliveNow() then
+        killWindow = KILL_WINDOW_SECONDS
+        killWeapon = attack.weapon
+        fed = false
+    end
+end
+
+enchant.eventHandlers = {
+    SkillPerkSystem_BasePack_Enchant_RiderRefresh = setEnchantState,
+}
+
+local function requestRiderState()
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Enchant_RequestState", { target = selfObj })
+end
+
+enchant.engineHandlers = {
+    onInit = function(initData)
+        setEnchantState(initData)
+        requestRiderState()
+    end,
+    onLoad = function(_, initData)
+        setEnchantState(initData)
+        requestRiderState()
+    end,
+}
+
+-- One comparison per frame unless a kill window is open.
+enchant.engineHandlers.onUpdate = function(dt)
+    if killWindow <= 0 or fed then
+        return
+    end
+    local elapsed = tonumber(dt) or 0
+    killWindow = killWindow - elapsed
+    deathPollTimer = deathPollTimer + elapsed
+    if deathPollTimer < DEATH_POLL_INTERVAL then
+        return
+    end
+    deathPollTimer = 0
+    if isAliveNow() then
+        return
+    end
+    fed = true
+    killWindow = 0
+    local okLevel, level = pcall(function() return types.Actor.stats.level(selfObj).current end)
+    level = okLevel and math.floor(tonumber(level) or 1) or 1
+    debugPrint("slain by an enchanted weapon at level " .. level)
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Enchant_SoulFed", {
+        target = selfObj,
+        weapon = killWeapon,
+        level = level,
+    })
+    killWeapon = nil
+end
+
+enchant.hasActiveState = function()
+    return type(enchantPlayerId) == "string" and enchantPlayerId ~= "" and (brand or soulFed)
 end
 
 end
@@ -3851,6 +4014,7 @@ copyEventHandlers(sneakCrit.eventHandlers)
 copyEventHandlers(destruction.eventHandlers)
 copyEventHandlers(mysticism.eventHandlers)
 copyEventHandlers(alteration.eventHandlers)
+copyEventHandlers(enchant.eventHandlers)
 copyEventHandlers(axe.eventHandlers)
 copyEventHandlers(spear.eventHandlers)
 copyEventHandlers(blunt.eventHandlers)
@@ -3865,6 +4029,7 @@ local function combinedOnHit(attack)
     destruction.onHit(attack)
     shortBlade.onHit(attack)
     handToHand.onHit(attack)
+    enchant.onHit(attack)
     axe.onHit(attack)
     spear.onHit(attack)
     blunt.onHit(attack)
@@ -3897,6 +4062,7 @@ local function hasAnyActiveTargetState()
         or subsystemHasActiveState(destruction)
         or subsystemHasActiveState(mysticism)
         or subsystemHasActiveState(alteration)
+        or subsystemHasActiveState(enchant)
         or subsystemHasActiveState(axe)
         or subsystemHasActiveState(spear)
         or subsystemHasActiveState(blunt)
@@ -3931,6 +4097,7 @@ return {
             callEngineHandler(destruction, "onInit", initData)
             callEngineHandler(mysticism, "onInit", initData)
             callEngineHandler(alteration, "onInit", initData)
+            callEngineHandler(enchant, "onInit", initData)
             callEngineHandler(axe, "onInit", initData)
             callEngineHandler(spear, "onInit", initData)
             callEngineHandler(blunt, "onInit", initData)
@@ -3955,6 +4122,7 @@ return {
             callEngineHandler(destruction, "onLoad", nil, initData)
             callEngineHandler(mysticism, "onLoad", nil, initData)
             callEngineHandler(alteration, "onLoad", nil, initData)
+            callEngineHandler(enchant, "onLoad", nil, initData)
             callEngineHandler(axe, "onLoad", axeData, initData)
             callEngineHandler(spear, "onLoad", spearData, initData)
             callEngineHandler(blunt, "onLoad", bluntData, initData)
@@ -3980,6 +4148,7 @@ return {
             callActiveUpdate(destruction, dt)
             callActiveUpdate(mysticism, dt)
             callActiveUpdate(alteration, dt)
+            callActiveUpdate(enchant, dt)
             callActiveUpdate(shortBlade, dt)
             callActiveUpdate(axe, dt)
             callActiveUpdate(spear, dt)

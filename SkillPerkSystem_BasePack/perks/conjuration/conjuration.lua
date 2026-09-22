@@ -126,7 +126,7 @@ return {
             x = 0,
             y = 560,
             title = "Call of the Wild",
-            description = "Grants the spell Call of the Wild: two wolves for 60 seconds, three at 100 Conjuration.",
+            description = "Grants the spell Call of the Wild: calls two wolves to your side for 60 seconds, three at 100 Conjuration. Requires OpenMW 0.51 and Bloodmoon.",
             hiddenUnless = {
                 race = "wood elf",
                 majorSkills = { "conjuration" },

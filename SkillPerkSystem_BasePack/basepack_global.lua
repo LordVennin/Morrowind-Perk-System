@@ -2720,13 +2720,12 @@ local GRANTS = {
     -- from active effects, and abilities are the mechanism that feeds it.
     tether1 = { name = "Soul Tether", type = "Ability",
         effects = { selfEffect(conjEffectId("FortifyMagicka", "fortifymagicka"), 30, 1) } },
-    -- Call of the Wild (hidden, Bosmer): an ordinary spell, cast and paid for
-    -- like any other, carrying one Summon Wolf. The player script adds the
-    -- rest of the pack on cast, sized by Conjuration. Summon Wolf is an
-    -- engine effect; its creature record ships with Bloodmoon, which the
-    -- perk is gated on.
-    wild1 = { name = "Call of the Wild", type = "Spell", cost = 40,
-        effects = { selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60) } },
+    -- Call of the Wild (hidden, Bosmer): a spell record defined by the load
+    -- script around a custom effect of the same name; the conjuration
+    -- runtime summons the pack while that effect is active. Not minted here:
+    -- a static id is granted as-is, and only if the record exists (the load
+    -- context needs OpenMW 0.51 or later).
+    wild1 = { name = "Call of the Wild", type = "Spell", recordId = "sps_callofthewild" },
 }
 
 -- Grant families: at most one member of a family is held at a time, selected
@@ -2778,6 +2777,18 @@ local function ensureGrantRecord(key)
     local cachedId = conjRecords[key]
     if cachedId ~= nil then
         return cachedId
+    end
+
+    -- A record that already exists (defined at load) is granted by id.
+    if type(grant.recordId) == "string" then
+        local okRecord, record = pcall(function() return core.magic.spells.records[grant.recordId] end)
+        if not okRecord or record == nil then
+            log("record " .. grant.recordId .. " for " .. key .. " does not exist; not granted")
+            return nil
+        end
+        conjRecords[key] = grant.recordId
+        conjIssued[grant.recordId] = FAMILY_OF_KEY[key]
+        return grant.recordId
     end
 
     local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {

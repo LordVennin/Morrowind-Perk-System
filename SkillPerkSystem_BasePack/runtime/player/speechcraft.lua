@@ -4,14 +4,14 @@
 -- when a persuasion succeeded or failed, the dialogue window says who it was
 -- with, and disposition can be read and written. The tree is built on those:
 -- a skill use for every new acquaintance, a chance to put back the
--- disposition a failure cost, and a slow, gated road into faction
--- reputation. The list of people met is perk state and lives in the save.
+-- disposition a failure cost, and a short Fortify after a success so a
+-- conversation can snowball. The list of people met is perk state and lives
+-- in the save.
 
 local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
-local ui = require("openmw.ui")
 local stats = require("scripts.SkillPerkSystem_BasePack.runtime.perkstats")
 
 local enabled = stats.enabled
@@ -27,14 +27,15 @@ local C = {
     WELL_MET = "speechcraft_well_met",
     FACE_SAVING = "speechcraft_face_saving",
     SMOOTH_RECOVERY = "speechcraft_smooth_recovery",
-    WELL_CONNECTED = "speechcraft_well_connected",
+    SILVER_TONGUE = "speechcraft_silver_tongue",
 
     POLL_INTERVAL = 0.5,
     STUDY_MULTIPLIER = 1.25,
     -- Never 100%: a failure should still be able to cost something.
     FACE_SAVING_CHANCE = 0.25,
     SMOOTH_RECOVERY_CHANCE = 0.50,
-    WELL_CONNECTED_CHANCE = 0.20,
+    SILVER_TONGUE_MAGNITUDE = 10,
+    SILVER_TONGUE_SECONDS = 60,
 }
 
 local debugLogging = false
@@ -152,11 +153,13 @@ local function onSkillUsed(skillId, params)
             debugPrint("face saving: failure stands")
         end
     elseif useTypeIs(params, "Speechcraft_Success") then
-        if enabled(C.WELL_CONNECTED) and math.random() < C.WELL_CONNECTED_CHANCE then
-            core.sendGlobalEvent("SkillPerkSystem_BasePack_Speechcraft_Reputation", {
+        if enabled(C.SILVER_TONGUE) then
+            core.sendGlobalEvent("SkillPerkSystem_BasePack_Speechcraft_SilverTongue", {
                 player = pself,
-                npc = state.npc,
+                magnitude = C.SILVER_TONGUE_MAGNITUDE,
+                seconds = C.SILVER_TONGUE_SECONDS,
             })
+            debugPrint("silver tongue: fortify requested")
         end
     end
 end
@@ -237,22 +240,16 @@ local function onConsoleCommand(_, command)
         .. " disposition=" .. tostring(state.lastDisposition) .. " met=" .. metCount)
     for label, perkId in pairs({
         attentiveEar = C.ATTENTIVE_EAR, wellMet = C.WELL_MET, faceSaving = C.FACE_SAVING,
-        smoothRecovery = C.SMOOTH_RECOVERY, wellConnected = C.WELL_CONNECTED,
+        smoothRecovery = C.SMOOTH_RECOVERY, silverTongue = C.SILVER_TONGUE,
     }) do
         print(LOG_TAG .. string.format("   %s (%s) enabled=%s", label, perkId, tostring(enabled(perkId))))
     end
     core.sendGlobalEvent("SkillPerkSystem_BasePack_Speechcraft_Diagnose", { player = pself })
 end
 
-local function onReputationRaised(data)
-    local faction = type(data) == "table" and data.faction or "the faction"
-    ui.showMessage(string.format("Your reputation with %s grows.", tostring(faction)))
-end
-
 __basepack_subsystem_result = {
     eventHandlers = {
         UiModeChanged = onUiModeChanged,
-        SkillPerkSystem_BasePack_Speechcraft_ReputationRaised = onReputationRaised,
     },
     engineHandlers = {
         shouldUpdate = function(dt)

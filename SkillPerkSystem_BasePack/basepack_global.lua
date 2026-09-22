@@ -5530,6 +5530,7 @@ end
 do
 local core = require("openmw.core")
 local types = require("openmw.types")
+local world = require("openmw.world")
 
 local LOG_TAG = "[SkillPerkSystem_BasePack][Speechcraft][Global]"
 local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
@@ -5537,26 +5538,6 @@ local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
 local speechDebug = false
 local function speechLog(message)
     if speechDebug then log(message) end
-end
-
-local SECONDS_PER_DAY = 86400
-
--- Game day each faction last had reputation raised by Well-Connected.
--- Persisted: the once-per-day gate is the whole balance of the perk.
-local reputationDay = {}
-
-local function currentDay()
-    local ok, gameTime = pcall(core.getGameTime)
-    if not ok or type(gameTime) ~= "number" then return 0 end
-    return math.floor(gameTime / SECONDS_PER_DAY)
-end
-
-local function factionName(factionId)
-    local ok, name = pcall(function() return core.factions.records[factionId].name end)
-    if ok and type(name) == "string" and name ~= "" then
-        return name
-    end
-    return tostring(factionId)
 end
 
 -- Face Saving: put back what a forgiven failure cost.
@@ -5575,38 +5556,71 @@ local function onRestoreDisposition(data)
     end
 end
 
--- Well-Connected: the player script already rolled the chance; this side
--- applies the once-per-day gate per faction and raises the reputation.
-local function onReputation(data)
+-- Silver Tongue: one fixed-shape Fortify Speechcraft on the player,
+-- swept and re-applied so it refreshes rather than stacks.
+local silverRecordIds = {}
+
+local function ensureSilverRecord(magnitude, seconds)
+    local key = magnitude .. "|" .. seconds
+    if silverRecordIds[key] ~= nil then
+        return silverRecordIds[key]
+    end
+    local okId, effectId = pcall(function() return core.magic.EFFECT_TYPE.FortifySkill end)
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = "Silver Tongue",
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = { {
+            id = (okId and effectId) or "fortifyskill",
+            affectedSkill = "speechcraft",
+            magnitudeMin = magnitude, magnitudeMax = magnitude,
+            duration = seconds, area = 0, range = core.magic.RANGE.Self,
+        } },
+    })
+    if not okDraft or draft == nil then
+        log("silver tongue draft failed: " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("silver tongue record creation failed: " .. tostring(record))
+        return nil
+    end
+    silverRecordIds[key] = record.id
+    return record.id
+end
+
+local function onSilverTongue(data)
     local player = type(data) == "table" and data.player or nil
-    local npc = type(data) == "table" and data.npc or nil
-    if not validPlayerObject(player) or npc == nil then
+    if not validPlayerObject(player) then
         return
     end
-    local okFactions, factions = pcall(types.NPC.getFactions, npc)
-    if not okFactions or type(factions) ~= "table" or #factions == 0 then
+    local magnitude = math.max(1, math.floor(tonumber(data.magnitude) or 10))
+    local seconds = math.max(1, math.floor(tonumber(data.seconds) or 60))
+    local recordId = ensureSilverRecord(magnitude, seconds)
+    if recordId == nil then
         return
     end
-    local today = currentDay()
-    for _, factionId in ipairs(factions) do
-        if type(factionId) == "string" and reputationDay[factionId] ~= today then
-            local ok, err = pcall(types.NPC.modifyFactionReputation, player, factionId, 1)
-            if ok then
-                reputationDay[factionId] = today
-                speechLog("reputation +1 with " .. factionId)
-                if type(player.sendEvent) == "function" then
-                    player:sendEvent("SkillPerkSystem_BasePack_Speechcraft_ReputationRaised", {
-                        faction = factionName(factionId),
-                    })
-                end
-            else
-                log("could not raise reputation with " .. tostring(factionId) .. ": " .. tostring(err))
-            end
-            -- One faction per success is plenty.
-            return
-        end
+    local okActive, active = pcall(types.Actor.activeSpells, player)
+    if not okActive or active == nil then
+        return
     end
-    speechLog("reputation already raised today for every faction of " .. tostring(npc.recordId))
+    for _, previousId in pairs(silverRecordIds) do
+        pcall(function() active:remove(previousId) end)
+    end
+    local ok, err = pcall(function()
+        active:add({
+            id = recordId, effects = { 0 }, caster = player, stackable = false,
+            ignoreSpellAbsorption = true, ignoreReflect = true, ignoreResistances = true,
+        })
+    end)
+    if ok then
+        speechLog("silver tongue: speechcraft +" .. magnitude .. " for " .. seconds .. "s")
+    else
+        log("silver tongue application failed: " .. tostring(err))
+    end
 end
 
 local function onSetDebug(data)
@@ -5616,32 +5630,29 @@ end
 
 local function onDiagnose()
     log("---- diagnostic ----")
-    local lines = {}
-    for factionId, day in pairs(reputationDay) do
-        lines[#lines + 1] = factionId .. " on day " .. day
-    end
-    table.sort(lines)
-    log("reputation raised: " .. (#lines > 0 and table.concat(lines, ", ") or "never") .. "; today is day " .. currentDay())
+    local count = 0
+    for _ in pairs(silverRecordIds) do count = count + 1 end
+    log("silver tongue records minted: " .. count)
 end
 
 subsystems.speechcraft = {
     eventHandlers = {
         SkillPerkSystem_BasePack_Speechcraft_RestoreDisposition = onRestoreDisposition,
-        SkillPerkSystem_BasePack_Speechcraft_Reputation = onReputation,
+        SkillPerkSystem_BasePack_Speechcraft_SilverTongue = onSilverTongue,
         SkillPerkSystem_BasePack_Speechcraft_SetDebug = onSetDebug,
         SkillPerkSystem_BasePack_Speechcraft_Diagnose = onDiagnose,
     },
     engineHandlers = {
         onSave = function()
-            return { reputationDay = reputationDay }
+            return { silverRecordIds = silverRecordIds }
         end,
         onLoad = function(data)
-            reputationDay = {}
-            local saved = type(data) == "table" and data.reputationDay or nil
+            silverRecordIds = {}
+            local saved = type(data) == "table" and data.silverRecordIds or nil
             if type(saved) == "table" then
-                for factionId, day in pairs(saved) do
-                    if type(factionId) == "string" and type(day) == "number" then
-                        reputationDay[factionId] = day
+                for key, recordId in pairs(saved) do
+                    if type(key) == "string" and type(recordId) == "string" then
+                        silverRecordIds[key] = recordId
                     end
                 end
             end
@@ -7280,7 +7291,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Restoration_Diagnose = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_Diagnose", data) end,
 
     SkillPerkSystem_BasePack_Speechcraft_RestoreDisposition = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_RestoreDisposition", data) end,
-    SkillPerkSystem_BasePack_Speechcraft_Reputation = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Reputation", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_SilverTongue = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SilverTongue", data) end,
     SkillPerkSystem_BasePack_Speechcraft_SetDebug = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SetDebug", data) end,
     SkillPerkSystem_BasePack_Speechcraft_Diagnose = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,

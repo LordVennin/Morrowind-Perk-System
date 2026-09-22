@@ -203,6 +203,13 @@ local function init()
                     max = 100,
                 },
             },
+            {
+                key = "showOnlyClassSkills",
+                name = "showOnlyClassSkillsName",
+                description = "showOnlyClassSkillsDescription",
+                default = true,
+                renderer = "checkbox",
+            },
         },
     }
 
@@ -211,6 +218,10 @@ end
 
 local function getToggleUiKey()
     return getTextValue("toggleUiKey", defaults.TOGGLE_UI_KEY)
+end
+
+local function getShowOnlyClassSkills()
+    return getBooleanValue("showOnlyClassSkills", true)
 end
 
 local function getPointsPerLevel()
@@ -246,6 +257,7 @@ local container = {
     section = section,
     init = init,
     getToggleUiKey = getToggleUiKey,
+    getShowOnlyClassSkills = getShowOnlyClassSkills,
     getPointsPerLevel = getPointsPerLevel,
     getLevelUpRewardsEnabled = getLevelUpRewardsEnabled,
     getSkillMilestoneEnabled = getSkillMilestoneEnabled,

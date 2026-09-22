@@ -733,6 +733,30 @@ local function findPerkIndexByID(perkID)
     return 0
 end
 
+-- Hidden perks carry a visibility check on both the perk and its tree node
+-- (see hiddenUnless in the base pack's register.lua). A perk the player
+-- already owns stays visible whatever the check says now.
+local function isEntryVisible(id, entry)
+    if type(entry) ~= "table" or type(entry.visibleCheck) ~= "function" then
+        return true
+    end
+    if hasPerk(id) then
+        return true
+    end
+    local ok, visible = pcall(entry.visibleCheck)
+    return ok and visible == true
+end
+
+local function visibleTreeNodes(nodes)
+    local out = {}
+    for _, node in ipairs(nodes or {}) do
+        if isEntryVisible(node.id, node) then
+            table.insert(out, node)
+        end
+    end
+    return out
+end
+
 local function updateFilteredPerks()
     local modApi = interfaces[MOD_NAME]
     if modApi == nil then
@@ -752,12 +776,18 @@ local function updateFilteredPerks()
         return
     end
 
+    local tabPerkIDs = {}
     if type(modApi.getPerkIDsForTab) == "function" then
-        filteredPerkIDs = modApi.getPerkIDsForTab(selectedSkillID) or {}
+        tabPerkIDs = modApi.getPerkIDsForTab(selectedSkillID) or {}
     elseif type(modApi.getPerkIDsForSkill) == "function" then
-        filteredPerkIDs = modApi.getPerkIDsForSkill(selectedSkillID) or {}
-    else
-        filteredPerkIDs = {}
+        tabPerkIDs = modApi.getPerkIDsForSkill(selectedSkillID) or {}
+    end
+    local perks = type(modApi.getPerks) == "function" and modApi.getPerks() or {}
+    filteredPerkIDs = {}
+    for _, perkID in ipairs(tabPerkIDs) do
+        if isEntryVisible(perkID, perks[perkID]) then
+            table.insert(filteredPerkIDs, perkID)
+        end
     end
     table.sort(filteredPerkIDs)
     if selectedPerkIndex > #filteredPerkIDs then
@@ -1856,9 +1886,9 @@ local function buildPerkPane()
     local selectedSkillID = getSelectedSkillID()
     local modApi = getModApi()
     local perks = modApi ~= nil and type(modApi.getPerks) == "function" and modApi.getPerks() or {}
-    local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
+    local treeNodes = visibleTreeNodes(modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
         and modApi.getTreeNodesForTab(selectedSkillID)
-        or {}
+        or {})
 
     if #treeNodes > 0 then
         ensureTreePanInitialized(selectedSkillID, treeNodes)
@@ -2631,9 +2661,9 @@ local function onFrame(dt)
         if dx ~= 0 or dy ~= 0 then
             local modApi = getModApi()
             local selectedSkillID = getSelectedSkillID()
-            local treeNodes = modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
+            local treeNodes = visibleTreeNodes(modApi ~= nil and type(modApi.getTreeNodesForTab) == "function"
                 and modApi.getTreeNodesForTab(selectedSkillID)
-                or {}
+                or {})
 
             if #treeNodes > 0 then
                 local pan = getTreePan(selectedSkillID)

@@ -86,5 +86,24 @@ return {
             title = "Philosopher's Crucible",
             description = "Potions you brew lose their harmful effects and gain +25% duration on beneficial effects. Weapon poisons you prepare lose their beneficial effects and gain a further +25% duration on harmful effects.",
         },
+        {
+            -- Hidden: Argonian, Alchemy major, Athletics major or minor.
+            id = "alchemy_hist_blood",
+            tab = "Alchemy",
+            effectId = "demo_noop",
+            minimumSkill = 40,
+            requires = { "alchemy_purified_toxins" },
+            cost = 1,
+            x = 220,
+            y = 420,
+            title = "Hist Blood",
+            description = "Eating an ingredient while in water also grants Water Breathing and Swift Swim 20 for 60 seconds.",
+            hiddenUnless = {
+                race = "argonian",
+                majorSkills = { "alchemy" },
+                classSkills = { "athletics" },
+                label = "Argonian with Alchemy as a major skill and Athletics as a class skill",
+            },
+        },
     },
 }

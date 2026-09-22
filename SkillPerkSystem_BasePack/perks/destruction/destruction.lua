@@ -112,5 +112,24 @@ return {
             title = "Annihilation Mastery",
             description = "Elemental damage also applies Weakness to that element, 10 for 8 seconds. Stacks.",
         },
+        {
+            -- Hidden: Dark Elf, Destruction major, Mysticism major or minor.
+            id = "destruction_ashborn",
+            tab = "Destruction",
+            effectId = "demo_noop",
+            minimumSkill = 60,
+            requires = { "destruction_sundering_ruin" },
+            cost = 1,
+            x = -220,
+            y = 420,
+            title = "Ashborn",
+            description = "A target killed within 4 seconds of your fire damage landing restores 4 magicka per level of the target.",
+            hiddenUnless = {
+                race = "dark elf",
+                majorSkills = { "destruction" },
+                classSkills = { "mysticism" },
+                label = "Dark Elf with Destruction as a major skill and Mysticism as a class skill",
+            },
+        },
     },
 }

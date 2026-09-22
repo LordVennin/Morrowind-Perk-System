@@ -37,6 +37,10 @@ local C = {
     WITHERING_CURSE = "destruction_withering_curse",
     EFFICIENT_RUIN = "destruction_efficient_ruin",
     ANNIHILATION_MASTERY = "destruction_annihilation_mastery",
+    -- Hidden: Dunmer with Destruction as a major skill and Mysticism as a
+    -- class skill.
+    ASHBORN = "destruction_ashborn",
+    ASHBORN_MAGICKA_PER_LEVEL = 4,
 
     POLL_INTERVAL = 0.5,
     GRANTS_EVENT = "SkillPerkSystem_BasePack_Destruction_SetGrants",
@@ -96,7 +100,22 @@ end
 local function anyRiderPerkEnabled()
     return enabled(C.SEARING_HEAT) or enabled(C.BITING_COLD) or enabled(C.STORM_CHANNEL)
         or enabled(C.SUNDERING_RUIN) or enabled(C.WITHERING_CURSE)
-        or enabled(C.ANNIHILATION_MASTERY)
+        or enabled(C.ANNIHILATION_MASTERY) or enabled(C.ASHBORN)
+end
+
+-- Ashborn: the target verified it died within the window after the player's
+-- fire landed and reported its level. Paid like Soul Siphon: the kill
+-- followed a cast, so the pool is not full and the top-up is visible.
+local function onAshbornReturn(data)
+    if not enabled(C.ASHBORN) then
+        return
+    end
+    local level = math.max(1, math.floor(tonumber(type(data) == "table" and data.level) or 1))
+    local amount = level * C.ASHBORN_MAGICKA_PER_LEVEL
+    restoreMagicka(amount)
+    if debugLogging then
+        print(LOG_TAG .. " ashborn: level " .. level .. " kill restored " .. amount .. " magicka")
+    end
 end
 
 local function onSkillUsed(skillId, params)
@@ -197,11 +216,13 @@ local function publishRiders()
         sunderingRuin = enabled(C.SUNDERING_RUIN),
         witheringCurse = enabled(C.WITHERING_CURSE),
         annihilationMastery = enabled(C.ANNIHILATION_MASTERY),
+        ashborn = enabled(C.ASHBORN),
     }
     local ridersKey = table.concat({
         tostring(riders.searingHeat), tostring(riders.bitingCold),
         tostring(riders.stormChannel), tostring(riders.sunderingRuin),
         tostring(riders.witheringCurse), tostring(riders.annihilationMastery),
+        tostring(riders.ashborn),
     }, ":")
     if ridersKey == state.lastRidersKey then
         return
@@ -273,6 +294,7 @@ local function onConsoleCommand(_, command)
         searingHeat = C.SEARING_HEAT, bitingCold = C.BITING_COLD,
         stormChannel = C.STORM_CHANNEL, sunderingRuin = C.SUNDERING_RUIN,
         witheringCurse = C.WITHERING_CURSE, annihilationMastery = C.ANNIHILATION_MASTERY,
+        ashborn = C.ASHBORN,
     }) do
         print(LOG_TAG .. string.format("   %s (%s) enabled=%s", label, perkId, tostring(enabled(perkId))))
     end
@@ -287,6 +309,7 @@ end
 __basepack_subsystem_result = {
     eventHandlers = {
         SkillPerkSystem_PerkStateChanged = onPerkStateChanged,
+        SkillPerkSystem_BasePack_Destruction_AshbornReturn = onAshbornReturn,
     },
     engineHandlers = {
         shouldUpdate = function(dt)

@@ -41,6 +41,11 @@ local C = {
     SOUL_TETHER = "conjuration_soul_tether",
     SOUL_RECLAMATION = "conjuration_soul_reclamation",
     GRAND_CONJURER = "conjuration_grand_conjurer",
+    -- Hidden: Wood Elf with Conjuration as a major skill, Bloodmoon loaded.
+    -- The spell's pack grows with the skill that bought it.
+    CALL_OF_THE_WILD = "conjuration_call_of_the_wild",
+    WILD_TIER_TWO_SKILL = 75,
+    WILD_TIER_THREE_SKILL = 100,
 
     POLL_INTERVAL = 0.5,
     GRANTS_EVENT = "SkillPerkSystem_BasePack_Conjuration_SetGrants",
@@ -133,6 +138,21 @@ local function pactTier(pactPerkId)
         return 3
     end
     if enabled(C.DEEPENED_PACT) then
+        return 2
+    end
+    return 1
+end
+
+local function wildTier()
+    if not enabled(C.CALL_OF_THE_WILD) then
+        return 0
+    end
+    local stat = stats.skillStat("conjuration")
+    local base = stat ~= nil and (tonumber(stat.base) or 0) or 0
+    if base >= C.WILD_TIER_THREE_SKILL then
+        return 3
+    end
+    if base >= C.WILD_TIER_TWO_SKILL then
         return 2
     end
     return 1
@@ -274,9 +294,10 @@ local function publishGrants()
     local daedraTier = pactTier(C.DAEDRIC_PACT)
     local wardTier = (enabled(C.SPECTRAL_WARD) and wearingBoundArmor()) and 1 or 0
     local tetherTier = enabled(C.SOUL_TETHER) and 1 or 0
+    local wild = wildTier()
 
     local grantsKey = table.concat({
-        undeadTier, daedraTier, wardTier, tetherTier, day,
+        undeadTier, daedraTier, wardTier, tetherTier, wild, day,
         state.pactUsedDay.undead, state.pactUsedDay.daedra,
     }, ":")
     if grantsKey == state.lastGrantsKey then
@@ -289,6 +310,7 @@ local function publishGrants()
         daedraTier = daedraTier,
         wardTier = wardTier,
         tetherTier = tetherTier,
+        wildTier = wild,
         currentDay = day,
         undeadUsedDay = state.pactUsedDay.undead,
         daedraUsedDay = state.pactUsedDay.daedra,

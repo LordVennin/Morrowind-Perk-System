@@ -5880,7 +5880,23 @@ local function npcName(npc)
     return tostring(npc and npc.recordId or "?")
 end
 
--- Guards and essential NPCs stay where they are.
+-- Anyone who offers a service (barter, repair, training, spells, travel)
+-- has a shop or a post to mind, and leading a merchant out of their shop
+-- would leave the stock unguarded.
+local function offersServices(record)
+    local ok, services = pcall(function() return record.servicesOffered end)
+    if not ok or type(services) ~= "table" then
+        return false
+    end
+    for _, offered in pairs(services) do
+        if offered == true then
+            return true
+        end
+    end
+    return false
+end
+
+-- Guards, essential NPCs and service providers stay where they are.
 local function canBeRecruited(npc)
     if npc == nil or not types.NPC.objectIsInstance(npc) then
         return false, "Will not follow"
@@ -5895,6 +5911,9 @@ local function canBeRecruited(npc)
     local classId = tostring(record.class or ""):lower()
     if classId:find("guard", 1, true) ~= nil then
         return false, "Will not follow"
+    end
+    if offersServices(record) then
+        return false, "Has a business to mind"
     end
     local okDead, dead = pcall(types.Actor.isDead, npc)
     if okDead and dead then

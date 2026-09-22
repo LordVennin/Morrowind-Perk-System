@@ -74,7 +74,7 @@ return {
             x = 220,
             y = 560,
             title = "Retinue",
-            description = "In dialogue, an NPC at disposition 80 or higher can be asked to follow you. One follower at a time; ask again to dismiss. Guards and essential NPCs refuse.",
+            description = "In dialogue, an NPC at disposition 80 or higher can be asked to follow you. One follower at a time; ask again to dismiss. Guards, merchants and other service providers, and essential NPCs refuse.",
             hiddenUnless = {
                 majorSkills = { "speechcraft" },
                 classSkillsAny = { "illusion", "mercantile" },

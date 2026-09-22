@@ -3687,6 +3687,18 @@ local stacks = 0
 local remainingTime = 0
 local agilityPerStack = 3
 local appliedPenalty = 0
+-- Pushed by the global side while the player holds any Long Blade on-hit
+-- perk; keeps this script attached so the hit events below can be sent.
+local longBladePlayerId = nil
+local longBladeHitsWanted = false
+
+local function setLongBladeState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    longBladePlayerId = type(data.playerId) == "string" and data.playerId or nil
+    longBladeHitsWanted = data.hitsWanted == true
+end
 
 local function resolveAgilityStat()
     local accessor = Actor ~= nil
@@ -3814,6 +3826,7 @@ end
 local script = {
     eventHandlers = {
         SkillPerkSystem_DuelistsTempoRefresh = setState,
+        SkillPerkSystem_LongBladeRefresh = setLongBladeState,
         SkillPerkSystem_ApplyLongBladeCriticalDamage = applyDirectHealthDamage,
         SkillPerkSystem_ApplyIronKnucklesDamage = applyDirectHealthDamage,
     },
@@ -3860,6 +3873,7 @@ local script = {
     duelistTempo.engineHandlers = script.engineHandlers or {}
     duelistTempo.hasActiveState = function()
         return remainingTime > 0 or appliedPenalty ~= 0
+            or (longBladePlayerId ~= nil and longBladeHitsWanted)
     end
     duelistTempo.onHit = onHit
 end
@@ -3992,6 +4006,7 @@ end
 
 -- 7b. hand-to-hand target damage modifiers
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local selfObj = require("openmw.self")
 local types = require("openmw.types")
@@ -4016,6 +4031,11 @@ local ironKnucklesEnabled = false
 local breakingFistEnabled = false
 local flowingCounterMode = "none"
 local emptyBodyMasteryEnabled = false
+-- Claws: an unarmed hit leaves a bleed, applied through the generic target
+-- rider so it never stacks; a fresh hit restarts it.
+local clawsEnabled = false
+local CLAWS_BLEED_PER_SECOND = 1
+local CLAWS_BLEED_SECONDS = 8
 local EMPTY_BODY_DEBUG = false
 
 local function logEmptyBodyDebug(message)
@@ -4035,6 +4055,7 @@ local function setState(data)
     breakingFistEnabled = data.breakingFistEnabled == true
     flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
     emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true
+    clawsEnabled = data.clawsEnabled == true
 end
 
 local function getEquippedItem(actor, slot)
@@ -4125,11 +4146,25 @@ local function onHit(attack)
     if not ironKnucklesEnabled
         and not breakingFistEnabled
         and flowingCounterMode == "none"
-        and not emptyBodyMasteryEnabled then
+        and not emptyBodyMasteryEnabled
+        and not clawsEnabled then
         return
     end
     if not isPlayerHandToHandHit(attack) then
         return
+    end
+
+    if clawsEnabled then
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_TargetRider", {
+            player = attack.attacker,
+            target = selfObj,
+            kind = "claws",
+            name = "Claws",
+            effects = {
+                { effect = "DamageHealth", fallback = "damagehealth",
+                  magnitude = CLAWS_BLEED_PER_SECOND, seconds = CLAWS_BLEED_SECONDS },
+            },
+        })
     end
 
     if emptyBodyMasteryEnabled then
@@ -4173,7 +4208,8 @@ handToHand.eventHandlers = {
     SkillPerkSystem_HandToHandRefresh = setState,
 }
 handToHand.hasActiveState = function()
-    return openPalmEnabled or ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none" or emptyBodyMasteryEnabled
+    return openPalmEnabled or ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none"
+        or emptyBodyMasteryEnabled or clawsEnabled
 end
 
 handToHand.engineHandlers = {
@@ -4195,6 +4231,7 @@ handToHand.engineHandlers = {
             breakingFistEnabled = breakingFistEnabled,
             flowingCounterMode = flowingCounterMode,
             emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
+            clawsEnabled = clawsEnabled,
         }
     end,
 }

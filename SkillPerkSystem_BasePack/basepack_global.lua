@@ -6089,6 +6089,7 @@ local handToHandState = {
     breakingFistEnabled = false,
     flowingCounterMode = "none",
     emptyBodyMasteryEnabled = false,
+    clawsEnabled = false,
 }
 
 local function shouldAttachWatcher(actor)
@@ -6125,6 +6126,7 @@ local function handToHandTargetStateActive()
         or handToHandState.breakingFistEnabled
         or handToHandState.flowingCounterMode ~= "none"
         or handToHandState.emptyBodyMasteryEnabled
+        or handToHandState.clawsEnabled
 end
 
 local function refreshWatchers()
@@ -6143,6 +6145,7 @@ local function onHandToHandState(data)
         breakingFistEnabled = data.breakingFistEnabled == true,
         flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",
         emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true,
+        clawsEnabled = data.clawsEnabled == true,
     }
     refreshWatchers()
 end
@@ -6433,8 +6436,48 @@ local function shouldAttachWatcher(actor)
     return not actor:hasScript(DUELISTS_TEMPO_TARGET_SCRIPT)
 end
 
+-- The Long Blade on-hit perks (Duelist's Tempo, the criticals, Sword-Singer)
+-- resolve on the actor that was hit, so the target script has to be on
+-- nearby actors while any of them is held. Event-only on the target side:
+-- attaching costs nothing per frame.
+local longBladeState = { playerId = nil, hitsWanted = false }
+
+local function longBladeTargetStateActive()
+    return type(longBladeState.playerId) == "string" and longBladeState.hitsWanted
+end
+
+local function sendLongBladeState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_LongBladeRefresh", longBladeState)
+    end
+end
+
+local function onLongBladeState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    longBladeState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        hitsWanted = data.hitsWanted == true,
+    }
+    onTargetWatcherProviderStateChanged("longblade", longBladeTargetStateActive())
+    sendTargetWatcherStateToAttached(targetWatcher.providers["longblade"])
+end
+
+registerTargetWatcherProvider("longblade", {
+    isActive = longBladeTargetStateActive,
+    sendState = sendLongBladeState,
+})
+
 subsystems.duelists_tempo = {
-    engineHandlers = {},
+    eventHandlers = {
+        SkillPerkSystem_LongBladeState = onLongBladeState,
+    },
+    engineHandlers = {
+        onLoad = function()
+            onTargetWatcherProviderStateChanged("longblade", longBladeTargetStateActive())
+        end,
+    },
 }
 
 -- End consolidated from SkillPerkSystem_BasePack/duelists_tempo_global.lua
@@ -7522,6 +7565,7 @@ local eventHandlers = {
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,
     SkillPerkSystem_HandToHandState = function(data) dispatchEvent("handtohand", "SkillPerkSystem_HandToHandState", data) end,
+    SkillPerkSystem_LongBladeState = function(data) dispatchEvent("duelists_tempo", "SkillPerkSystem_LongBladeState", data) end,
     SkillPerkSystem_HeavyArmorState = function(data) dispatchEvent("heavyarmor", "SkillPerkSystem_HeavyArmorState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,

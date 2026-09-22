@@ -25,6 +25,9 @@ local IRON_KNUCKLES_PERK_ID = "handtohand_iron_knuckles"
 local FLOWING_COUNTER_PERK_ID = "handtohand_flowing_counter"
 local EMPTY_BODY_MASTERY_PERK_ID = "handtohand_empty_body_mastery"
 local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
+-- Claws (hidden: Khajiit, Hand-to-hand major, Sneak class skill). Resolved on
+-- the target like the other hit perks; only the flag is published here.
+local CLAWS_PERK_ID = "handtohand_claws"
 local CENTERED_STANCE_BONUS = 3
 local FLOWING_COUNTER_ABILITY_ID = "sps_DeflectingPalm"
 local FLOWING_COUNTER_HEAVY_AGILITY_PENALTY = 10
@@ -602,11 +605,13 @@ local function refreshHandToHandState(force)
     local ironKnucklesEnabled = hasEnabledPerk(IRON_KNUCKLES_PERK_ID)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
     local emptyBodyMasteryEnabled = hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID)
+    local clawsEnabled = hasEnabledPerk(CLAWS_PERK_ID)
     local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and cachedFlowingCounterMode() or "none"
     local stateKey = tostring(openPalmEnabled) .. ":"
         .. tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
         .. tostring(emptyBodyMasteryEnabled) .. ":"
+        .. tostring(clawsEnabled) .. ":"
         .. tostring(flowingCounterMode)
     if not force and stateKey == lastHandToHandStateKey then
         return
@@ -620,6 +625,7 @@ local function refreshHandToHandState(force)
         ironKnucklesEnabled = ironKnucklesEnabled,
         breakingFistEnabled = breakingFistEnabled,
         emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
+        clawsEnabled = clawsEnabled,
         flowingCounterMode = flowingCounterMode,
     })
 end
@@ -672,6 +678,7 @@ local HAND_TO_HAND_STATE_PERKS = {
     handtohand_flowing_counter = true,
     handtohand_empty_body_mastery = true,
     handtohand_breaking_fist = true,
+    handtohand_claws = true,
 }
 
 local function markHandToHandDirty(scanWindow)

@@ -4,6 +4,7 @@
 
 local __basepack_subsystem_result = nil
 
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local ui = require("openmw.ui")
 local pself = require("openmw.self")
@@ -22,6 +23,19 @@ local DUELISTS_FORM_PERK_ID = "longblade_demo_duelist"
 local GREATBLADE_CRITICALS_PERK_ID = "longblade_demo_whirlwind"
 local KEEN_EDGE_PERK_ID = "longblade_keen_edge"
 local GRANDMASTER_FORM_PERK_ID = "longblade_demo_mastery"
+-- Sword-Singer (hidden: Redguard, Long Blade major, Block class skill). A
+-- shield block arms a short window; the next one-handed long blade hit in it
+-- is a guaranteed critical. Real-time window, since the module's clock only
+-- advances while its update loop is active.
+local SWORD_SINGER_PERK_ID = "longblade_sword_singer"
+local SWORD_SINGER_WINDOW = 2.0
+local SWORD_SINGER_CRITICAL_DAMAGE = 20
+local SWORD_SINGER_CRITICAL_MESSAGE = "Sword-Singer critical hit!"
+local LONG_BLADE_STATE_EVENT = "SkillPerkSystem_LongBladeState"
+local swordSingerArmedUntil = 0
+local lastSwordSingerTarget = nil
+local lastSwordSingerApplyTime = -1
+local lastLongBladeStateKey = nil
 local FATIGUE_THRESHOLD = 0.8
 local LONG_BLADE_BONUS = 5
 local LONG_BLADE_STATE_REFRESH_INTERVAL = 0.5
@@ -114,6 +128,10 @@ end
 
 local function grandmasterFormEnabled()
     return hasEnabledPerk(GRANDMASTER_FORM_PERK_ID)
+end
+
+local function swordSingerEnabled()
+    return hasEnabledPerk(SWORD_SINGER_PERK_ID)
 end
 
 local function getFatiguePercent()
@@ -566,11 +584,30 @@ local function anyLongBladeStatePerkEnabled()
     return longBladeFundamentalsEnabled()
         or greatbladeFormEnabled()
         or duelistsFormEnabled()
+        or swordSingerEnabled()
+end
+
+-- The on-hit perks resolve on the actor being hit, which needs the target
+-- script attached; the global side keeps it on nearby actors while any of
+-- them is held. Published only when the answer changes.
+local function publishLongBladeState()
+    local hitsWanted = duelistsTempoEnabled() or keenEdgeEnabled() or greatbladeCriticalsEnabled()
+        or grandmasterFormEnabled() or swordSingerEnabled()
+    local key = tostring(hitsWanted)
+    if key == lastLongBladeStateKey then
+        return
+    end
+    lastLongBladeStateKey = key
+    core.sendGlobalEvent(LONG_BLADE_STATE_EVENT, {
+        playerId = pself.id,
+        hitsWanted = hitsWanted,
+    })
 end
 
 local function refreshLongBladeStaticState()
     refreshLongBladeFundamentals()
     updateLongBladeAbilities()
+    publishLongBladeState()
 end
 
 local function isValidDuelistTempoTarget(target)
@@ -687,6 +724,60 @@ local function tryApplyGreatbladeCritical(data)
     applyLongBladeCriticalDamage(target, GREATBLADE_CRITICAL_DAMAGE)
 end
 
+local function tryApplySwordSinger(data)
+    if type(data) ~= "table" then
+        return
+    end
+    local target = data.target
+    if not isValidDuelistTempoTarget(target) then
+        return
+    end
+    if not swordSingerEnabled() or getEquippedOneHandedLongBlade() == nil then
+        return
+    end
+    local now = core.getRealTime()
+    if now > swordSingerArmedUntil then
+        return
+    end
+    if recentlyAppliedCritical(target, lastSwordSingerTarget, lastSwordSingerApplyTime) then
+        return
+    end
+    swordSingerArmedUntil = 0
+    lastSwordSingerTarget = target
+    lastSwordSingerApplyTime = runtimeTime
+    showMessage(SWORD_SINGER_CRITICAL_MESSAGE)
+    applyLongBladeCriticalDamage(target, SWORD_SINGER_CRITICAL_DAMAGE)
+end
+
+-- A block the engine resolved on a hit against the player. Mirrors the
+-- reactive block module's reading of the attack table.
+local function wasSuccessfulShieldBlock(attack)
+    local blockedFlag = attack.blocked == true or attack.isBlocked == true or attack.block == true
+    local blockedBy = string.lower(tostring(attack.blockedBy or attack.blockType or attack.defenseType or ""))
+    if attack.parried == true or attack.isParry == true or blockedBy:find("parry", 1, true) ~= nil then
+        return false
+    end
+    if blockedBy:find("shield", 1, true) ~= nil or blockedFlag then
+        return true
+    end
+    local damage = type(attack.damage) == "table" and attack.damage or {}
+    local total = (tonumber(damage.health) or 0) + (tonumber(damage.fatigue) or 0) + (tonumber(damage.magicka) or 0)
+    return attack.successful == true and total <= 0
+end
+
+local function noteIncomingHitForSwordSinger(attack)
+    if type(attack) ~= "table" or attack.attacker == nil or attack.attacker == pself then
+        return
+    end
+    if not swordSingerEnabled() or not wasSuccessfulShieldBlock(attack) then
+        return
+    end
+    if getEquippedOneHandedLongBlade() == nil or not hasEquippedOffHandShield() then
+        return
+    end
+    swordSingerArmedUntil = core.getRealTime() + SWORD_SINGER_WINDOW
+end
+
 local function getGrandmasterHeavyCriticalChance()
     local fatiguePercent = math.max(0, math.min(1, getFatiguePercent()))
     if fatiguePercent <= GRANDMASTER_HEAVY_CRITICAL_MIN_FATIGUE then
@@ -774,6 +865,7 @@ local function isSuccessfulPlayerMeleeHit(attack)
 end
 
 local function onHit(attack)
+    noteIncomingHitForSwordSinger(attack)
     if not isSuccessfulPlayerMeleeHit(attack) then
         return
     end
@@ -812,6 +904,10 @@ local function onLoad()
     lastKeenEdgeCriticalApplyTime = -1
     lastGrandmasterHeavyCriticalTarget = nil
     lastGrandmasterHeavyCriticalApplyTime = -1
+    swordSingerArmedUntil = 0
+    lastSwordSingerTarget = nil
+    lastSwordSingerApplyTime = -1
+    lastLongBladeStateKey = nil
     longBladeStateRefreshTimer = LONG_BLADE_STATE_REFRESH_INTERVAL
     longBladeStateRefreshDue = false
     refreshLongBladeStaticState()
@@ -875,7 +971,15 @@ end
 __basepack_subsystem_result = {
     eventHandlers = {
         SkillPerkSystem_TryDuelistsTempo = tryApplyDuelistTempo,
-        SkillPerkSystem_TryGreatbladeCritical = tryApplyGreatbladeCritical,
+        -- Sent by the target for every successful player melee hit, whatever
+        -- the weapon, so it doubles as Sword-Singer's landing signal.
+        SkillPerkSystem_TryGreatbladeCritical = function(data)
+            tryApplySwordSinger(data)
+            tryApplyGreatbladeCritical(data)
+        end,
+        SkillPerkSystem_PerkStateChanged = function()
+            longBladeStateRefreshDue = true
+        end,
         SkillPerkSystem_TryKeenEdgeCritical = tryApplyKeenEdgeCritical,
         SkillPerkSystem_TryGrandmasterHeavyCritical = tryApplyGrandmasterHeavyCritical,
     },

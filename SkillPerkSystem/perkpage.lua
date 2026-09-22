@@ -568,9 +568,12 @@ local function getClassSkillSet()
     return nil
 end
 
--- A tab id normalises to a skill id the same way the base pack infers it.
+-- A tab id normalises to a skill id the same way the base pack infers it:
+-- everything that is not a letter or digit goes, so "Hand-to-hand" becomes
+-- "handtohand" (stripping spaces alone left the hyphens, which made that
+-- tab look like a non-skill tab and exempt from the class filter).
 local function tabSkillId(tabID)
-    local normalized = tostring(tabID):gsub("%s+", ""):lower()
+    local normalized = tostring(tabID):gsub("[^%w]", ""):lower()
     return normalized
 end
 

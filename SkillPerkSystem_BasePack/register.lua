@@ -33,7 +33,7 @@ local function inferSkillId(perk)
         return nil
     end
 
-    local normalized = perk.tab:gsub("%s+", ""):lower()
+    local normalized = perk.tab:gsub("[^%w]", ""):lower()
     if normalized ~= "" then
         return normalized
     end
@@ -79,7 +79,7 @@ end
 -- engine modules, and a missing API must hide the perk rather than break the
 -- page.
 local function normalizeName(value)
-    local out = tostring(value or ""):lower():gsub("%s+", "")
+    local out = tostring(value or ""):lower():gsub("[^%w]", "")
     return out
 end
 

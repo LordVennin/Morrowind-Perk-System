@@ -49,7 +49,7 @@ local C = {
     CALL_OF_THE_WILD = "conjuration_call_of_the_wild",
     WILD_EFFECT_ID = "sps_callofthewild",
     WILD_SECONDS = 60,
-    WILD_WOLVES = 2,
+    WILD_SECOND_WOLF_SKILL = 75,
     WILD_THIRD_WOLF_SKILL = 100,
 
     POLL_INTERVAL = 0.5,
@@ -156,9 +156,12 @@ local function wildPackSize()
     local stat = stats.skillStat("conjuration")
     local base = stat ~= nil and (tonumber(stat.base) or 0) or 0
     if base >= C.WILD_THIRD_WOLF_SKILL then
-        return C.WILD_WOLVES + 1
+        return 3
     end
-    return C.WILD_WOLVES
+    if base >= C.WILD_SECOND_WOLF_SKILL then
+        return 2
+    end
+    return 1
 end
 
 local function wildEffectActive()
@@ -172,6 +175,11 @@ end
 -- the pack is called; once it is gone the next cast can call it again. The
 -- flag is saved so a reload mid-effect does not call a second pack on top
 -- of the one the save already holds.
+--
+-- The whole pack goes into ONE record carrying one Summon Wolf effect per
+-- wolf. The engine keys a summon by spell id and effect index, so several
+-- instances of a one-effect record collapse into a single wolf; separate
+-- indices in one record are what give separate wolves.
 local function tendThePack()
     if not enabled(C.CALL_OF_THE_WILD) then
         state.wildPackCalled = false
@@ -180,16 +188,18 @@ local function tendThePack()
     local active = wildEffectActive()
     if active and not state.wildPackCalled then
         state.wildPackCalled = true
-        for index = 1, wildPackSize() do
-            core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SelfRider", {
-                player = pself,
-                kind = "wild" .. index,
-                name = "Call of the Wild",
-                effects = {
-                    { effect = "SummonWolf", fallback = "summonwolf", magnitude = 1, seconds = C.WILD_SECONDS },
-                },
-            })
+        local effects = {}
+        for _ = 1, wildPackSize() do
+            effects[#effects + 1] = {
+                effect = "SummonWolf", fallback = "summonwolf", magnitude = 1, seconds = C.WILD_SECONDS,
+            }
         end
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SelfRider", {
+            player = pself,
+            kind = "wild",
+            name = "Call of the Wild",
+            effects = effects,
+        })
     elseif not active and state.wildPackCalled then
         state.wildPackCalled = false
     end

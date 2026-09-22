@@ -47,7 +47,7 @@ if effectRecord(WILD_EFFECT) == nil then
             content.spells.records[WILD_SPELL] = {
                 name = "Call of the Wild",
                 type = content.spells.TYPE.Spell,
-                cost = 40,
+                cost = 30,
                 isAutocalc = false,
                 starterSpellFlag = false,
                 effects = {

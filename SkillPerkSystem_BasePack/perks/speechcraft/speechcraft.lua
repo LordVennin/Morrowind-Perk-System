@@ -51,7 +51,7 @@ return {
             description = "Face Saving's chance rises to 50%.",
         },
         {
-            id = "speechcraft_well_connected",
+            id = "speechcraft_silver_tongue",
             tab = "Speechcraft",
             effectId = "demo_noop",
             minimumSkill = 90,
@@ -59,8 +59,8 @@ return {
             cost = 2,
             x = 0,
             y = 560,
-            title = "Well-Connected",
-            description = "A successful persuasion with a faction member has a 20% chance to raise your reputation in that faction by 1, at most once per day per faction.",
+            title = "Silver Tongue",
+            description = "A successful persuasion fortifies Speechcraft by 10 for 60 seconds. Does not stack.",
         },
     },
 }

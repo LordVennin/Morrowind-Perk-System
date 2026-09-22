@@ -1,5 +1,6 @@
 local ui = require("openmw.ui")
 local util = require("openmw.util")
+local core = require("openmw.core")
 local async = require("openmw.async")
 local ambient = require("openmw.ambient")
 local interfaces = require("openmw.interfaces")
@@ -458,6 +459,33 @@ local function releaseOwnedInterfaceMode(forceRelease, allowFallbackRemove)
     return countInterfaceModeDepth() <= interfaceDepthBeforeOpen
 end
 
+-- The player's class major and minor skills as a set of skill ids, or nil
+-- when the class cannot be read (a mocked or unusual build).
+local function getClassSkillSet()
+    local ok, set = pcall(function()
+        local types = require("openmw.types")
+        local classId = types.NPC.record(pself).class
+        local class = types.NPC.classes.records[classId]
+        local out = {}
+        for _, list in ipairs({ class.majorSkills, class.minorSkills }) do
+            for _, skillId in ipairs(list) do
+                out[tostring(skillId):lower()] = true
+            end
+        end
+        return out
+    end)
+    if ok and type(set) == "table" and next(set) ~= nil then
+        return set
+    end
+    return nil
+end
+
+-- A tab id normalises to a skill id the same way the base pack infers it.
+local function tabSkillId(tabID)
+    local normalized = tostring(tabID):gsub("%s+", ""):lower()
+    return normalized
+end
+
 local function getSkillIDs()
     local modApi = interfaces[MOD_NAME]
     local out = {}
@@ -467,6 +495,28 @@ local function getSkillIDs()
         end
     end
     table.sort(out)
+
+    -- By default only the trees for the class's major and minor skills are
+    -- shown; tabs that are not skills at all stay. If the filter would leave
+    -- nothing, everything is shown rather than an empty menu.
+    local onlyClass = settings.getShowOnlyClassSkills == nil or settings.getShowOnlyClassSkills()
+    if onlyClass then
+        local classSkills = getClassSkillSet()
+        if classSkills ~= nil then
+            local filtered = {}
+            for _, tabID in ipairs(out) do
+                local skillId = tabSkillId(tabID)
+                local isSkillTab = core ~= nil and core.stats ~= nil and core.stats.Skill ~= nil
+                    and core.stats.Skill.records ~= nil and core.stats.Skill.records[skillId] ~= nil
+                if not isSkillTab or classSkills[skillId] then
+                    table.insert(filtered, tabID)
+                end
+            end
+            if #filtered > 0 then
+                out = filtered
+            end
+        end
+    end
     return out
 end
 

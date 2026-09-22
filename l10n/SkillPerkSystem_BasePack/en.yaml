@@ -1,0 +1,12 @@
+# Strings for the base pack's own settings group. Kept in a context of its
+# own so a stale copy of the core mod's l10n file elsewhere in the data
+# paths cannot shadow them.
+basePackHud: "Overheal Bar (Restoration)"
+overhealBarXName: "Bar position: left / right"
+overhealBarXDescription: "How far from the left edge of the screen the overheal bar is drawn. Easier: tick 'Move the bar' below and drag it instead."
+overhealBarYName: "Bar position: up / down"
+overhealBarYDescription: "How far above the bottom edge of the screen the overheal bar is drawn (a negative number moves it up). Easier: tick 'Move the bar' below and drag it instead."
+overhealBarScaleName: "Bar length"
+overhealBarScaleDescription: "Makes the overheal bar longer or shorter. 1 is the same length as the health bar, 2 is twice as long."
+overhealBarUnlockName: "Move the bar"
+overhealBarUnlockDescription: "Tick this, open your inventory so the mouse cursor appears, and drag the red bar with the mouse onto your health bar. Untick it once the bar is where you want it."

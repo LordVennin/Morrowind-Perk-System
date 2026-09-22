@@ -5526,6 +5526,131 @@ subsystems.restoration = {
 
 end
 
+-- 5l. speechcraft global handling
+do
+local core = require("openmw.core")
+local types = require("openmw.types")
+
+local LOG_TAG = "[SkillPerkSystem_BasePack][Speechcraft][Global]"
+local function log(message) print(LOG_TAG .. " " .. tostring(message)) end
+
+local speechDebug = false
+local function speechLog(message)
+    if speechDebug then log(message) end
+end
+
+local SECONDS_PER_DAY = 86400
+
+-- Game day each faction last had reputation raised by Well-Connected.
+-- Persisted: the once-per-day gate is the whole balance of the perk.
+local reputationDay = {}
+
+local function currentDay()
+    local ok, gameTime = pcall(core.getGameTime)
+    if not ok or type(gameTime) ~= "number" then return 0 end
+    return math.floor(gameTime / SECONDS_PER_DAY)
+end
+
+local function factionName(factionId)
+    local ok, name = pcall(function() return core.factions.records[factionId].name end)
+    if ok and type(name) == "string" and name ~= "" then
+        return name
+    end
+    return tostring(factionId)
+end
+
+-- Face Saving: put back what a forgiven failure cost.
+local function onRestoreDisposition(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    local delta = math.floor(tonumber(type(data) == "table" and data.delta) or 0)
+    if not validPlayerObject(player) or npc == nil or delta <= 0 then
+        return
+    end
+    local ok, err = pcall(types.NPC.modifyBaseDisposition, npc, player, delta)
+    if ok then
+        speechLog("restored " .. delta .. " disposition with " .. tostring(npc.recordId))
+    else
+        log("could not restore disposition: " .. tostring(err))
+    end
+end
+
+-- Well-Connected: the player script already rolled the chance; this side
+-- applies the once-per-day gate per faction and raises the reputation.
+local function onReputation(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) or npc == nil then
+        return
+    end
+    local okFactions, factions = pcall(types.NPC.getFactions, npc)
+    if not okFactions or type(factions) ~= "table" or #factions == 0 then
+        return
+    end
+    local today = currentDay()
+    for _, factionId in ipairs(factions) do
+        if type(factionId) == "string" and reputationDay[factionId] ~= today then
+            local ok, err = pcall(types.NPC.modifyFactionReputation, player, factionId, 1)
+            if ok then
+                reputationDay[factionId] = today
+                speechLog("reputation +1 with " .. factionId)
+                if type(player.sendEvent) == "function" then
+                    player:sendEvent("SkillPerkSystem_BasePack_Speechcraft_ReputationRaised", {
+                        faction = factionName(factionId),
+                    })
+                end
+            else
+                log("could not raise reputation with " .. tostring(factionId) .. ": " .. tostring(err))
+            end
+            -- One faction per success is plenty.
+            return
+        end
+    end
+    speechLog("reputation already raised today for every faction of " .. tostring(npc.recordId))
+end
+
+local function onSetDebug(data)
+    speechDebug = type(data) == "table" and data.enabled == true
+    log("verbose logging " .. (speechDebug and "ON" or "OFF"))
+end
+
+local function onDiagnose()
+    log("---- diagnostic ----")
+    local lines = {}
+    for factionId, day in pairs(reputationDay) do
+        lines[#lines + 1] = factionId .. " on day " .. day
+    end
+    table.sort(lines)
+    log("reputation raised: " .. (#lines > 0 and table.concat(lines, ", ") or "never") .. "; today is day " .. currentDay())
+end
+
+subsystems.speechcraft = {
+    eventHandlers = {
+        SkillPerkSystem_BasePack_Speechcraft_RestoreDisposition = onRestoreDisposition,
+        SkillPerkSystem_BasePack_Speechcraft_Reputation = onReputation,
+        SkillPerkSystem_BasePack_Speechcraft_SetDebug = onSetDebug,
+        SkillPerkSystem_BasePack_Speechcraft_Diagnose = onDiagnose,
+    },
+    engineHandlers = {
+        onSave = function()
+            return { reputationDay = reputationDay }
+        end,
+        onLoad = function(data)
+            reputationDay = {}
+            local saved = type(data) == "table" and data.reputationDay or nil
+            if type(saved) == "table" then
+                for factionId, day in pairs(saved) do
+                    if type(factionId) == "string" and type(day) == "number" then
+                        reputationDay[factionId] = day
+                    end
+                end
+            end
+        end,
+    },
+}
+
+end
+
 -- 6. axe global state handling
 do
 -- Begin consolidated from SkillPerkSystem_BasePack/axe_global.lua
@@ -7153,6 +7278,11 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Restoration_RequestState = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_RequestState", data) end,
     SkillPerkSystem_BasePack_Restoration_SetDebug = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_SetDebug", data) end,
     SkillPerkSystem_BasePack_Restoration_Diagnose = function(data) dispatchEvent("restoration", "SkillPerkSystem_BasePack_Restoration_Diagnose", data) end,
+
+    SkillPerkSystem_BasePack_Speechcraft_RestoreDisposition = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_RestoreDisposition", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_Reputation = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Reputation", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_SetDebug = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SetDebug", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_Diagnose = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -8067,6 +8197,7 @@ local engineOrder = {
     "illusion",
     "mercantile",
     "restoration",
+    "speechcraft",
     "axe",
     "spear",
     "bluntweapon",

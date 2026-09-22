@@ -110,7 +110,7 @@ local function ensureHudSettings()
     local ok, err = pcall(settings.registerGroup, {
         key = C.HUD_SETTINGS_GROUP,
         page = C.HUD_SETTINGS_PAGE,
-        l10n = "SkillPerkSystem",
+        l10n = "SkillPerkSystem_BasePack",
         name = "basePackHud",
         permanentStorage = true,
         settings = {

@@ -147,6 +147,94 @@ local function cachedTexture(path)
     return texture
 end
 
+-- Requirement rows are truncated to fit their column; hovering one shows the
+-- whole line in a small box beside the cursor. The box is its own element on
+-- the layer above the menu, so it is never clipped by the menu's bounds.
+local requirementTooltip = nil
+
+local function hideRequirementTooltip()
+    if requirementTooltip ~= nil then
+        pcall(function() requirementTooltip:destroy() end)
+        requirementTooltip = nil
+    end
+end
+
+local function showRequirementTooltip(text, position)
+    hideRequirementTooltip()
+    if type(text) ~= "string" or text == "" or position == nil then
+        return
+    end
+    local templates = interfaces.MWUI ~= nil and interfaces.MWUI.templates or nil
+    if templates == nil then
+        return
+    end
+    local textSize = 14
+    local width = 380
+    -- Rough line count from average glyph width, enough to size the box.
+    local charsPerLine = math.max(10, math.floor(width / (textSize * 0.55)))
+    local lines = math.max(1, math.ceil(#text / charsPerLine))
+    local height = lines * (textSize + 4) + 12
+    local screen = ui.screenSize()
+    local x = math.min(position.x + 16, screen.x - width - 20)
+    local y = math.min(position.y + 16, screen.y - height - 20)
+    local ok, element = pcall(ui.create, {
+        layer = "Notification",
+        type = ui.TYPE.Container,
+        template = templates.boxSolid or templates.boxTransparentThick,
+        props = { position = util.vector2(x, y) },
+        content = ui.content {
+            {
+                type = ui.TYPE.Text,
+                template = templates.textNormal,
+                props = {
+                    text = text,
+                    textSize = textSize,
+                    multiline = true,
+                    wordWrap = true,
+                    autoSize = false,
+                    size = util.vector2(width, height),
+                    position = util.vector2(6, 6),
+                },
+            },
+            {
+                type = ui.TYPE.Widget,
+                props = { size = util.vector2(width + 12, height + 12) },
+            },
+        },
+    })
+    if ok then
+        requirementTooltip = element
+    end
+end
+
+local function requirementRowEvents(label)
+    return {
+        focusGain = async:callback(function(mouseEvent)
+            local position = type(mouseEvent) == "table" and mouseEvent.position or nil
+            if position ~= nil then
+                showRequirementTooltip(label, position)
+            end
+        end),
+        mouseMove = async:callback(function(mouseEvent)
+            local position = type(mouseEvent) == "table" and mouseEvent.position or nil
+            if position == nil then
+                return
+            end
+            if requirementTooltip == nil then
+                showRequirementTooltip(label, position)
+            else
+                pcall(function()
+                    requirementTooltip.layout.props.position = util.vector2(position.x + 16, position.y + 16)
+                    requirementTooltip:update()
+                end)
+            end
+        end),
+        focusLoss = async:callback(function()
+            hideRequirementTooltip()
+        end),
+    }
+end
+
 local function safeMenuUpdate()
     if menu == nil or type(menu.update) ~= "function" then
         return
@@ -1555,6 +1643,7 @@ local function buildPerkDetailPane(selectedPerkID, selectedPerk, node, skillName
                 autoSize = false,
                 size = v2(leftColumnWidth - (requirementInset * 2), requirementRowHeight),
             },
+            events = requirementRowEvents(req.label),
             content = ui.content {
                 {
                     type = ui.TYPE.Flex,
@@ -2459,6 +2548,7 @@ local function closeMenu(options)
     selectedPerkIndex = 0
     selectedTreeNodeID = nil
     filteredPerkIDs = {}
+    hideRequirementTooltip()
 
     if menu ~= nil then
         local ok, err = pcall(function()

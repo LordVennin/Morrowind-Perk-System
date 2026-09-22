@@ -42,10 +42,13 @@ local C = {
     SOUL_RECLAMATION = "conjuration_soul_reclamation",
     GRAND_CONJURER = "conjuration_grand_conjurer",
     -- Hidden: Wood Elf with Conjuration as a major skill, Bloodmoon loaded.
-    -- The spell's pack grows with the skill that bought it.
+    -- The granted spell carries one wolf; casting it adds the rest of the
+    -- pack here, sized by Conjuration, as extra Summon Wolf instances that
+    -- live and die with the spell's own duration.
     CALL_OF_THE_WILD = "conjuration_call_of_the_wild",
-    WILD_TIER_TWO_SKILL = 75,
-    WILD_TIER_THREE_SKILL = 100,
+    WILD_SECONDS = 60,
+    WILD_EXTRA_WOLVES = 1,
+    WILD_THIRD_WOLF_SKILL = 100,
 
     POLL_INTERVAL = 0.5,
     GRANTS_EVENT = "SkillPerkSystem_BasePack_Conjuration_SetGrants",
@@ -144,18 +147,30 @@ local function pactTier(pactPerkId)
 end
 
 local function wildTier()
-    if not enabled(C.CALL_OF_THE_WILD) then
-        return 0
-    end
+    return enabled(C.CALL_OF_THE_WILD) and 1 or 0
+end
+
+-- The pack beyond the spell's own wolf: one more, and a third at 100.
+local function wildExtraWolves()
     local stat = stats.skillStat("conjuration")
     local base = stat ~= nil and (tonumber(stat.base) or 0) or 0
-    if base >= C.WILD_TIER_THREE_SKILL then
-        return 3
+    if base >= C.WILD_THIRD_WOLF_SKILL then
+        return C.WILD_EXTRA_WOLVES + 1
     end
-    if base >= C.WILD_TIER_TWO_SKILL then
-        return 2
+    return C.WILD_EXTRA_WOLVES
+end
+
+local function callThePack()
+    for index = 1, wildExtraWolves() do
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SelfRider", {
+            player = pself,
+            kind = "wild" .. index,
+            name = "Call of the Wild",
+            effects = {
+                { effect = "SummonWolf", fallback = "summonwolf", magnitude = 1, seconds = C.WILD_SECONDS },
+            },
+        })
     end
-    return 1
 end
 
 local function currentGameDay()
@@ -322,6 +337,7 @@ local function onGranted(data)
         undead = type(data) == "table" and data.undead or nil,
         daedra = type(data) == "table" and data.daedra or nil,
     }
+    state.wildSpellId = type(data) == "table" and data.wild or nil
 end
 
 local function refresh(elapsed)
@@ -349,7 +365,7 @@ end
 -- (addSkillUseHandler("conjuration", fn)) matches nothing and silently never
 -- fires, which is why this perk did nothing.
 local function onSkillUsed(skillId, params)
-    if skillId ~= "conjuration" or not enabled(C.GRAND_CONJURER) then
+    if skillId ~= "conjuration" then
         return
     end
     local useTypes = interfaces.SkillProgression ~= nil
@@ -364,6 +380,13 @@ local function onSkillUsed(skillId, params)
     -- nothing.
     local okSpell, selected = pcall(Actor.getSelectedSpell, pself)
     if not okSpell or selected == nil then
+        return
+    end
+    if enabled(C.CALL_OF_THE_WILD) and state.wildSpellId ~= nil
+            and type(selected.id) == "string" and selected.id:lower() == state.wildSpellId:lower() then
+        callThePack()
+    end
+    if not enabled(C.GRAND_CONJURER) then
         return
     end
     local cost = tonumber(selected.cost)
@@ -443,6 +466,7 @@ __basepack_subsystem_result = {
                 and data.conjurationAppliedSkillId or nil
             state.appliedSkillBonus = math.max(0, math.floor(tonumber(data.conjurationAppliedSkillBonus) or 0))
             state.grantedPactIds = {}
+            state.wildSpellId = nil
             state.pactUsedDay = {
                 undead = math.floor(tonumber(data.conjurationUndeadUsedDay) or -1),
                 daedra = math.floor(tonumber(data.conjurationDaedraUsedDay) or -1),

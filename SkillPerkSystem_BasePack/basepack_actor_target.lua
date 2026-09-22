@@ -4034,7 +4034,7 @@ local emptyBodyMasteryEnabled = false
 -- Claws: an unarmed hit leaves a bleed, applied through the generic target
 -- rider so it never stacks; a fresh hit restarts it.
 local clawsEnabled = false
-local CLAWS_BLEED_PER_SECOND = 1
+local CLAWS_BLEED_PER_SECOND = 2
 local CLAWS_BLEED_SECONDS = 8
 local EMPTY_BODY_DEBUG = false
 

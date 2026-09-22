@@ -2721,21 +2721,12 @@ local GRANTS = {
     tether1 = { name = "Soul Tether", type = "Ability",
         effects = { selfEffect(conjEffectId("FortifyMagicka", "fortifymagicka"), 30, 1) } },
     -- Call of the Wild (hidden, Bosmer): an ordinary spell, cast and paid for
-    -- like any other. Summon Wolf is an engine effect; its creature record
-    -- ships with Bloodmoon, which the perk is gated on.
-    wild1 = { name = "Call of the Wild", type = "Spell", cost = 30,
+    -- like any other, carrying one Summon Wolf. The player script adds the
+    -- rest of the pack on cast, sized by Conjuration. Summon Wolf is an
+    -- engine effect; its creature record ships with Bloodmoon, which the
+    -- perk is gated on.
+    wild1 = { name = "Call of the Wild", type = "Spell", cost = 40,
         effects = { selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60) } },
-    wild2 = { name = "Call of the Wild", type = "Spell", cost = 50,
-        effects = {
-            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
-            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
-        } },
-    wild3 = { name = "Call of the Wild", type = "Spell", cost = 70,
-        effects = {
-            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
-            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
-            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
-        } },
 }
 
 -- Grant families: at most one member of a family is held at a time, selected
@@ -2745,7 +2736,7 @@ local FAMILIES = {
     daedra = { "daedra1", "daedra2", "daedra3" },
     ward = { "ward1" },
     tether = { "tether1" },
-    wild = { "wild1", "wild2", "wild3" },
+    wild = { "wild1" },
 }
 
 -- Families whose grant is a once-per-day Power. Handing the player a record

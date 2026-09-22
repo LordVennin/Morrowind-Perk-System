@@ -87,5 +87,24 @@ return {
             title = "Iron Bell",
             description = "Two-handed blunt slash attacks deal 200 condition damage to one piece of target armor. One-handed blunt chop attacks deal 200 extra condition damage to shields that block them. Breathstealer thrust attacks can reduce defenders below 0 Fatigue, but cannot lower already-negative Fatigue further.",
         },
+        {
+            -- Hidden: Orc, Blunt Weapon major, Heavy Armor major or minor.
+            id = "bluntweapon_berserkers_blood",
+            tab = "Blunt Weapon",
+            effectId = "demo_noop",
+            minimumSkill = 70,
+            requires = { "bluntweapon_iron_bell" },
+            cost = 1,
+            x = 0,
+            y = 740,
+            title = "Berserker's Blood",
+            description = "Dropping below a quarter health fortifies Strength by 30 and Attack by 20 for 20 seconds. Once every 2 minutes.",
+            hiddenUnless = {
+                race = "orc",
+                majorSkills = { "bluntweapon" },
+                classSkills = { "heavyarmor" },
+                label = "Orc with Blunt Weapon as a major skill and Heavy Armor as a class skill",
+            },
+        },
     },
 }

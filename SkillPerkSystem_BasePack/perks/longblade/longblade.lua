@@ -87,5 +87,24 @@ return {
             title = "Grandmaster Form",
             description = "Long blade hits gain a separate fatigue-based heavy crit chance, scaling from 10% at full Fatigue to 0% at 5% or lower Fatigue. Heavy crits deal 25 extra damage and roll separately from other critical hit perks.",
         },
+        {
+            -- Hidden: Redguard, Long Blade major, Block major or minor.
+            id = "longblade_sword_singer",
+            tab = "Long Blade",
+            effectId = "demo_noop",
+            minimumSkill = 60,
+            requires = { "longblade_demo_duelist" },
+            cost = 1,
+            x = -220,
+            y = 420,
+            title = "Sword-Singer",
+            description = "After blocking with a shield, your next one-handed long blade hit within 2 seconds is a critical hit for 20 extra damage.",
+            hiddenUnless = {
+                race = "redguard",
+                majorSkills = { "longblade" },
+                classSkills = { "block" },
+                label = "Redguard with Long Blade as a major skill and Block as a class skill",
+            },
+        },
     },
 }

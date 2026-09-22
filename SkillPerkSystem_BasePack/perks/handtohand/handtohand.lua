@@ -80,5 +80,24 @@ return {
             title = "Breaking Fist",
             description = "Hand-to-hand hits deal 50% less Fatigue damage, but deal 5 to 15 bonus Health damage.",
         },
+        {
+            -- Hidden: Khajiit, Hand-to-hand major, Sneak major or minor.
+            id = "handtohand_claws",
+            tab = "Hand-to-hand",
+            effectId = "demo_noop",
+            minimumSkill = 50,
+            requires = { "handtohand_iron_knuckles" },
+            cost = 1,
+            x = 180,
+            y = 280,
+            title = "Claws",
+            description = "Hand-to-hand hits cause 1 damage per second for 8 seconds. Does not stack.",
+            hiddenUnless = {
+                race = "khajiit",
+                majorSkills = { "handtohand" },
+                classSkills = { "sneak" },
+                label = "Khajiit with Hand-to-hand as a major skill and Sneak as a class skill",
+            },
+        },
     },
 }

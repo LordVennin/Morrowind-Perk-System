@@ -113,5 +113,26 @@ return {
             title = "Grand Conjurer",
             description = "Conjuration spells refund a quarter of their cost.",
         },
+        {
+            -- Hidden: only a Wood Elf with Conjuration as a major skill sees
+            -- this, and only with Bloodmoon loaded (Summon Wolf's creature
+            -- record ships with it).
+            id = "conjuration_call_of_the_wild",
+            tab = "Conjuration",
+            effectId = "demo_noop",
+            minimumSkill = 50,
+            requires = { "conjuration_deepened_pact" },
+            cost = 1,
+            x = -220,
+            y = 420,
+            title = "Call of the Wild",
+            description = "Grants the spell Call of the Wild: Summon Wolf for 60 seconds. Two wolves at 75 Conjuration, three at 100.",
+            hiddenUnless = {
+                race = "wood elf",
+                majorSkills = { "conjuration" },
+                contentFiles = { "Bloodmoon.esm" },
+                label = "Wood Elf with Conjuration as a major skill (Bloodmoon)",
+            },
+        },
     },
 }

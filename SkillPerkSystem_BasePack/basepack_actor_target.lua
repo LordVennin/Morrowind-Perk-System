@@ -461,6 +461,13 @@ end
 local destructionPlayerId = nil
 local searingHeat, bitingCold, stormChannel = false, false, false
 local sunderingRuin, witheringCurse, annihilationMastery = false, false, false
+-- Ashborn (hidden): a death within a few seconds of the player's fire landing
+-- pays the caster back. The window is opened by the cast scan and polled at
+-- the same cadence as the other death watches; idle otherwise.
+local ashborn = false
+local ASHBORN_KILL_WINDOW = 4.0
+local ASHBORN_DEATH_POLL = 0.25
+local ashbornWindow, ashbornPoll, ashbornPaid = 0, 0, false
 
 local SEARING_BURN_FRACTION = 0.5
 local SEARING_BURN_SECONDS = 6
@@ -507,6 +514,7 @@ local function setDestructionState(data)
     sunderingRuin = data.sunderingRuin == true
     witheringCurse = data.witheringCurse == true
     annihilationMastery = data.annihilationMastery == true
+    ashborn = data.ashborn == true
     if data.debugLogging ~= nil then
         debugLogging = data.debugLogging == true
     end
@@ -716,6 +724,12 @@ local function classifyAndRequest(effects)
                 wanted = wanted or request.sunderSkill ~= nil
             end
 
+            if ashborn and id == "firedamage" and magnitude > 0 then
+                ashbornWindow = ASHBORN_KILL_WINDOW
+                ashbornPoll = 0
+                ashbornPaid = false
+            end
+
             if annihilationMastery and ELEMENT_WEAKNESS[id or ""] ~= nil and magnitude > 0 then
                 request.weaknessEffect = ELEMENT_WEAKNESS[id]
                 request.weaknessMagnitude = WEAKNESS_MAGNITUDE
@@ -909,10 +923,42 @@ destruction.engineHandlers = {
         requestRiderState()
     end,
 }
--- Event-only: no per-target update work, so this never keeps the combined
--- target update loop alive.
--- Scan only while a cast window is open; otherwise this is one comparison.
+local function isAliveNow()
+    local ok, health = pcall(function()
+        return types.Actor.stats.dynamic.health(selfObj).current
+    end)
+    return ok and (tonumber(health) or 0) > 0
+end
+
+local function pollAshbornKill(dt)
+    if ashbornWindow <= 0 or ashbornPaid then
+        return
+    end
+    local elapsed = tonumber(dt) or 0
+    ashbornWindow = ashbornWindow - elapsed
+    ashbornPoll = ashbornPoll + elapsed
+    if ashbornPoll < ASHBORN_DEATH_POLL then
+        return
+    end
+    ashbornPoll = 0
+    if isAliveNow() then
+        return
+    end
+    ashbornPaid = true
+    ashbornWindow = 0
+    local okLevel, level = pcall(function() return types.Actor.stats.level(selfObj).current end)
+    level = okLevel and math.floor(tonumber(level) or 1) or 1
+    debugPrint("ashborn: burned to death at level " .. level)
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_Destruction_Ashborn", {
+        target = selfObj,
+        level = level,
+    })
+end
+
+-- Scan only while a cast window is open, poll for death only while a kill
+-- window is open; otherwise this is two comparisons.
 destruction.engineHandlers.onUpdate = function(dt)
+    pollAshbornKill(dt)
     if scanWindow <= 0 then
         return
     end
@@ -926,7 +972,7 @@ end
 destruction.hasActiveState = function()
     return type(destructionPlayerId) == "string" and destructionPlayerId ~= ""
         and (searingHeat or bitingCold or stormChannel or sunderingRuin
-            or witheringCurse or annihilationMastery)
+            or witheringCurse or annihilationMastery or ashborn)
 end
 destruction.onHit = function() end
 
@@ -3641,6 +3687,18 @@ local stacks = 0
 local remainingTime = 0
 local agilityPerStack = 3
 local appliedPenalty = 0
+-- Pushed by the global side while the player holds any Long Blade on-hit
+-- perk; keeps this script attached so the hit events below can be sent.
+local longBladePlayerId = nil
+local longBladeHitsWanted = false
+
+local function setLongBladeState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    longBladePlayerId = type(data.playerId) == "string" and data.playerId or nil
+    longBladeHitsWanted = data.hitsWanted == true
+end
 
 local function resolveAgilityStat()
     local accessor = Actor ~= nil
@@ -3768,6 +3826,7 @@ end
 local script = {
     eventHandlers = {
         SkillPerkSystem_DuelistsTempoRefresh = setState,
+        SkillPerkSystem_LongBladeRefresh = setLongBladeState,
         SkillPerkSystem_ApplyLongBladeCriticalDamage = applyDirectHealthDamage,
         SkillPerkSystem_ApplyIronKnucklesDamage = applyDirectHealthDamage,
     },
@@ -3814,6 +3873,7 @@ local script = {
     duelistTempo.engineHandlers = script.engineHandlers or {}
     duelistTempo.hasActiveState = function()
         return remainingTime > 0 or appliedPenalty ~= 0
+            or (longBladePlayerId ~= nil and longBladeHitsWanted)
     end
     duelistTempo.onHit = onHit
 end
@@ -3946,6 +4006,7 @@ end
 
 -- 7b. hand-to-hand target damage modifiers
 do
+local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local selfObj = require("openmw.self")
 local types = require("openmw.types")
@@ -3970,6 +4031,11 @@ local ironKnucklesEnabled = false
 local breakingFistEnabled = false
 local flowingCounterMode = "none"
 local emptyBodyMasteryEnabled = false
+-- Claws: an unarmed hit leaves a bleed, applied through the generic target
+-- rider so it never stacks; a fresh hit restarts it.
+local clawsEnabled = false
+local CLAWS_BLEED_PER_SECOND = 1
+local CLAWS_BLEED_SECONDS = 8
 local EMPTY_BODY_DEBUG = false
 
 local function logEmptyBodyDebug(message)
@@ -3989,6 +4055,7 @@ local function setState(data)
     breakingFistEnabled = data.breakingFistEnabled == true
     flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
     emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true
+    clawsEnabled = data.clawsEnabled == true
 end
 
 local function getEquippedItem(actor, slot)
@@ -4079,11 +4146,25 @@ local function onHit(attack)
     if not ironKnucklesEnabled
         and not breakingFistEnabled
         and flowingCounterMode == "none"
-        and not emptyBodyMasteryEnabled then
+        and not emptyBodyMasteryEnabled
+        and not clawsEnabled then
         return
     end
     if not isPlayerHandToHandHit(attack) then
         return
+    end
+
+    if clawsEnabled then
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_TargetRider", {
+            player = attack.attacker,
+            target = selfObj,
+            kind = "claws",
+            name = "Claws",
+            effects = {
+                { effect = "DamageHealth", fallback = "damagehealth",
+                  magnitude = CLAWS_BLEED_PER_SECOND, seconds = CLAWS_BLEED_SECONDS },
+            },
+        })
     end
 
     if emptyBodyMasteryEnabled then
@@ -4127,7 +4208,8 @@ handToHand.eventHandlers = {
     SkillPerkSystem_HandToHandRefresh = setState,
 }
 handToHand.hasActiveState = function()
-    return openPalmEnabled or ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none" or emptyBodyMasteryEnabled
+    return openPalmEnabled or ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none"
+        or emptyBodyMasteryEnabled or clawsEnabled
 end
 
 handToHand.engineHandlers = {
@@ -4149,6 +4231,7 @@ handToHand.engineHandlers = {
             breakingFistEnabled = breakingFistEnabled,
             flowingCounterMode = flowingCounterMode,
             emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
+            clawsEnabled = clawsEnabled,
         }
     end,
 }

@@ -11,6 +11,7 @@ local core = require("openmw.core")
 local interfaces = require("openmw.interfaces")
 local pself = require("openmw.self")
 local types = require("openmw.types")
+local ui = require("openmw.ui")
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local STRENGTH_IN_ARMS_PERK_ID = "bluntweapon_strength_in_arms"
@@ -20,6 +21,24 @@ local HEAVY_HITTER_PERK_ID = "bluntweapon_heavy_hitter"
 local GUARDED_STAMINA_PERK_ID = "bluntweapon_placeholder_guarded_stance"
 local STAGGERING_BLOW_PERK_ID = "bluntweapon_placeholder_staggering_blow"
 local IRON_BELL_PERK_ID = "bluntweapon_iron_bell"
+-- Berserker's Blood (hidden: Orc, Blunt Weapon major, Heavy Armor class
+-- skill). Below a quarter health, a short Fortify Strength and Fortify Attack;
+-- then a cooldown. Polled at half a second only while the perk is held.
+local BERSERKER_PERK_ID = "bluntweapon_berserkers_blood"
+local BERSERKER = {
+    HEALTH_FRACTION = 0.25,
+    STRENGTH = 30,
+    ATTACK = 20,
+    SECONDS = 20,
+    COOLDOWN = 120,
+    POLL = 0.5,
+}
+local berserkerEnabled = false
+-- Real-time deadlines rather than accumulated dt: an idle subsystem's
+-- shouldUpdate is only sampled every tenth of a second with that frame's dt,
+-- so a dt accumulator would reach half a second several seconds late.
+local berserkerNextCheck = 0
+local berserkerCooldownUntil = 0
 local STATE_EVENT = "SkillPerkSystem_BluntWeaponStrengthInArmsState"
 local GUARDED_STAMINA_REFUND_MULTIPLIER = 0.25
 local GUARDED_STAMINA_ATTACK_WINDOW = 5.0
@@ -289,6 +308,7 @@ local BLUNT_STATE_PERKS = {
     bluntweapon_placeholder_guarded_stance = true,
     bluntweapon_placeholder_staggering_blow = true,
     bluntweapon_iron_bell = true,
+    bluntweapon_berserkers_blood = true,
 }
 
 local function markBluntStateDirty()
@@ -306,8 +326,53 @@ local function handlePerkStateChanged(data)
     markBluntStateDirty()
 end
 
+-- The enabled flag is refreshed by publishState, so the per-frame gate reads a
+-- boolean rather than asking the perk interface.
 local function shouldUpdateBlunt()
-    return bluntStateDirty or guardedStaminaAttackState ~= nil
+    if bluntStateDirty or guardedStaminaAttackState ~= nil then
+        return true
+    end
+    if berserkerEnabled then
+        return core.getRealTime() >= berserkerNextCheck
+    end
+    return false
+end
+
+local function healthFraction()
+    local ok, health = pcall(function() return types.Actor.stats.dynamic.health(pself) end)
+    if not ok or health == nil then
+        return 1
+    end
+    local maximum = (tonumber(health.base) or 0) + (tonumber(health.modifier) or 0)
+    if maximum <= 0 then
+        return 1
+    end
+    return (tonumber(health.current) or 0) / maximum
+end
+
+local function pollBerserker()
+    local now = core.getRealTime()
+    berserkerNextCheck = now + BERSERKER.POLL
+    if now < berserkerCooldownUntil then
+        return
+    end
+    local fraction = healthFraction()
+    if fraction <= 0 or fraction >= BERSERKER.HEALTH_FRACTION then
+        return
+    end
+    berserkerCooldownUntil = now + BERSERKER.COOLDOWN
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SelfRider", {
+        player = pself,
+        kind = "berserker",
+        name = "Berserker's Blood",
+        effects = {
+            { effect = "FortifyAttribute", fallback = "fortifyattribute",
+              magnitude = BERSERKER.STRENGTH, seconds = BERSERKER.SECONDS, attribute = "strength" },
+            { effect = "FortifyAttack", fallback = "fortifyattack",
+              magnitude = BERSERKER.ATTACK, seconds = BERSERKER.SECONDS },
+        },
+    })
+    pcall(ui.showMessage, "Berserker's Blood", { showInDialogue = false })
 end
 
 local function publishState(force)
@@ -319,6 +384,7 @@ local function publishState(force)
     local guardedStaminaEnabled = hasEnabledPerk(GUARDED_STAMINA_PERK_ID)
     local staggeringBlowEnabled = hasEnabledPerk(STAGGERING_BLOW_PERK_ID)
     local ironBellEnabled = hasEnabledPerk(IRON_BELL_PERK_ID)
+    berserkerEnabled = hasEnabledPerk(BERSERKER_PERK_ID)
     local stateKey = tostring(strengthInArmsEnabled)
         .. ":"
         .. tostring(damageBonus)
@@ -363,13 +429,23 @@ __basepack_subsystem_result = {
                 bluntStateDirty = false
                 publishState(false)
             end
+            if berserkerEnabled and core.getRealTime() >= berserkerNextCheck then
+                pollBerserker()
+            end
         end,
         shouldUpdate = shouldUpdateBlunt,
-        onLoad = function()
+        onLoad = function(data)
             lastStateKey = nil
             bluntStateDirty = true
+            local now = core.getRealTime()
+            berserkerNextCheck = now
+            local remaining = math.max(0, tonumber(type(data) == "table" and data.berserkerCooldown) or 0)
+            berserkerCooldownUntil = now + remaining
             publishState(true)
             bluntStateDirty = false
+        end,
+        onSave = function()
+            return { berserkerCooldown = math.max(0, berserkerCooldownUntil - core.getRealTime()) }
         end,
     },
     eventHandlers = {

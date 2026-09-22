@@ -20,6 +20,10 @@ local CONCENTRATED_DRAUGHT_PERK_ID = "alchemy_concentrated_draught"
 local LINGERING_TOXINS_PERK_ID = "alchemy_purified_toxins"
 local MASTER_DISTILLATION_PERK_ID = "alchemy_master_distillation"
 local PHILOSOPHERS_CRUCIBLE_PERK_ID = "alchemy_philosophers_crucible"
+-- Hist Blood (hidden: Argonian, Alchemy major, Athletics class skill): eating
+-- a raw ingredient while in water also grants a short swim rider.
+local HIST_BLOOD_PERK_ID = "alchemy_hist_blood"
+local HIST_BLOOD = { SWIFT_SWIM = 20, SECONDS = 60 }
 local PREPARATION_MODE_POTION = "potion"
 local PREPARATION_MODE_POISON = "poison"
 local CAREFUL_MEASURE_CHANCE = 0.25
@@ -656,12 +660,35 @@ local recordSuccessfulBrew
 -- any menu is enough to arm it well before the first brew.
 local skillHandlerRegistered = false
 
+local function onIngredientEaten(params)
+    if not hasEnabledPerk(HIST_BLOOD_PERK_ID) then return end
+    local progression = interfaces.SkillProgression
+    local useTypes = progression ~= nil and progression.SKILL_USE_TYPES or nil
+    local wanted = useTypes ~= nil and useTypes.Alchemy_UseIngredient or nil
+    if wanted == nil or type(params) ~= "table" or params.useType ~= wanted then return end
+    local okSwim, swimming = pcall(types.Actor.isSwimming, pself)
+    if not okSwim or not swimming then return end
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SelfRider", {
+        player = pself,
+        kind = "histblood",
+        name = "Hist Blood",
+        effects = {
+            { effect = "WaterBreathing", fallback = "waterbreathing", magnitude = 1, seconds = HIST_BLOOD.SECONDS },
+            { effect = "SwiftSwim", fallback = "swiftswim", magnitude = HIST_BLOOD.SWIFT_SWIM, seconds = HIST_BLOOD.SECONDS },
+        },
+    })
+    log("hist blood: swim rider requested")
+end
+
 local function ensureSkillUsedHandler()
     if skillHandlerRegistered then return end
     local progression = interfaces.SkillProgression
     if progression == nil or type(progression.addSkillUsedHandler) ~= "function" then return end
     progression.addSkillUsedHandler(function(skillId, params)
-        if skillId == "alchemy" then recordSuccessfulBrew(skillId, params) end
+        if skillId == "alchemy" then
+            recordSuccessfulBrew(skillId, params)
+            onIngredientEaten(params)
+        end
     end)
     skillHandlerRegistered = true
     log("skill-used handler registered")

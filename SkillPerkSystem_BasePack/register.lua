@@ -62,8 +62,127 @@ local function minimumSkillLevelRequirement(skillID, minimumLevel)
     }
 end
 
+-- Hidden perks: shown only to a character with a particular race and class
+-- skill combination. A perk carries
+--
+--     hiddenUnless = {
+--         race = "wood elf",                 -- race record id, spacing ignored
+--         majorSkills = { "conjuration" },   -- every one must be a major skill
+--         classSkills = { "athletics" },     -- every one must be major or minor
+--         classSkillsAny = { "illusion", "mercantile" }, -- at least one major or minor
+--         contentFiles = { "Bloodmoon.esm" },-- every one must be loaded
+--         label = "Wood Elf, Conjuration major",
+--     }
+--
+-- and the check becomes both the tree's visibility test and a requirement on
+-- buying it. Everything is pcall-wrapped: the menu can run against mocked
+-- engine modules, and a missing API must hide the perk rather than break the
+-- page.
+local function normalizeName(value)
+    local out = tostring(value or ""):lower():gsub("%s+", "")
+    return out
+end
+
+local function playerNpcRecord()
+    local ok, record = pcall(function() return types.NPC.record(pself) end)
+    return ok and record or nil
+end
+
+local function playerClassSkills()
+    local record = playerNpcRecord()
+    local classId = record ~= nil and record.class or nil
+    if classId == nil then
+        return nil, nil
+    end
+    local ok, classRecord = pcall(function() return types.NPC.classes.records[classId] end)
+    if not ok or classRecord == nil then
+        return nil, nil
+    end
+    local major, minor = {}, {}
+    pcall(function()
+        for _, id in ipairs(classRecord.majorSkills) do major[normalizeName(id)] = true end
+    end)
+    pcall(function()
+        for _, id in ipairs(classRecord.minorSkills) do minor[normalizeName(id)] = true end
+    end)
+    return major, minor
+end
+
+local function contentFileLoaded(name)
+    local ok, has = pcall(function() return core.contentFiles.has(name) end)
+    return ok and has == true
+end
+
+local function buildVisibleCheck(rule)
+    return function()
+        if type(rule.race) == "string" then
+            local record = playerNpcRecord()
+            if record == nil or normalizeName(record.race) ~= normalizeName(rule.race) then
+                return false
+            end
+        end
+        if type(rule.majorSkills) == "table" or type(rule.classSkills) == "table"
+                or type(rule.classSkillsAny) == "table" then
+            local major, minor = playerClassSkills()
+            if major == nil then
+                return false
+            end
+            for _, skill in ipairs(rule.majorSkills or {}) do
+                if not major[normalizeName(skill)] then
+                    return false
+                end
+            end
+            for _, skill in ipairs(rule.classSkills or {}) do
+                local id = normalizeName(skill)
+                if not major[id] and not minor[id] then
+                    return false
+                end
+            end
+            if type(rule.classSkillsAny) == "table" and #rule.classSkillsAny > 0 then
+                local anyHeld = false
+                for _, skill in ipairs(rule.classSkillsAny) do
+                    local id = normalizeName(skill)
+                    if major[id] or minor[id] then
+                        anyHeld = true
+                        break
+                    end
+                end
+                if not anyHeld then
+                    return false
+                end
+            end
+        end
+        for _, file in ipairs(rule.contentFiles or {}) do
+            if not contentFileLoaded(file) then
+                return false
+            end
+        end
+        return true
+    end
+end
+
+local function hiddenRequirement(perk)
+    local rule = perk.hiddenUnless
+    if type(rule) ~= "table" then
+        return nil
+    end
+    local check = buildVisibleCheck(rule)
+    return {
+        label = type(rule.label) == "string" and rule.label or "Hidden",
+        check = function()
+            local ok, visible = pcall(check)
+            return ok and visible == true
+        end,
+    }
+end
+
 local function buildPerkRequirements(perk)
     local out = {}
+
+    local hidden = hiddenRequirement(perk)
+    if hidden ~= nil then
+        table.insert(out, hidden)
+    end
 
     if type(perk.requirements) == "table" then
         for _, requirement in ipairs(perk.requirements) do
@@ -310,6 +429,11 @@ end
 
 for _, entry in ipairs(modules) do
     for _, perk in ipairs(entry.data.perks or {}) do
+        -- The registry stores these tables as given, so the visibility check
+        -- rides along on both the perk and its node for the menu to read.
+        local hidden = hiddenRequirement(perk)
+        local visibleCheck = hidden ~= nil and hidden.check or nil
+
         api.registerPerk({
             id = perk.id,
             tab = perk.tab,
@@ -317,6 +441,8 @@ for _, entry in ipairs(modules) do
             effectId = perk.effectId,
             cost = perk.cost,
             requirements = buildPerkRequirements(perk),
+            hidden = visibleCheck ~= nil,
+            visibleCheck = visibleCheck,
         }, entry.source)
 
         api.registerTreeNode({
@@ -329,6 +455,8 @@ for _, entry in ipairs(modules) do
             requiresAny = perk.requiresAny or {},
             title = perk.title,
             description = perk.description,
+            hidden = visibleCheck ~= nil,
+            visibleCheck = visibleCheck,
         }, entry.source)
     end
 end

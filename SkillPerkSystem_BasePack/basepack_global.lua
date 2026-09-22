@@ -2720,6 +2720,22 @@ local GRANTS = {
     -- from active effects, and abilities are the mechanism that feeds it.
     tether1 = { name = "Soul Tether", type = "Ability",
         effects = { selfEffect(conjEffectId("FortifyMagicka", "fortifymagicka"), 30, 1) } },
+    -- Call of the Wild (hidden, Bosmer): an ordinary spell, cast and paid for
+    -- like any other. Summon Wolf is an engine effect; its creature record
+    -- ships with Bloodmoon, which the perk is gated on.
+    wild1 = { name = "Call of the Wild", type = "Spell", cost = 30,
+        effects = { selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60) } },
+    wild2 = { name = "Call of the Wild", type = "Spell", cost = 50,
+        effects = {
+            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
+            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
+        } },
+    wild3 = { name = "Call of the Wild", type = "Spell", cost = 70,
+        effects = {
+            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
+            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
+            selfEffect(conjEffectId("SummonWolf", "summonwolf"), 1, 60),
+        } },
 }
 
 -- Grant families: at most one member of a family is held at a time, selected
@@ -2729,6 +2745,7 @@ local FAMILIES = {
     daedra = { "daedra1", "daedra2", "daedra3" },
     ward = { "ward1" },
     tether = { "tether1" },
+    wild = { "wild1", "wild2", "wild3" },
 }
 
 -- Families whose grant is a once-per-day Power. Handing the player a record
@@ -2888,7 +2905,7 @@ local function onSetGrants(data)
     end
 
     local granted = {}
-    for _, family in ipairs({ "undead", "daedra", "ward", "tether" }) do
+    for _, family in ipairs({ "undead", "daedra", "ward", "tether", "wild" }) do
         local requested = tier(data[family .. "Tier"], #FAMILIES[family])
         local allowed = dailyGate(family, requested, currentDay)
         reconcileFamily(spells, family, allowed)
@@ -3053,13 +3070,14 @@ local riderState = {
     sunderingRuin = false,
     witheringCurse = false,
     annihilationMastery = false,
+    ashborn = false,
 }
 
 local function ridersActive()
     return type(riderState.playerId) == "string" and riderState.playerId ~= ""
         and (riderState.searingHeat or riderState.bitingCold or riderState.stormChannel
             or riderState.sunderingRuin or riderState.witheringCurse
-            or riderState.annihilationMastery)
+            or riderState.annihilationMastery or riderState.ashborn)
 end
 
 local attachLogged = 0
@@ -3078,6 +3096,7 @@ local function sendState(actor)
             sunderingRuin = riderState.sunderingRuin,
             witheringCurse = riderState.witheringCurse,
             annihilationMastery = riderState.annihilationMastery,
+            ashborn = riderState.ashborn,
             debugLogging = destrDebug,
         })
     end
@@ -3100,6 +3119,7 @@ local function onSetRiders(data)
         sunderingRuin = data.sunderingRuin == true,
         witheringCurse = data.witheringCurse == true,
         annihilationMastery = data.annihilationMastery == true,
+        ashborn = data.ashborn == true,
     }
     refreshWatchers()
     destrLog("riders active=" .. tostring(ridersActive()) .. "; watcher refresh requested")
@@ -3355,6 +3375,24 @@ local function onWitheringReturn(data)
         .. (#applied > 0 and table.concat(applied, ", ") or "nothing matched"))
 end
 
+-- Ashborn (hidden, Dunmer): the target verified that it died within a few
+-- seconds of the player's fire landing and reported its level; the payout
+-- itself is the player's business, so it is only relayed.
+local function onAshborn(data)
+    if type(data) ~= "table" or not riderState.ashborn then
+        return
+    end
+    local player = world.players[1]
+    if player == nil or player.id ~= riderState.playerId then
+        return
+    end
+    local level = math.max(1, math.floor(tonumber(data.level) or 1))
+    destrLog("ashborn: level " .. level .. " kill by fire")
+    if type(player.sendEvent) == "function" then
+        player:sendEvent("SkillPerkSystem_BasePack_Destruction_AshbornReturn", { level = level })
+    end
+end
+
 -- Answers the console diagnostic: reports what the global side believes and,
 -- crucially, how many actors the watcher has actually attached the target
 -- script to, which is the stage that cannot be seen from the player.
@@ -3366,7 +3404,8 @@ local function onDiagnose()
         .. " shock=" .. tostring(riderState.stormChannel)
         .. " sunder=" .. tostring(riderState.sunderingRuin)
         .. " wither=" .. tostring(riderState.witheringCurse)
-        .. " weakness=" .. tostring(riderState.annihilationMastery))
+        .. " weakness=" .. tostring(riderState.annihilationMastery)
+        .. " ashborn=" .. tostring(riderState.ashborn))
     log("ridersActive=" .. tostring(ridersActive())
         .. " verboseLogging=" .. tostring(destrDebug))
 
@@ -3438,6 +3477,7 @@ subsystems.destruction = {
         SkillPerkSystem_BasePack_Destruction_SetRiders = onSetRiders,
         SkillPerkSystem_BasePack_Destruction_ApplyRiders = onApplyRiders,
         SkillPerkSystem_BasePack_Destruction_Withering = onWitheringReturn,
+        SkillPerkSystem_BasePack_Destruction_Ashborn = onAshborn,
     },
     engineHandlers = {
         onSave = function()
@@ -4032,13 +4072,166 @@ local function onSetReservoir(data)
     end
 end
 
+-- ---- Generic riders -----------------------------------------------------------
+--
+-- The hidden perks live in several trees but all want the same thing: a
+-- short timed spell put on the player (SelfRider) or on an actor they name
+-- (TargetRider), built from a list of effects. Requests carry a `kind`; one
+-- instance of a kind is held per actor, the previous one being swept before
+-- the new one lands, so nothing here ever stacks. Records are cached by shape
+-- and persisted so a reload reuses them, and the kind registry is persisted
+-- so the sweep still knows the ids minted before the save.
+--
+--     { player = <player>, target = <actor or nil>, kind = "claws",
+--       name = "Claws", effects = {
+--           { effect = "DamageHealth", fallback = "damagehealth",
+--             magnitude = 1, seconds = 8, skill = nil, attribute = nil },
+--       } }
+local genericRecords = {}
+local genericKinds = {}
+
+local function genericEffectId(name, fallback)
+    local ok, value = pcall(function() return core.magic.EFFECT_TYPE[name] end)
+    if ok and value ~= nil then
+        return value
+    end
+    return fallback
+end
+
+local function genericRecord(name, specs, onSelf)
+    local effects, keyParts = {}, { onSelf and "self" or "target" }
+    for _, spec in ipairs(specs) do
+        if type(spec) == "table" and type(spec.effect) == "string" then
+            local magnitude = math.max(1, math.floor(tonumber(spec.magnitude) or 0))
+            local seconds = math.max(1, math.floor(tonumber(spec.seconds) or 0))
+            local effect = {
+                id = genericEffectId(spec.effect, spec.fallback or spec.effect:lower()),
+                magnitudeMin = magnitude, magnitudeMax = magnitude,
+                duration = seconds, area = 0,
+                range = onSelf and core.magic.RANGE.Self or core.magic.RANGE.Target,
+            }
+            if spec.skill ~= nil then effect.affectedSkill = spec.skill end
+            if spec.attribute ~= nil then effect.affectedAttribute = spec.attribute end
+            effects[#effects + 1] = effect
+            keyParts[#keyParts + 1] = table.concat({
+                spec.effect, magnitude, seconds, tostring(spec.skill or ""), tostring(spec.attribute or ""),
+            }, ",")
+        end
+    end
+    if #effects == 0 then
+        return nil
+    end
+    local key = table.concat(keyParts, "|")
+    local cached = genericRecords[key]
+    if cached ~= nil then
+        return cached
+    end
+    local okDraft, draft = pcall(core.magic.spells.createRecordDraft, {
+        name = tostring(name or "Perk"),
+        type = core.magic.SPELL_TYPE.Spell,
+        cost = 0,
+        alwaysSucceedFlag = true,
+        isAutocalc = false,
+        effects = effects,
+    })
+    if not okDraft or draft == nil then
+        log("generic rider draft failed (" .. key .. "): " .. tostring(draft))
+        return nil
+    end
+    local okCreate, record = pcall(world.createRecord, draft)
+    if not okCreate or record == nil then
+        log("generic rider record creation failed (" .. key .. "): " .. tostring(record))
+        return nil
+    end
+    genericRecords[key] = record.id
+    return record.id
+end
+
+local function applyGenericRider(kind, target, caster, recordId, effectCount)
+    if recordId == nil or target == nil then
+        return
+    end
+    if type(target.isValid) == "function" and not target:isValid() then
+        return
+    end
+    kind = tostring(kind or "generic")
+    genericKinds[kind] = genericKinds[kind] or {}
+    genericKinds[kind][recordId] = true
+    local okActive, active = pcall(Actor.activeSpells, target)
+    if not okActive or active == nil then
+        return
+    end
+    for previousId in pairs(genericKinds[kind]) do
+        pcall(function() active:remove(previousId) end)
+    end
+    local indices = {}
+    for index = 0, math.max(0, effectCount - 1) do
+        indices[#indices + 1] = index
+    end
+    local ok, err = pcall(function()
+        active:add({
+            id = recordId,
+            effects = indices,
+            caster = caster,
+            stackable = false,
+            ignoreSpellAbsorption = true,
+            ignoreReflect = true,
+            ignoreResistances = false,
+        })
+    end)
+    if not ok then
+        log("generic rider application failed: " .. tostring(err))
+    end
+end
+
+local function genericEffectCount(specs)
+    local count = 0
+    for _, spec in ipairs(specs) do
+        if type(spec) == "table" and type(spec.effect) == "string" then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function onSelfRider(data)
+    if type(data) ~= "table" or type(data.effects) ~= "table" then
+        return
+    end
+    local player = data.player
+    if not validPlayerObject(player) then
+        return
+    end
+    local recordId = genericRecord(data.name, data.effects, true)
+    applyGenericRider(data.kind, player, player, recordId, genericEffectCount(data.effects))
+end
+
+local function onTargetRider(data)
+    if type(data) ~= "table" or type(data.effects) ~= "table" then
+        return
+    end
+    local player = data.player
+    local target = data.target
+    if not validPlayerObject(player) or target == nil or target == player then
+        return
+    end
+    local recordId = genericRecord(data.name, data.effects, false)
+    applyGenericRider(data.kind, target, player, recordId, genericEffectCount(data.effects))
+end
+
 subsystems.skill_base = {
     eventHandlers = {
         SkillPerkSystem_BasePack_SkillBase_SetReservoir = onSetReservoir,
+        SkillPerkSystem_BasePack_SkillBase_SelfRider = onSelfRider,
+        SkillPerkSystem_BasePack_SkillBase_TargetRider = onTargetRider,
     },
     engineHandlers = {
         onSave = function()
-            return { reservoirRecords = reservoirRecords }
+            return {
+                reservoirRecords = reservoirRecords,
+                genericRecords = genericRecords,
+                genericKinds = genericKinds,
+            }
         end,
         onLoad = function(data)
             reservoirRecords = {}
@@ -4047,6 +4240,29 @@ subsystems.skill_base = {
                 for school, recordId in pairs(saved) do
                     if type(school) == "string" and type(recordId) == "string" then
                         reservoirRecords[school] = recordId
+                    end
+                end
+            end
+            genericRecords = {}
+            local savedRecords = type(data) == "table" and data.genericRecords or nil
+            if type(savedRecords) == "table" then
+                for key, recordId in pairs(savedRecords) do
+                    if type(key) == "string" and type(recordId) == "string" then
+                        genericRecords[key] = recordId
+                    end
+                end
+            end
+            genericKinds = {}
+            local savedKinds = type(data) == "table" and data.genericKinds or nil
+            if type(savedKinds) == "table" then
+                for kind, ids in pairs(savedKinds) do
+                    if type(kind) == "string" and type(ids) == "table" then
+                        genericKinds[kind] = {}
+                        for recordId in pairs(ids) do
+                            if type(recordId) == "string" then
+                                genericKinds[kind][recordId] = true
+                            end
+                        end
                     end
                 end
             end
@@ -5623,6 +5839,200 @@ local function onSilverTongue(data)
     end
 end
 
+-- ---- Retinue (hidden): one recruited follower -------------------------------
+--
+-- The player asks an NPC to follow from the dialogue panel; the global side
+-- checks the terms again (it, not the panel, is the authority), attaches
+-- the follower script and remembers who it is. The follower script holds
+-- the Follow package, because AI packages are only reachable from a local
+-- script. One follower at a time; the record lives in the save.
+local FOLLOWER_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_follower.lua"
+local RETINUE_MIN_DISPOSITION = 80
+local retinue = { follower = nil, followerId = nil }
+
+local function followerIsCurrent()
+    local follower = retinue.follower
+    if follower == nil or retinue.followerId == nil then
+        return false
+    end
+    if type(follower.isValid) == "function" and not follower:isValid() then
+        return false
+    end
+    local okDead, dead = pcall(types.Actor.isDead, follower)
+    if okDead and dead then
+        return false
+    end
+    return true
+end
+
+local function clearFollower()
+    retinue.follower = nil
+    retinue.followerId = nil
+end
+
+local function npcName(npc)
+    local ok, record = pcall(types.NPC.record, npc)
+    if ok and record ~= nil and type(record.name) == "string" and record.name ~= "" then
+        return record.name
+    end
+    return tostring(npc and npc.recordId or "?")
+end
+
+-- Guards and essential NPCs stay where they are.
+local function canBeRecruited(npc)
+    if npc == nil or not types.NPC.objectIsInstance(npc) then
+        return false, "Will not follow"
+    end
+    local ok, record = pcall(types.NPC.record, npc)
+    if not ok or record == nil then
+        return false, "Will not follow"
+    end
+    if record.isEssential == true then
+        return false, "Will not follow"
+    end
+    local classId = tostring(record.class or ""):lower()
+    if classId:find("guard", 1, true) ~= nil then
+        return false, "Will not follow"
+    end
+    local okDead, dead = pcall(types.Actor.isDead, npc)
+    if okDead and dead then
+        return false, "Will not follow"
+    end
+    return true, nil
+end
+
+local function sendRetinueState(player, npc)
+    if player == nil or type(player.sendEvent) ~= "function" then
+        return
+    end
+    if not followerIsCurrent() then
+        clearFollower()
+    end
+    local recruitable, reason = canBeRecruited(npc)
+    player:sendEvent("SkillPerkSystem_BasePack_Speechcraft_RetinueState", {
+        npcId = npc ~= nil and npc.id or nil,
+        isFollower = npc ~= nil and retinue.followerId == npc.id,
+        hasFollower = retinue.followerId ~= nil,
+        followerName = retinue.follower ~= nil and npcName(retinue.follower) or nil,
+        recruitable = recruitable,
+        reason = reason,
+        minDisposition = RETINUE_MIN_DISPOSITION,
+    })
+end
+
+local function onRetinueStatus(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    sendRetinueState(player, data.npc)
+end
+
+local function onRecruit(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) or npc == nil then
+        return
+    end
+    if not followerIsCurrent() then
+        clearFollower()
+    end
+    if retinue.followerId ~= nil then
+        sendRetinueState(player, npc)
+        return
+    end
+    local recruitable = canBeRecruited(npc)
+    local okDisp, disposition = pcall(types.NPC.getDisposition, npc, player)
+    disposition = okDisp and (tonumber(disposition) or 0) or 0
+    if not recruitable or disposition < RETINUE_MIN_DISPOSITION then
+        sendRetinueState(player, npc)
+        return
+    end
+    if type(npc.hasScript) ~= "function" or type(npc.addScript) ~= "function" then
+        return
+    end
+    if not npc:hasScript(FOLLOWER_SCRIPT) then
+        local ok, err = pcall(function() npc:addScript(FOLLOWER_SCRIPT, { playerId = player.id }) end)
+        if not ok then
+            log("could not attach the follower script: " .. tostring(err))
+            return
+        end
+    end
+    retinue.follower = npc
+    retinue.followerId = npc.id
+    -- The script asks for the player itself once it exists; this push is
+    -- for the case where it was already attached.
+    pcall(function() npc:sendEvent("SkillPerkSystem_BasePack_Follower_Follow", { player = player }) end)
+    speechLog("retinue: " .. npcName(npc) .. " recruited")
+    player:sendEvent("SkillPerkSystem_BasePack_Speechcraft_RetinueRecruited", { npcId = npc.id, name = npcName(npc) })
+    sendRetinueState(player, npc)
+end
+
+local function dismissFollower(player)
+    local follower = retinue.follower
+    if follower == nil and retinue.followerId ~= nil then
+        for _, actor in ipairs(world.activeActors) do
+            if actor.id == retinue.followerId then follower = actor break end
+        end
+    end
+    clearFollower()
+    if follower == nil then
+        return
+    end
+    if type(follower.isValid) == "function" and not follower:isValid() then
+        return
+    end
+    if type(follower.hasScript) == "function" and follower:hasScript(FOLLOWER_SCRIPT) then
+        -- The script drops the package and asks to be detached.
+        pcall(function() follower:sendEvent("SkillPerkSystem_BasePack_Follower_Dismiss", {}) end)
+    end
+    speechLog("retinue: " .. npcName(follower) .. " dismissed")
+end
+
+local function onDismiss(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    if npc ~= nil and retinue.followerId ~= nil and npc.id ~= retinue.followerId then
+        sendRetinueState(player, npc)
+        return
+    end
+    dismissFollower(player)
+    if npc ~= nil then
+        sendRetinueState(player, npc)
+    end
+end
+
+-- The follower script, once running, asks who to follow.
+local function onFollowerRequest(data)
+    local target = type(data) == "table" and data.target or nil
+    local player = world.players[1]
+    if target == nil or player == nil then
+        return
+    end
+    if retinue.followerId ~= target.id then
+        -- Not ours any more (dismissed while unloaded, or a stale save):
+        -- have it stand down.
+        pcall(function() target:sendEvent("SkillPerkSystem_BasePack_Follower_Dismiss", {}) end)
+        return
+    end
+    retinue.follower = target
+    pcall(function() target:sendEvent("SkillPerkSystem_BasePack_Follower_Follow", { player = player }) end)
+end
+
+local function onFollowerDetach(data)
+    local target = type(data) == "table" and data.target or nil
+    if target == nil or type(target.removeScript) ~= "function" then
+        return
+    end
+    pcall(function() target:removeScript(FOLLOWER_SCRIPT) end)
+    if retinue.followerId == target.id then
+        clearFollower()
+    end
+end
+
 local function onSetDebug(data)
     speechDebug = type(data) == "table" and data.enabled == true
     log("verbose logging " .. (speechDebug and "ON" or "OFF"))
@@ -5633,6 +6043,7 @@ local function onDiagnose()
     local count = 0
     for _ in pairs(silverRecordIds) do count = count + 1 end
     log("silver tongue records minted: " .. count)
+    log("retinue follower=" .. tostring(retinue.followerId) .. " current=" .. tostring(followerIsCurrent()))
 end
 
 subsystems.speechcraft = {
@@ -5641,12 +6052,26 @@ subsystems.speechcraft = {
         SkillPerkSystem_BasePack_Speechcraft_SilverTongue = onSilverTongue,
         SkillPerkSystem_BasePack_Speechcraft_SetDebug = onSetDebug,
         SkillPerkSystem_BasePack_Speechcraft_Diagnose = onDiagnose,
+        SkillPerkSystem_BasePack_Speechcraft_RetinueStatus = onRetinueStatus,
+        SkillPerkSystem_BasePack_Speechcraft_Recruit = onRecruit,
+        SkillPerkSystem_BasePack_Speechcraft_Dismiss = onDismiss,
+        SkillPerkSystem_BasePack_Follower_Request = onFollowerRequest,
+        SkillPerkSystem_BasePack_Follower_Detach = onFollowerDetach,
     },
     engineHandlers = {
         onSave = function()
-            return { silverRecordIds = silverRecordIds }
+            return {
+                silverRecordIds = silverRecordIds,
+                retinueFollower = retinue.follower,
+                retinueFollowerId = retinue.followerId,
+            }
         end,
         onLoad = function(data)
+            retinue = { follower = nil, followerId = nil }
+            if type(data) == "table" and type(data.retinueFollowerId) == "string" then
+                retinue.followerId = data.retinueFollowerId
+                retinue.follower = data.retinueFollower
+            end
             silverRecordIds = {}
             local saved = type(data) == "table" and data.silverRecordIds or nil
             if type(saved) == "table" then
@@ -5873,6 +6298,7 @@ local handToHandState = {
     breakingFistEnabled = false,
     flowingCounterMode = "none",
     emptyBodyMasteryEnabled = false,
+    clawsEnabled = false,
 }
 
 local function shouldAttachWatcher(actor)
@@ -5909,6 +6335,7 @@ local function handToHandTargetStateActive()
         or handToHandState.breakingFistEnabled
         or handToHandState.flowingCounterMode ~= "none"
         or handToHandState.emptyBodyMasteryEnabled
+        or handToHandState.clawsEnabled
 end
 
 local function refreshWatchers()
@@ -5927,6 +6354,7 @@ local function onHandToHandState(data)
         breakingFistEnabled = data.breakingFistEnabled == true,
         flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",
         emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true,
+        clawsEnabled = data.clawsEnabled == true,
     }
     refreshWatchers()
 end
@@ -6217,8 +6645,48 @@ local function shouldAttachWatcher(actor)
     return not actor:hasScript(DUELISTS_TEMPO_TARGET_SCRIPT)
 end
 
+-- The Long Blade on-hit perks (Duelist's Tempo, the criticals, Sword-Singer)
+-- resolve on the actor that was hit, so the target script has to be on
+-- nearby actors while any of them is held. Event-only on the target side:
+-- attaching costs nothing per frame.
+local longBladeState = { playerId = nil, hitsWanted = false }
+
+local function longBladeTargetStateActive()
+    return type(longBladeState.playerId) == "string" and longBladeState.hitsWanted
+end
+
+local function sendLongBladeState(actor)
+    if actor ~= nil and type(actor.sendEvent) == "function" then
+        actor:sendEvent("SkillPerkSystem_LongBladeRefresh", longBladeState)
+    end
+end
+
+local function onLongBladeState(data)
+    if type(data) ~= "table" then
+        return
+    end
+    longBladeState = {
+        playerId = type(data.playerId) == "string" and data.playerId or nil,
+        hitsWanted = data.hitsWanted == true,
+    }
+    onTargetWatcherProviderStateChanged("longblade", longBladeTargetStateActive())
+    sendTargetWatcherStateToAttached(targetWatcher.providers["longblade"])
+end
+
+registerTargetWatcherProvider("longblade", {
+    isActive = longBladeTargetStateActive,
+    sendState = sendLongBladeState,
+})
+
 subsystems.duelists_tempo = {
-    engineHandlers = {},
+    eventHandlers = {
+        SkillPerkSystem_LongBladeState = onLongBladeState,
+    },
+    engineHandlers = {
+        onLoad = function()
+            onTargetWatcherProviderStateChanged("longblade", longBladeTargetStateActive())
+        end,
+    },
 }
 
 -- End consolidated from SkillPerkSystem_BasePack/duelists_tempo_global.lua
@@ -7238,6 +7706,7 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Destruction_SetRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_ApplyRiders = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_ApplyRiders", data) end,
     SkillPerkSystem_BasePack_Destruction_Withering = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Withering", data) end,
+    SkillPerkSystem_BasePack_Destruction_Ashborn = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Ashborn", data) end,
     SkillPerkSystem_BasePack_Destruction_SetDebug = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_SetDebug", data) end,
 
     SkillPerkSystem_BasePack_Mysticism_SetGrants = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_SetGrants", data) end,
@@ -7250,6 +7719,8 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Mysticism_Diagnose = function(data) dispatchEvent("mysticism", "SkillPerkSystem_BasePack_Mysticism_Diagnose", data) end,
 
     SkillPerkSystem_BasePack_SkillBase_SetReservoir = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SetReservoir", data) end,
+    SkillPerkSystem_BasePack_SkillBase_SelfRider = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SelfRider", data) end,
+    SkillPerkSystem_BasePack_SkillBase_TargetRider = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_TargetRider", data) end,
 
     SkillPerkSystem_BasePack_Alteration_SetRiders = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_SetRiders", data) end,
     SkillPerkSystem_BasePack_Alteration_CastNotice = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_CastNotice", data) end,
@@ -7294,6 +7765,11 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Speechcraft_SilverTongue = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SilverTongue", data) end,
     SkillPerkSystem_BasePack_Speechcraft_SetDebug = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SetDebug", data) end,
     SkillPerkSystem_BasePack_Speechcraft_Diagnose = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Diagnose", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_RetinueStatus = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_RetinueStatus", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_Recruit = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Recruit", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_Dismiss = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Dismiss", data) end,
+    SkillPerkSystem_BasePack_Follower_Request = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Follower_Request", data) end,
+    SkillPerkSystem_BasePack_Follower_Detach = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Follower_Detach", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,
@@ -7303,6 +7779,7 @@ local eventHandlers = {
     SkillPerkSystem_MarksmanSteadyDrawState = function(data) dispatchEvent("axe", "SkillPerkSystem_MarksmanSteadyDrawState", data) end,
     SkillPerkSystem_SpearPointControlState = function(data) dispatchEvent("spear", "SkillPerkSystem_SpearPointControlState", data) end,
     SkillPerkSystem_HandToHandState = function(data) dispatchEvent("handtohand", "SkillPerkSystem_HandToHandState", data) end,
+    SkillPerkSystem_LongBladeState = function(data) dispatchEvent("duelists_tempo", "SkillPerkSystem_LongBladeState", data) end,
     SkillPerkSystem_HeavyArmorState = function(data) dispatchEvent("heavyarmor", "SkillPerkSystem_HeavyArmorState", data) end,
     SkillPerkSystem_BluntWeaponStrengthInArmsState = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_BluntWeaponStrengthInArmsState", data) end,
     SkillPerkSystem_ApplyPlatebreakerArmorDamage = function(data) dispatchEvent("bluntweapon", "SkillPerkSystem_ApplyPlatebreakerArmorDamage", data) end,

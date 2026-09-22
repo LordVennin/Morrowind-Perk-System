@@ -35,6 +35,13 @@ local C = {
     SOUL_SIPHON = "mysticism_soul_siphon",
     OMNISCIENCE = "mysticism_omniscience",
     DEVOUR_MAGIC = "mysticism_devour_magic",
+    -- Hidden: Breton with Mysticism as a major skill and Restoration as a
+    -- class skill. A granted spell around a custom effect (basepack_load.lua);
+    -- while it holds, hits are paid from magicka before health.
+    MANA_WARD = "mysticism_mana_ward",
+    MANA_WARD_SPELL = "sps_manaward",
+    MANA_WARD_EFFECT = "sps_manaward",
+    MANA_PER_HEALTH = 2,
 
     POLL_INTERVAL = 0.5,
     GRANTS_EVENT = "SkillPerkSystem_BasePack_Mysticism_SetGrants",
@@ -74,6 +81,8 @@ local state = {
     -- the game day each power was last seen actually taking effect.
     grantedPowerIds = {},
     powerUsedDay = { devour = -1, omniscience = -1 },
+    lastWardGrantKey = nil,
+    hitHandlerRegistered = false,
 }
 
 local function restoreMagicka(amount)
@@ -140,6 +149,66 @@ end
 
 local function anyRiderPerkEnabled()
     return enabled(C.SPELL_DRINKER) or enabled(C.SOUL_SIPHON)
+end
+
+-- ---- Mana Ward ------------------------------------------------------------------
+local function manaWardActive()
+    local ok, magnitude = pcall(function()
+        return Actor.activeEffects(pself):getEffect(C.MANA_WARD_EFFECT).magnitude
+    end)
+    return ok and (tonumber(magnitude) or 0) > 0
+end
+
+-- Hits on the player. One point always lands so the hit still registers as
+-- a hit; the rest is paid from magicka at two per point while any remains.
+local function onHit(attack)
+    if type(attack) ~= "table" or attack.successful == false or type(attack.damage) ~= "table" then
+        return
+    end
+    if not enabled(C.MANA_WARD) or not manaWardActive() then
+        return
+    end
+    local damage = tonumber(attack.damage.health) or 0
+    if damage <= 1 then
+        return
+    end
+    local magicka = stats.dynamicStat("magicka")
+    local current = magicka ~= nil and (tonumber(magicka.current) or 0) or 0
+    local affordable = math.floor(current / C.MANA_PER_HEALTH)
+    local absorbed = math.min(damage - 1, affordable)
+    if absorbed <= 0 then
+        return
+    end
+    attack.damage.health = damage - absorbed
+    pcall(function() magicka.current = current - absorbed * C.MANA_PER_HEALTH end)
+    if debugLogging then
+        print(LOG_TAG .. " mana ward paid " .. absorbed .. " damage with " .. (absorbed * C.MANA_PER_HEALTH) .. " magicka")
+    end
+end
+
+local function ensureHitHandler()
+    if state.hitHandlerRegistered then
+        return
+    end
+    local combat = interfaces.Combat
+    if combat ~= nil and type(combat.addOnHitHandler) == "function" then
+        combat.addOnHitHandler(onHit)
+        state.hitHandlerRegistered = true
+    end
+end
+
+local function publishManaWardGrant()
+    local wanted = enabled(C.MANA_WARD)
+    local key = tostring(wanted)
+    if key == state.lastWardGrantKey then
+        return
+    end
+    state.lastWardGrantKey = key
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SetGrant", {
+        player = pself,
+        recordId = C.MANA_WARD_SPELL,
+        wanted = wanted,
+    })
 end
 
 local function onSkillUsed(skillId, params)
@@ -301,13 +370,16 @@ end
 
 local function refresh()
     ensureSkillUsedHandler()
+    ensureHitHandler()
     publishGrants()
     publishRiders()
+    publishManaWardGrant()
 end
 
 local function onPerkStateChanged()
     state.lastGrantsKey = nil
     state.lastRidersKey = nil
+    state.lastWardGrantKey = nil
     refresh()
 end
 
@@ -385,6 +457,7 @@ __basepack_subsystem_result = {
             state.pollTimer = C.POLL_INTERVAL
             state.lastGrantsKey = nil
             state.lastRidersKey = nil
+            state.lastWardGrantKey = nil
             state.grantedPowerIds = {}
             state.powerUsedDay = {
                 devour = math.floor(tonumber(data.mysticismDevourUsedDay) or -1),

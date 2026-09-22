@@ -25,49 +25,88 @@ local function effectRecord(id)
     return okRecord and record or nil
 end
 
+-- Defines a custom effect templated on an existing one and a spell record
+-- carrying it (plus any extra ordinary effects), unless already present.
+local function defineEffectSpell(spec)
+    if effectRecord(spec.effectId) ~= nil then
+        return
+    end
+    local template = nil
+    for _, templateId in ipairs(spec.templates) do
+        template = effectRecord(templateId)
+        if template ~= nil then break end
+    end
+    if template == nil then
+        print(LOG_TAG .. " no template effect for " .. spec.effectId)
+        return
+    end
+    local okDefine, err = pcall(function()
+        content.magicEffects.records[spec.effectId] = {
+            template = template,
+            name = spec.name,
+            baseCost = spec.baseCost,
+            description = spec.description,
+        }
+        local effects = {
+            {
+                id = spec.effectId, range = content.RANGE.Self, area = 0,
+                duration = spec.duration, magnitudeMin = 1, magnitudeMax = 1,
+            },
+        }
+        for _, extra in ipairs(spec.extraEffects or {}) do
+            effects[#effects + 1] = extra
+        end
+        content.spells.records[spec.spellId] = {
+            name = spec.name,
+            type = spec.spellType == "Power" and content.spells.TYPE.Power or content.spells.TYPE.Spell,
+            cost = spec.cost,
+            isAutocalc = false,
+            starterSpellFlag = false,
+            effects = effects,
+        }
+    end)
+    if okDefine then
+        print(LOG_TAG .. " defined effect and spell " .. spec.spellId)
+    else
+        print(LOG_TAG .. " could not define " .. spec.spellId .. ": " .. tostring(err))
+    end
+end
+
 -- ---- Call of the Wild (Conjuration hidden perk) ------------------------------
 -- The wolves come from the conjuration runtime: while this effect is active
 -- on the player it holds Summon Wolf instances on them, as many as their
 -- Conjuration allows. Templated on Summon Wolf where Bloodmoon provides it,
 -- Summon Scamp otherwise, so the effect always has a school and an icon.
-local WILD_EFFECT = "sps_callofthewild"
-local WILD_SPELL = "sps_callofthewild"
+defineEffectSpell({
+    effectId = "sps_callofthewild", spellId = "sps_callofthewild",
+    templates = { "summonwolf", "summonscamp" },
+    name = "Call of the Wild", baseCost = 20, cost = 30, duration = 60,
+    description = "Calls a pack of wolves to the caster's side for the duration. "
+        .. "The pack grows with the caster's Conjuration.",
+})
 
-if effectRecord(WILD_EFFECT) == nil then
-    local template = effectRecord("summonwolf") or effectRecord("summonscamp")
-    if template ~= nil then
-        local okDefine, err = pcall(function()
-            content.magicEffects.records[WILD_EFFECT] = {
-                template = template,
-                name = "Call of the Wild",
-                baseCost = 20,
-                description = "Calls a pack of wolves to the caster's side for the duration. "
-                    .. "The pack grows with the caster's Conjuration.",
-            }
-            content.spells.records[WILD_SPELL] = {
-                name = "Call of the Wild",
-                type = content.spells.TYPE.Spell,
-                cost = 30,
-                isAutocalc = false,
-                starterSpellFlag = false,
-                effects = {
-                    {
-                        id = WILD_EFFECT,
-                        range = content.RANGE.Self,
-                        area = 0,
-                        duration = 60,
-                        magnitudeMin = 1,
-                        magnitudeMax = 1,
-                    },
-                },
-            }
-        end)
-        if okDefine then
-            print(LOG_TAG .. " defined effect and spell " .. WILD_SPELL)
-        else
-            print(LOG_TAG .. " could not define " .. WILD_SPELL .. ": " .. tostring(err))
-        end
-    else
-        print(LOG_TAG .. " no summon effect to template Call of the Wild on")
-    end
-end
+-- ---- Mana Ward (Mysticism hidden perk) ----------------------------------------
+-- The mysticism runtime pays incoming damage out of magicka while this holds.
+defineEffectSpell({
+    effectId = "sps_manaward", spellId = "sps_manaward",
+    templates = { "spellabsorption" },
+    name = "Mana Ward", baseCost = 15, cost = 15, duration = 30,
+    description = "While active, damage the caster takes is paid from magicka first, "
+        .. "two points of magicka for each point of damage, until the pool is empty.",
+})
+
+-- ---- Warcry (Axe hidden perk) -------------------------------------------------
+-- A once-a-day power. The axe runtime sees the marker effect and has every
+-- hostile within earshot demoralised; the Fortify Attack rides on the record.
+defineEffectSpell({
+    effectId = "sps_warcry", spellId = "sps_warcry", spellType = "Power",
+    templates = { "demoralizehumanoid" },
+    name = "Warcry", baseCost = 0, cost = 0, duration = 10,
+    description = "A shout that shakes every enemy within earshot for the duration.",
+    extraEffects = {
+        {
+            id = "fortifyattack", range = content.RANGE.Self, area = 0,
+            duration = 10, magnitudeMin = 20, magnitudeMax = 20,
+        },
+    },
+})

@@ -4221,11 +4221,87 @@ local function onTargetRider(data)
     applyGenericRider(data.kind, target, player, recordId, genericEffectCount(data.effects))
 end
 
+-- ---- Static grants ------------------------------------------------------------
+-- Spells and powers defined at load (basepack_load.lua) are handed out by
+-- id. Nothing is minted and nothing needs saving; the record either exists
+-- on this build or the grant is skipped with a log line.
+local staticGrantMissingLogged = {}
+
+local function onSetGrant(data)
+    if type(data) ~= "table" or type(data.recordId) ~= "string" then
+        return
+    end
+    local player = data.player
+    if not validPlayerObject(player) then
+        return
+    end
+    local okRecord, record = pcall(function() return core.magic.spells.records[data.recordId] end)
+    if not okRecord or record == nil then
+        if data.wanted == true and not staticGrantMissingLogged[data.recordId] then
+            staticGrantMissingLogged[data.recordId] = true
+            log("spell record " .. data.recordId .. " does not exist on this build; not granted")
+        end
+        return
+    end
+    local okSpells, spells = pcall(Actor.spells, player)
+    if not okSpells or spells == nil then
+        return
+    end
+    if data.wanted == true then
+        pcall(function() spells:add(data.recordId) end)
+    else
+        pcall(function() spells:remove(data.recordId) end)
+    end
+end
+
+-- ---- Warcry ---------------------------------------------------------------------
+-- Every hostile actor within the radius of the player is demoralised for a
+-- few seconds. Hostility is read off the AI fight rating; anything the
+-- engine will not let us read is left alone.
+local WARCRY_HOSTILE_FIGHT = 80
+
+local function warcryHostile(actor)
+    local ok, fight = pcall(function() return types.Actor.stats.ai.fight(actor).modified end)
+    return ok and (tonumber(fight) or 0) >= WARCRY_HOSTILE_FIGHT
+end
+
+local function onWarcry(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    local radius = tonumber(data.radius) or 400
+    local seconds = math.max(1, math.floor(tonumber(data.seconds) or 10))
+    local magnitude = math.max(1, math.floor(tonumber(data.magnitude) or 100))
+    local effects = {
+        { effect = "DemoralizeHumanoid", fallback = "demoralizehumanoid", magnitude = magnitude, seconds = seconds },
+        { effect = "DemoralizeCreature", fallback = "demoralizecreature", magnitude = magnitude, seconds = seconds },
+    }
+    local recordId = genericRecord("Warcry", effects, false)
+    if recordId == nil then
+        return
+    end
+    local shaken = 0
+    for _, actor in ipairs(world.activeActors) do
+        if actor ~= player and actor.cell == player.cell
+                and (actor.position - player.position):length() <= radius then
+            local okDead, dead = pcall(Actor.isDead, actor)
+            if not (okDead and dead) and warcryHostile(actor) then
+                applyGenericRider("warcry", actor, player, recordId, #effects)
+                shaken = shaken + 1
+            end
+        end
+    end
+    log("warcry shook " .. shaken .. " enemies")
+end
+
 subsystems.skill_base = {
     eventHandlers = {
         SkillPerkSystem_BasePack_SkillBase_SetReservoir = onSetReservoir,
         SkillPerkSystem_BasePack_SkillBase_SelfRider = onSelfRider,
         SkillPerkSystem_BasePack_SkillBase_TargetRider = onTargetRider,
+        SkillPerkSystem_BasePack_SkillBase_SetGrant = onSetGrant,
+        SkillPerkSystem_BasePack_SkillBase_Warcry = onWarcry,
     },
     engineHandlers = {
         onSave = function()
@@ -7742,6 +7818,8 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_SkillBase_SetReservoir = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SetReservoir", data) end,
     SkillPerkSystem_BasePack_SkillBase_SelfRider = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SelfRider", data) end,
     SkillPerkSystem_BasePack_SkillBase_TargetRider = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_TargetRider", data) end,
+    SkillPerkSystem_BasePack_SkillBase_SetGrant = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_SetGrant", data) end,
+    SkillPerkSystem_BasePack_SkillBase_Warcry = function(data) dispatchEvent("skill_base", "SkillPerkSystem_BasePack_SkillBase_Warcry", data) end,
 
     SkillPerkSystem_BasePack_Alteration_SetRiders = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_SetRiders", data) end,
     SkillPerkSystem_BasePack_Alteration_CastNotice = function(data) dispatchEvent("alteration", "SkillPerkSystem_BasePack_Alteration_CastNotice", data) end,

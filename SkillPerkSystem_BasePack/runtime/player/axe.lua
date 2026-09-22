@@ -32,6 +32,23 @@ local EXECUTION_DAMAGE_PERK_IDS = {
     "axe_crescent_hook",
 }
 local STATE_EVENT = "SkillPerkSystem_AxeKindlingGripState"
+-- Warcry (hidden: Nord, Axe major, Block class skill). A once-a-day power
+-- defined at load (basepack_load.lua); its marker effect is watched here on
+-- a real-time half-second check, only while the perk is held, and the
+-- global side demoralises every hostile in earshot when it appears.
+local WARCRY_PERK_ID = "axe_warcry"
+local WARCRY = {
+    SPELL = "sps_warcry",
+    EFFECT = "sps_warcry",
+    RADIUS = 450,
+    SECONDS = 10,
+    MAGNITUDE = 100,
+    POLL = 0.5,
+}
+local warcryEnabled = false
+local warcryNextCheck = 0
+local warcryCalled = false
+local lastWarcryGrantKey = nil
 local FELLSTAR_CROWN_ATTACK_SPEED_MULTIPLIER = 1.10
 local EFFECTS_SECTION_ID = "SkillPerkSystem_BasePack_Effects"
 local FELLSTAR_CROWN_FEATHER_KEY = "axe.fellstar_crown.feather"
@@ -233,10 +250,47 @@ local function showVitalStrikeMessage()
 end
 
 local function handlePerkStateChanged(data)
-    if type(data) ~= "table" or AXE_STATE_PERKS[data.perkID] ~= true then
+    if type(data) ~= "table" or (AXE_STATE_PERKS[data.perkID] ~= true and data.perkID ~= WARCRY_PERK_ID) then
         return
     end
     markAxeStateDirty()
+end
+
+local function warcryEffectActive()
+    local ok, magnitude = pcall(function()
+        return Actor.activeEffects(pself):getEffect(WARCRY.EFFECT).magnitude
+    end)
+    return ok and (tonumber(magnitude) or 0) > 0
+end
+
+local function publishWarcryGrant()
+    warcryEnabled = hasEnabledPerk(WARCRY_PERK_ID)
+    local key = tostring(warcryEnabled)
+    if key == lastWarcryGrantKey then
+        return
+    end
+    lastWarcryGrantKey = key
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SetGrant", {
+        player = pself,
+        recordId = WARCRY.SPELL,
+        wanted = warcryEnabled,
+    })
+end
+
+local function pollWarcry()
+    warcryNextCheck = core.getRealTime() + WARCRY.POLL
+    local active = warcryEffectActive()
+    if active and not warcryCalled then
+        warcryCalled = true
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_Warcry", {
+            player = pself,
+            radius = WARCRY.RADIUS,
+            seconds = WARCRY.SECONDS,
+            magnitude = WARCRY.MAGNITUDE,
+        })
+    elseif not active and warcryCalled then
+        warcryCalled = false
+    end
 end
 
 local function publishState(force)
@@ -283,19 +337,33 @@ __basepack_subsystem_result = {
             if axeStateDirty then
                 axeStateDirty = false
                 publishState(false)
+                publishWarcryGrant()
+            end
+            if warcryEnabled and core.getRealTime() >= warcryNextCheck then
+                pollWarcry()
             end
         end,
         shouldUpdate = function()
-            return axeFeatherDirty or axeStateDirty
+            if axeFeatherDirty or axeStateDirty then
+                return true
+            end
+            return warcryEnabled and core.getRealTime() >= warcryNextCheck
         end,
-        onLoad = function()
+        onLoad = function(data)
             lastStateKey = nil
+            lastWarcryGrantKey = nil
+            warcryCalled = type(data) == "table" and data.axeWarcryCalled == true
+            warcryNextCheck = core.getRealTime()
             appliedAxeFeather = math.max(0, tonumber(effectsSection:get(FELLSTAR_CROWN_FEATHER_KEY)) or 0)
             markAxeStateDirty()
             refreshFellstarCrownFeather()
             publishState(true)
+            publishWarcryGrant()
             axeFeatherDirty = false
             axeStateDirty = false
+        end,
+        onSave = function()
+            return { axeWarcryCalled = warcryCalled }
         end,
     },
     eventHandlers = {

@@ -111,5 +111,24 @@ return {
             title = "Elemental Aegis",
             description = "While an elemental Shield is active, melee attackers gain Weakness to that element 25 for 6 seconds.",
         },
+        {
+            -- Hidden: High Elf, Alteration major, Illusion or Mysticism major or minor.
+            id = "alteration_arcane_momentum",
+            tab = "Alteration",
+            effectId = "demo_noop",
+            minimumSkill = 35,
+            requires = {},
+            cost = 1,
+            x = 0,
+            y = 0,
+            title = "Arcane Momentum",
+            description = "Each spell cast within 4 seconds of the previous one refunds 5% more of its cost than the last, up to 25%. Any school.",
+            hiddenUnless = {
+                race = "high elf",
+                majorSkills = { "alteration" },
+                classSkillsAny = { "illusion", "mysticism" },
+                label = "High Elf with Alteration as a major skill and Illusion or Mysticism as a class skill",
+            },
+        },
     },
 }

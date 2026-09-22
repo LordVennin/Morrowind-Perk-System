@@ -93,7 +93,7 @@ return {
             tab = "Long Blade",
             effectId = "demo_noop",
             minimumSkill = 60,
-            requires = { "longblade_demo_duelist" },
+            requires = {},
             cost = 1,
             x = -220,
             y = 420,

@@ -93,7 +93,7 @@ return {
             tab = "Blunt Weapon",
             effectId = "demo_noop",
             minimumSkill = 70,
-            requires = { "bluntweapon_iron_bell" },
+            requires = {},
             cost = 1,
             x = 0,
             y = 740,

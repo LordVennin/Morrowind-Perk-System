@@ -101,5 +101,24 @@ return {
             title = "Fellstar Crown",
             description = "Equipped axes are weightless and axe attacks are 10% faster.",
         },
+        {
+            -- Hidden: Nord, Axe major, Block major or minor.
+            id = "axe_warcry",
+            tab = "Axe",
+            effectId = "demo_noop",
+            minimumSkill = 35,
+            requires = {},
+            cost = 1,
+            x = 255,
+            y = 0,
+            title = "Warcry",
+            description = "Grants the power Warcry, once a day: every enemy within earshot is demoralized for 10 seconds and your Attack is fortified by 20 for the same time.",
+            hiddenUnless = {
+                race = "nord",
+                majorSkills = { "axe" },
+                classSkills = { "block" },
+                label = "Nord with Axe as a major skill and Block as a class skill",
+            },
+        },
     },
 }

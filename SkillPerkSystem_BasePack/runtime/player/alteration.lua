@@ -37,6 +37,15 @@ local C = {
     ELEMENTAL_AEGIS = "alteration_elemental_aegis",
     LONG_STRIDE = "alteration_long_stride",
     TIDAL_STRIDE = "alteration_tidal_stride",
+    -- Hidden: High Elf with Alteration as a major skill and Illusion or
+    -- Mysticism as a class skill. Casting in quick succession refunds a
+    -- growing share of each spell's cost: nothing for the first cast, then
+    -- one step more per cast that follows within the window, up to the cap.
+    -- A share of the cost actually spent, so a chain can never profit.
+    ARCANE_MOMENTUM = "alteration_arcane_momentum",
+    MOMENTUM_WINDOW_SECONDS = 4,
+    MOMENTUM_STEP = 0.05,
+    MOMENTUM_CAP = 0.25,
 
     POLL_INTERVAL = 0.5,
     RESERVOIR_EVENT = "SkillPerkSystem_BasePack_SkillBase_SetReservoir",
@@ -64,6 +73,11 @@ local SELF_RIDER_EFFECTS = {
 
 local SHIELD_EFFECTS = { "fireshield", "frostshield", "lightningshield", "shield" }
 
+local MAGIC_SKILLS = {
+    alteration = true, conjuration = true, destruction = true,
+    illusion = true, mysticism = true, restoration = true,
+}
+
 local debugLogging = false
 
 local state = {
@@ -73,6 +87,8 @@ local state = {
     skillHandlerRegistered = false,
     hitHandlerRegistered = false,
     handlerReported = false,
+    momentumLastCast = -1000,
+    momentumStreak = 0,
 }
 
 local function restoreMagicka(amount)
@@ -175,8 +191,42 @@ local function requestSelfRiders(selected)
     end
 end
 
+local function spellCost(selected)
+    local cost = tonumber(selected.cost)
+    if cost == nil and type(selected.id) == "string" then
+        local okRecord, record = pcall(function() return core.magic.spells.records[selected.id] end)
+        if okRecord and record ~= nil then cost = tonumber(record.cost) end
+    end
+    return cost
+end
+
+-- Arcane Momentum: any school. The first cast of a chain refunds nothing;
+-- each cast that follows within the window refunds one step more.
+local function noteMomentumCast(selected)
+    if not enabled(C.ARCANE_MOMENTUM) then
+        state.momentumStreak = 0
+        return
+    end
+    local now = core.getRealTime()
+    if now - state.momentumLastCast <= C.MOMENTUM_WINDOW_SECONDS then
+        state.momentumStreak = state.momentumStreak + 1
+    else
+        state.momentumStreak = 0
+    end
+    state.momentumLastCast = now
+    local fraction = math.min(C.MOMENTUM_CAP, C.MOMENTUM_STEP * state.momentumStreak)
+    local cost = spellCost(selected)
+    if fraction <= 0 or cost == nil or cost <= 0 then
+        return
+    end
+    restoreMagicka(cost * fraction)
+    if debugLogging then
+        print(LOG_TAG .. string.format(" arcane momentum: streak %d refunds %.0f%%", state.momentumStreak, fraction * 100))
+    end
+end
+
 local function onSkillUsed(skillId, params)
-    if skillId ~= "alteration" then
+    if not MAGIC_SKILLS[skillId] then
         return
     end
     local useTypes = interfaces.SkillProgression ~= nil
@@ -188,6 +238,10 @@ local function onSkillUsed(skillId, params)
     end
     local okSpell, selected = pcall(Actor.getSelectedSpell, pself)
     if not okSpell or selected == nil then
+        return
+    end
+    noteMomentumCast(selected)
+    if skillId ~= "alteration" then
         return
     end
 
@@ -204,11 +258,7 @@ local function onSkillUsed(skillId, params)
     if not enabled(C.PRACTICED_SHAPER) then
         return
     end
-    local cost = tonumber(selected.cost)
-    if cost == nil and type(selected.id) == "string" then
-        local okRecord, record = pcall(function() return core.magic.spells.records[selected.id] end)
-        if okRecord and record ~= nil then cost = tonumber(record.cost) end
-    end
+    local cost = spellCost(selected)
     if cost == nil or cost <= 0 then
         return
     end

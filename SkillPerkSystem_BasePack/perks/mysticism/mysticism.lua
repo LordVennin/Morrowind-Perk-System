@@ -86,5 +86,24 @@ return {
             title = "Devour Magic",
             description = "Grants a power: Spell Absorption 50 for 30 seconds, once per day.",
         },
+        {
+            -- Hidden: Breton, Mysticism major, Restoration major or minor.
+            id = "mysticism_mana_ward",
+            tab = "Mysticism",
+            effectId = "demo_noop",
+            minimumSkill = 35,
+            requires = {},
+            cost = 1,
+            x = 0,
+            y = 140,
+            title = "Mana Ward",
+            description = "Grants the spell Mana Ward: for 30 seconds, damage you take is paid from magicka first, 2 magicka per point, until it runs out.",
+            hiddenUnless = {
+                race = "breton",
+                majorSkills = { "mysticism" },
+                classSkills = { "restoration" },
+                label = "Breton with Mysticism as a major skill and Restoration as a class skill",
+            },
+        },
     },
 }

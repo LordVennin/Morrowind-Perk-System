@@ -5839,6 +5839,200 @@ local function onSilverTongue(data)
     end
 end
 
+-- ---- Retinue (hidden): one recruited follower -------------------------------
+--
+-- The player asks an NPC to follow from the dialogue panel; the global side
+-- checks the terms again (it, not the panel, is the authority), attaches
+-- the follower script and remembers who it is. The follower script holds
+-- the Follow package, because AI packages are only reachable from a local
+-- script. One follower at a time; the record lives in the save.
+local FOLLOWER_SCRIPT = "scripts/SkillPerkSystem_BasePack/basepack_follower.lua"
+local RETINUE_MIN_DISPOSITION = 80
+local retinue = { follower = nil, followerId = nil }
+
+local function followerIsCurrent()
+    local follower = retinue.follower
+    if follower == nil or retinue.followerId == nil then
+        return false
+    end
+    if type(follower.isValid) == "function" and not follower:isValid() then
+        return false
+    end
+    local okDead, dead = pcall(types.Actor.isDead, follower)
+    if okDead and dead then
+        return false
+    end
+    return true
+end
+
+local function clearFollower()
+    retinue.follower = nil
+    retinue.followerId = nil
+end
+
+local function npcName(npc)
+    local ok, record = pcall(types.NPC.record, npc)
+    if ok and record ~= nil and type(record.name) == "string" and record.name ~= "" then
+        return record.name
+    end
+    return tostring(npc and npc.recordId or "?")
+end
+
+-- Guards and essential NPCs stay where they are.
+local function canBeRecruited(npc)
+    if npc == nil or not types.NPC.objectIsInstance(npc) then
+        return false, "Will not follow"
+    end
+    local ok, record = pcall(types.NPC.record, npc)
+    if not ok or record == nil then
+        return false, "Will not follow"
+    end
+    if record.isEssential == true then
+        return false, "Will not follow"
+    end
+    local classId = tostring(record.class or ""):lower()
+    if classId:find("guard", 1, true) ~= nil then
+        return false, "Will not follow"
+    end
+    local okDead, dead = pcall(types.Actor.isDead, npc)
+    if okDead and dead then
+        return false, "Will not follow"
+    end
+    return true, nil
+end
+
+local function sendRetinueState(player, npc)
+    if player == nil or type(player.sendEvent) ~= "function" then
+        return
+    end
+    if not followerIsCurrent() then
+        clearFollower()
+    end
+    local recruitable, reason = canBeRecruited(npc)
+    player:sendEvent("SkillPerkSystem_BasePack_Speechcraft_RetinueState", {
+        npcId = npc ~= nil and npc.id or nil,
+        isFollower = npc ~= nil and retinue.followerId == npc.id,
+        hasFollower = retinue.followerId ~= nil,
+        followerName = retinue.follower ~= nil and npcName(retinue.follower) or nil,
+        recruitable = recruitable,
+        reason = reason,
+        minDisposition = RETINUE_MIN_DISPOSITION,
+    })
+end
+
+local function onRetinueStatus(data)
+    local player = type(data) == "table" and data.player or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    sendRetinueState(player, data.npc)
+end
+
+local function onRecruit(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) or npc == nil then
+        return
+    end
+    if not followerIsCurrent() then
+        clearFollower()
+    end
+    if retinue.followerId ~= nil then
+        sendRetinueState(player, npc)
+        return
+    end
+    local recruitable = canBeRecruited(npc)
+    local okDisp, disposition = pcall(types.NPC.getDisposition, npc, player)
+    disposition = okDisp and (tonumber(disposition) or 0) or 0
+    if not recruitable or disposition < RETINUE_MIN_DISPOSITION then
+        sendRetinueState(player, npc)
+        return
+    end
+    if type(npc.hasScript) ~= "function" or type(npc.addScript) ~= "function" then
+        return
+    end
+    if not npc:hasScript(FOLLOWER_SCRIPT) then
+        local ok, err = pcall(function() npc:addScript(FOLLOWER_SCRIPT, { playerId = player.id }) end)
+        if not ok then
+            log("could not attach the follower script: " .. tostring(err))
+            return
+        end
+    end
+    retinue.follower = npc
+    retinue.followerId = npc.id
+    -- The script asks for the player itself once it exists; this push is
+    -- for the case where it was already attached.
+    pcall(function() npc:sendEvent("SkillPerkSystem_BasePack_Follower_Follow", { player = player }) end)
+    speechLog("retinue: " .. npcName(npc) .. " recruited")
+    player:sendEvent("SkillPerkSystem_BasePack_Speechcraft_RetinueRecruited", { npcId = npc.id, name = npcName(npc) })
+    sendRetinueState(player, npc)
+end
+
+local function dismissFollower(player)
+    local follower = retinue.follower
+    if follower == nil and retinue.followerId ~= nil then
+        for _, actor in ipairs(world.activeActors) do
+            if actor.id == retinue.followerId then follower = actor break end
+        end
+    end
+    clearFollower()
+    if follower == nil then
+        return
+    end
+    if type(follower.isValid) == "function" and not follower:isValid() then
+        return
+    end
+    if type(follower.hasScript) == "function" and follower:hasScript(FOLLOWER_SCRIPT) then
+        -- The script drops the package and asks to be detached.
+        pcall(function() follower:sendEvent("SkillPerkSystem_BasePack_Follower_Dismiss", {}) end)
+    end
+    speechLog("retinue: " .. npcName(follower) .. " dismissed")
+end
+
+local function onDismiss(data)
+    local player = type(data) == "table" and data.player or nil
+    local npc = type(data) == "table" and data.npc or nil
+    if not validPlayerObject(player) then
+        return
+    end
+    if npc ~= nil and retinue.followerId ~= nil and npc.id ~= retinue.followerId then
+        sendRetinueState(player, npc)
+        return
+    end
+    dismissFollower(player)
+    if npc ~= nil then
+        sendRetinueState(player, npc)
+    end
+end
+
+-- The follower script, once running, asks who to follow.
+local function onFollowerRequest(data)
+    local target = type(data) == "table" and data.target or nil
+    local player = world.players[1]
+    if target == nil or player == nil then
+        return
+    end
+    if retinue.followerId ~= target.id then
+        -- Not ours any more (dismissed while unloaded, or a stale save):
+        -- have it stand down.
+        pcall(function() target:sendEvent("SkillPerkSystem_BasePack_Follower_Dismiss", {}) end)
+        return
+    end
+    retinue.follower = target
+    pcall(function() target:sendEvent("SkillPerkSystem_BasePack_Follower_Follow", { player = player }) end)
+end
+
+local function onFollowerDetach(data)
+    local target = type(data) == "table" and data.target or nil
+    if target == nil or type(target.removeScript) ~= "function" then
+        return
+    end
+    pcall(function() target:removeScript(FOLLOWER_SCRIPT) end)
+    if retinue.followerId == target.id then
+        clearFollower()
+    end
+end
+
 local function onSetDebug(data)
     speechDebug = type(data) == "table" and data.enabled == true
     log("verbose logging " .. (speechDebug and "ON" or "OFF"))
@@ -5849,6 +6043,7 @@ local function onDiagnose()
     local count = 0
     for _ in pairs(silverRecordIds) do count = count + 1 end
     log("silver tongue records minted: " .. count)
+    log("retinue follower=" .. tostring(retinue.followerId) .. " current=" .. tostring(followerIsCurrent()))
 end
 
 subsystems.speechcraft = {
@@ -5857,12 +6052,26 @@ subsystems.speechcraft = {
         SkillPerkSystem_BasePack_Speechcraft_SilverTongue = onSilverTongue,
         SkillPerkSystem_BasePack_Speechcraft_SetDebug = onSetDebug,
         SkillPerkSystem_BasePack_Speechcraft_Diagnose = onDiagnose,
+        SkillPerkSystem_BasePack_Speechcraft_RetinueStatus = onRetinueStatus,
+        SkillPerkSystem_BasePack_Speechcraft_Recruit = onRecruit,
+        SkillPerkSystem_BasePack_Speechcraft_Dismiss = onDismiss,
+        SkillPerkSystem_BasePack_Follower_Request = onFollowerRequest,
+        SkillPerkSystem_BasePack_Follower_Detach = onFollowerDetach,
     },
     engineHandlers = {
         onSave = function()
-            return { silverRecordIds = silverRecordIds }
+            return {
+                silverRecordIds = silverRecordIds,
+                retinueFollower = retinue.follower,
+                retinueFollowerId = retinue.followerId,
+            }
         end,
         onLoad = function(data)
+            retinue = { follower = nil, followerId = nil }
+            if type(data) == "table" and type(data.retinueFollowerId) == "string" then
+                retinue.followerId = data.retinueFollowerId
+                retinue.follower = data.retinueFollower
+            end
             silverRecordIds = {}
             local saved = type(data) == "table" and data.silverRecordIds or nil
             if type(saved) == "table" then
@@ -7556,6 +7765,11 @@ local eventHandlers = {
     SkillPerkSystem_BasePack_Speechcraft_SilverTongue = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SilverTongue", data) end,
     SkillPerkSystem_BasePack_Speechcraft_SetDebug = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_SetDebug", data) end,
     SkillPerkSystem_BasePack_Speechcraft_Diagnose = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Diagnose", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_RetinueStatus = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_RetinueStatus", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_Recruit = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Recruit", data) end,
+    SkillPerkSystem_BasePack_Speechcraft_Dismiss = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Speechcraft_Dismiss", data) end,
+    SkillPerkSystem_BasePack_Follower_Request = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Follower_Request", data) end,
+    SkillPerkSystem_BasePack_Follower_Detach = function(data) dispatchEvent("speechcraft", "SkillPerkSystem_BasePack_Follower_Detach", data) end,
     SkillPerkSystem_BasePack_Destruction_Diagnose = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_Diagnose", data) end,
     SkillPerkSystem_BasePack_Destruction_RequestState = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_RequestState", data) end,
     SkillPerkSystem_BasePack_Destruction_CastNotice = function(data) dispatchEvent("destruction", "SkillPerkSystem_BasePack_Destruction_CastNotice", data) end,

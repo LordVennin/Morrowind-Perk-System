@@ -62,5 +62,24 @@ return {
             title = "Silver Tongue",
             description = "A successful persuasion fortifies Speechcraft by 10 for 60 seconds. Does not stack.",
         },
+        {
+            -- Hidden: Speechcraft major with Illusion or Mercantile as a
+            -- class skill. No race.
+            id = "speechcraft_retinue",
+            tab = "Speechcraft",
+            effectId = "demo_noop",
+            minimumSkill = 60,
+            requires = { "speechcraft_well_met" },
+            cost = 1,
+            x = 220,
+            y = 280,
+            title = "Retinue",
+            description = "In dialogue, an NPC at disposition 80 or higher can be asked to follow you. One follower at a time; ask again to dismiss. Guards and essential NPCs refuse.",
+            hiddenUnless = {
+                majorSkills = { "speechcraft" },
+                classSkillsAny = { "illusion", "mercantile" },
+                label = "Speechcraft as a major skill with Illusion or Mercantile as a class skill",
+            },
+        },
     },
 }

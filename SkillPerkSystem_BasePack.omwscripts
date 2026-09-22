@@ -3,3 +3,4 @@ GLOBAL:scripts/SkillPerkSystem_BasePack/basepack_global.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/basepack_player.lua
 CUSTOM:scripts/SkillPerkSystem_BasePack/basepack_actor_target.lua
 PLAYER:scripts/SkillPerkSystem_BasePack/register.lua
+CUSTOM:scripts/SkillPerkSystem_BasePack/basepack_follower.lua

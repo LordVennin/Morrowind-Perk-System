@@ -48,6 +48,7 @@ local C = {
     -- Conjuration; they run for the effect's own duration.
     CALL_OF_THE_WILD = "conjuration_call_of_the_wild",
     WILD_EFFECT_ID = "sps_callofthewild",
+    WILD_SPELL_ID = "sps_callofthewild",
     WILD_SECONDS = 60,
     WILD_SECOND_WOLF_SKILL = 75,
     WILD_THIRD_WOLF_SKILL = 100,
@@ -200,6 +201,10 @@ local function tendThePack()
             name = "Call of the Wild",
             effects = effects,
         })
+        -- The cast's own instance has done its job (it carried the marker
+        -- that got us here). Dropping it leaves one "Call of the Wild" entry
+        -- on the player, the pack, instead of the marker beside it.
+        pcall(function() Actor.activeSpells(pself):remove(C.WILD_SPELL_ID) end)
     elseif not active and state.wildPackCalled then
         state.wildPackCalled = false
     end

@@ -18,6 +18,11 @@ local Repair = types.Repair
 
 local PLAYER_INTERFACE_NAME = "SkillPerkSystemPlayer"
 local REACTIVE_ENCHANTING_PERK_ID = "block_reactive_enchanting"
+-- Shield Bash (hidden: Imperial, Block major, Long Blade class skill). A
+-- successful block hurts the attacker for the shield's armor rating, capped,
+-- through the generic target rider (one second of Damage Health).
+local SHIELD_BASH_PERK_ID = "block_shield_bash"
+local SHIELD_BASH_MAX_DAMAGE = 15
 
 local function perkEnabled(perkId)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -229,11 +234,46 @@ local function buildPayload(attack)
     }
 end
 
+local function shieldBash(attack)
+    local attacker = type(attack) == "table" and attack.attacker or nil
+    if attacker == nil or attacker == selfObj then
+        return
+    end
+    if type(attacker.isValid) == "function" and not attacker:isValid() then
+        return
+    end
+    local _, record = getEquippedShield(selfObj)
+    if record == nil then
+        return
+    end
+    local damage = math.min(SHIELD_BASH_MAX_DAMAGE, math.floor(tonumber(record.baseArmor) or 0))
+    if damage <= 0 then
+        return
+    end
+    core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_TargetRider", {
+        player = selfObj,
+        target = attacker,
+        kind = "shieldbash",
+        name = "Shield Bash",
+        effects = {
+            { effect = "DamageHealth", fallback = "damagehealth", magnitude = damage, seconds = 1 },
+        },
+    })
+end
+
 local function onHit(attack)
-    if not perkEnabled(REACTIVE_ENCHANTING_PERK_ID) then
+    local reactive = perkEnabled(REACTIVE_ENCHANTING_PERK_ID)
+    local bash = perkEnabled(SHIELD_BASH_PERK_ID)
+    if not reactive and not bash then
         return
     end
     if not wasSuccessfulShieldBlock(attack) then
+        return
+    end
+    if bash then
+        shieldBash(attack)
+    end
+    if not reactive then
         return
     end
     if not hasValidReactiveShieldSetup(selfObj) then

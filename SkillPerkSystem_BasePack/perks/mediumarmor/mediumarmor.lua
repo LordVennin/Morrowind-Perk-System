@@ -62,5 +62,24 @@ return {
             title = "Battle Ready",
             description = "While wearing a Medium Armor cuirass and greaves with Fatigue above 70%, fortify Medium Armor by 20.",
         },
+        {
+            -- Hidden: Imperial, Medium Armor major, Block major or minor.
+            id = "mediumarmor_legion_discipline",
+            tab = "Medium Armor",
+            effectId = "demo_noop",
+            minimumSkill = 40,
+            requires = {},
+            cost = 1,
+            x = -300,
+            y = 540,
+            title = "Legion Discipline",
+            description = "Being hit while above half fatigue gives twice the Medium Armor skill progress.",
+            hiddenUnless = {
+                race = "imperial",
+                majorSkills = { "mediumarmor" },
+                classSkills = { "block" },
+                label = "Imperial with Medium Armor as a major skill and Block as a class skill",
+            },
+        },
     },
 }

@@ -75,5 +75,24 @@ return {
             title = "Master Vanguard",
             description = "Spear hits fortify Endurance and Agility by 5 for 10 seconds.",
         },
+        {
+            -- Hidden: Argonian, Spear major, Athletics major or minor.
+            id = "spear_reach_from_behind",
+            tab = "Spear",
+            effectId = "demo_noop",
+            minimumSkill = 40,
+            requires = {},
+            cost = 1,
+            x = -210,
+            y = 420,
+            title = "Reach from Behind",
+            description = "Spear hits on an enemy facing away from you deal 50% more damage.",
+            hiddenUnless = {
+                race = "argonian",
+                majorSkills = { "spear" },
+                classSkills = { "athletics" },
+                label = "Argonian with Spear as a major skill and Athletics as a class skill",
+            },
+        },
     },
 }

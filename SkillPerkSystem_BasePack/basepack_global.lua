@@ -6338,6 +6338,7 @@ end
 
 local function spearTargetStateActive()
     return spearPointControlState.pointControlEnabled or spearPointControlState.drivingStepEnabled or spearPointControlState.hookAndTurnEnabled or spearPointControlState.lineBreakerEnabled or spearPointControlState.masterVanguardEnabled
+        or spearPointControlState.reachFromBehindEnabled
 end
 
 local function refreshWatchers()
@@ -6356,6 +6357,7 @@ local function onSpearPointControlState(data)
         hookAndTurnEnabled = data.hookAndTurnEnabled == true,
         lineBreakerEnabled = data.lineBreakerEnabled == true,
         masterVanguardEnabled = data.masterVanguardEnabled == true,
+        reachFromBehindEnabled = data.reachFromBehindEnabled == true,
     }
     refreshWatchers()
 end
@@ -6396,6 +6398,7 @@ local handToHandState = {
     flowingCounterMode = "none",
     emptyBodyMasteryEnabled = false,
     clawsEnabled = false,
+    pounceEnabled = false,
 }
 
 local function shouldAttachWatcher(actor)
@@ -6433,6 +6436,7 @@ local function handToHandTargetStateActive()
         or handToHandState.flowingCounterMode ~= "none"
         or handToHandState.emptyBodyMasteryEnabled
         or handToHandState.clawsEnabled
+        or handToHandState.pounceEnabled
 end
 
 local function refreshWatchers()
@@ -6452,6 +6456,7 @@ local function onHandToHandState(data)
         flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none",
         emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true,
         clawsEnabled = data.clawsEnabled == true,
+        pounceEnabled = data.pounceEnabled == true,
     }
     refreshWatchers()
 end

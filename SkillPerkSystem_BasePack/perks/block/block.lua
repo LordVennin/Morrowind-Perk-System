@@ -86,5 +86,24 @@ return {
             title = "Guard Momentum",
             description = "Each successful shield block grants 1 stack of Guard Momentum for 5 seconds, up to 5 stacks. Each stack fortifies Block by 4 and increases Armor by 3 while using a shield.",
         },
+        {
+            -- Hidden: Imperial, Block major, Long Blade major or minor.
+            id = "block_shield_bash",
+            tab = "Block",
+            effectId = "demo_noop",
+            minimumSkill = 40,
+            requires = {},
+            cost = 1,
+            x = 140,
+            y = 400,
+            title = "Shield Bash",
+            description = "A successful block deals damage to the attacker equal to your shield's armor rating, up to 15.",
+            hiddenUnless = {
+                race = "imperial",
+                majorSkills = { "block" },
+                classSkills = { "longblade" },
+                label = "Imperial with Block as a major skill and Long Blade as a class skill",
+            },
+        },
     },
 }

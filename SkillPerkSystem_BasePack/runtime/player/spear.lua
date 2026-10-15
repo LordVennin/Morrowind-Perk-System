@@ -21,6 +21,8 @@ local DRIVING_STEP_PERK_ID = "spear_driving_step"
 local HOOK_AND_TURN_PERK_ID = "spear_hook_and_turn"
 local LINE_BREAKER_PERK_ID = "spear_line_breaker"
 local MASTER_VANGUARD_PERK_ID = "spear_master_vanguard"
+-- Hidden: Argonian, Spear major, Athletics class skill. Resolved on the target.
+local REACH_FROM_BEHIND_PERK_ID = "spear_reach_from_behind"
 local POINT_CONTROL_ENDURANCE_BONUS = 5
 local HOOK_AND_TURN_WINDOW = 5.0
 local HOOK_AND_TURN_HEALTH_MULTIPLIER = 1.15
@@ -425,7 +427,8 @@ local function publishSpearPointControlState(force)
     local drivingStepEnabled = hasEnabledPerk(DRIVING_STEP_PERK_ID)
     local hookAndTurnEnabled = hasEnabledPerk(HOOK_AND_TURN_PERK_ID)
     local lineBreakerEnabled = hasEnabledPerk(LINE_BREAKER_PERK_ID)
-    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled) .. ":" .. tostring(lineBreakerEnabled) .. ":" .. tostring(masterVanguardEnabled)
+    local reachFromBehindEnabled = hasEnabledPerk(REACH_FROM_BEHIND_PERK_ID)
+    local stateKey = tostring(pointControlEnabled) .. ":" .. tostring(drivingStepEnabled) .. ":" .. tostring(hookAndTurnEnabled) .. ":" .. tostring(lineBreakerEnabled) .. ":" .. tostring(masterVanguardEnabled) .. ":" .. tostring(reachFromBehindEnabled)
     if not force and stateKey == lastSpearStateKey then
         return
     end
@@ -438,6 +441,7 @@ local function publishSpearPointControlState(force)
         hookAndTurnEnabled = hookAndTurnEnabled,
         lineBreakerEnabled = lineBreakerEnabled,
         masterVanguardEnabled = masterVanguardEnabled,
+        reachFromBehindEnabled = reachFromBehindEnabled,
     })
 end
 
@@ -456,7 +460,7 @@ local function handlePerkStateChanged(data)
         return
     end
 
-    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID or data.perkID == LINE_BREAKER_PERK_ID or data.perkID == MASTER_VANGUARD_PERK_ID then
+    if data.perkID == POINT_CONTROL_PERK_ID or data.perkID == DRIVING_STEP_PERK_ID or data.perkID == HOOK_AND_TURN_PERK_ID or data.perkID == LINE_BREAKER_PERK_ID or data.perkID == MASTER_VANGUARD_PERK_ID or data.perkID == REACH_FROM_BEHIND_PERK_ID then
         markSpearStateDirty(SPEAR_EQUIPMENT_SCAN_WINDOW)
     end
 end

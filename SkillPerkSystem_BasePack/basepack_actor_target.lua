@@ -2817,6 +2817,11 @@ local lineBreakerEnabled = false
 local masterVanguardEnabled = false
 local pointControlPlayerId = nil
 local hookAndTurnPrimedUntil = 0
+-- Reach from Behind (hidden): a spear hit on an actor facing away from the
+-- attacker deals more. Facing is this actor's own forward vector against the
+-- direction to the attacker, which only the target can read for itself.
+local reachFromBehindEnabled = false
+local REACH_FROM_BEHIND_MULTIPLIER = 1.5
 
 local function setPointControlState(data)
     if type(data) ~= "table" then
@@ -2828,6 +2833,7 @@ local function setPointControlState(data)
     hookAndTurnEnabled = data.hookAndTurnEnabled == true
     lineBreakerEnabled = data.lineBreakerEnabled == true
     masterVanguardEnabled = data.masterVanguardEnabled == true
+    reachFromBehindEnabled = data.reachFromBehindEnabled == true
     pointControlPlayerId = type(data.playerId) == "string" and data.playerId or nil
 
     if not hookAndTurnEnabled then
@@ -3213,12 +3219,48 @@ local function tryApplyMasterVanguard(attack)
     })
 end
 
+local function isPlayerSpearHit(attack)
+    if type(attack) ~= "table" or attack.successful ~= true then
+        return false
+    end
+    if type(pointControlPlayerId) ~= "string" or attack.attacker == nil or attack.attacker.id ~= pointControlPlayerId then
+        return false
+    end
+    if type(attack.attacker.isValid) == "function" and not attack.attacker:isValid() then
+        return false
+    end
+    if not isMeleeAttack(attack) or type(attack.damage) ~= "table" or (tonumber(attack.damage.health) or 0) <= 0 then
+        return false
+    end
+    return isSpearAttack(attack)
+end
+
+local function applyReachFromBehind(attack)
+    if not reachFromBehindEnabled or not isPlayerSpearHit(attack) then
+        return
+    end
+    local ok, behind = pcall(function()
+        local util = require("openmw.util")
+        local forward = selfObj.rotation:apply(util.vector3(0, 1, 0))
+        local toAttacker = attack.attacker.position - selfObj.position
+        toAttacker = util.vector3(toAttacker.x, toAttacker.y, 0)
+        if toAttacker:length() < 1 then
+            return false
+        end
+        return forward:dot(toAttacker:normalize()) < 0
+    end)
+    if ok and behind then
+        attack.damage.health = (tonumber(attack.damage.health) or 0) * REACH_FROM_BEHIND_MULTIPLIER
+    end
+end
+
 local function onHit(attack)
     tryApplyMasterVanguard(attack)
     applyPointControlDamage(attack)
     applyDrivingStep(attack)
     applyLineBreaker(attack)
     applyHookAndTurn(attack)
+    applyReachFromBehind(attack)
 end
 
 spear.eventHandlers = {
@@ -3245,13 +3287,15 @@ spear.engineHandlers = {
             hookAndTurnEnabled = hookAndTurnEnabled,
             lineBreakerEnabled = lineBreakerEnabled,
             masterVanguardEnabled = masterVanguardEnabled,
+            reachFromBehindEnabled = reachFromBehindEnabled,
             hookAndTurnPrimedUntil = hookAndTurnPrimedUntil,
         }
     end,
 }
 
 spear.hasActiveState = function()
-    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or lineBreakerEnabled or masterVanguardEnabled or hookAndTurnPrimedUntil > 0
+    return pointControlEnabled or drivingStepEnabled or hookAndTurnEnabled or lineBreakerEnabled or masterVanguardEnabled
+        or reachFromBehindEnabled or hookAndTurnPrimedUntil > 0
 end
 
 spear.onHit = onHit
@@ -4035,6 +4079,9 @@ local emptyBodyMasteryEnabled = false
 -- rider so it never stacks; a fresh hit restarts it.
 local clawsEnabled = false
 local CLAWS_BLEED_PER_SECOND = 2
+-- Pounce: an unarmed hit from an airborne attacker lands twice as hard.
+local pounceEnabled = false
+local POUNCE_DAMAGE_MULTIPLIER = 2
 local CLAWS_BLEED_SECONDS = 8
 local EMPTY_BODY_DEBUG = false
 
@@ -4056,6 +4103,7 @@ local function setState(data)
     flowingCounterMode = type(data.flowingCounterMode) == "string" and data.flowingCounterMode or "none"
     emptyBodyMasteryEnabled = data.emptyBodyMasteryEnabled == true
     clawsEnabled = data.clawsEnabled == true
+    pounceEnabled = data.pounceEnabled == true
 end
 
 local function getEquippedItem(actor, slot)
@@ -4147,11 +4195,19 @@ local function onHit(attack)
         and not breakingFistEnabled
         and flowingCounterMode == "none"
         and not emptyBodyMasteryEnabled
-        and not clawsEnabled then
+        and not clawsEnabled
+        and not pounceEnabled then
         return
     end
     if not isPlayerHandToHandHit(attack) then
         return
+    end
+
+    if pounceEnabled then
+        local okGround, onGround = pcall(Actor.isOnGround, attack.attacker)
+        if okGround and onGround == false then
+            attack.damage.health = (tonumber(attack.damage.health) or 0) * POUNCE_DAMAGE_MULTIPLIER
+        end
     end
 
     if clawsEnabled then
@@ -4209,7 +4265,7 @@ handToHand.eventHandlers = {
 }
 handToHand.hasActiveState = function()
     return openPalmEnabled or ironKnucklesEnabled or breakingFistEnabled or flowingCounterMode ~= "none"
-        or emptyBodyMasteryEnabled or clawsEnabled
+        or emptyBodyMasteryEnabled or clawsEnabled or pounceEnabled
 end
 
 handToHand.engineHandlers = {
@@ -4232,6 +4288,7 @@ handToHand.engineHandlers = {
             flowingCounterMode = flowingCounterMode,
             emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
             clawsEnabled = clawsEnabled,
+            pounceEnabled = pounceEnabled,
         }
     end,
 }

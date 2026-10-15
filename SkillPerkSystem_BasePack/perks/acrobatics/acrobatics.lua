@@ -86,5 +86,24 @@ return {
             title = "Weightless",
             description = "Gain +15 Acrobatics at all times, and your airborne bonuses linger for 2 seconds after you land.",
         },
+        {
+            -- Hidden: Khajiit, Acrobatics major, Hand-to-hand major or minor.
+            id = "acrobatics_pounce",
+            tab = "Acrobatics",
+            effectId = "demo_noop",
+            minimumSkill = 40,
+            requires = {},
+            cost = 1,
+            x = 220,
+            y = 420,
+            title = "Pounce",
+            description = "A hand-to-hand hit landed while you are in the air deals double damage.",
+            hiddenUnless = {
+                race = "khajiit",
+                majorSkills = { "acrobatics" },
+                classSkills = { "handtohand" },
+                label = "Khajiit with Acrobatics as a major skill and Hand-to-hand as a class skill",
+            },
+        },
     },
 }

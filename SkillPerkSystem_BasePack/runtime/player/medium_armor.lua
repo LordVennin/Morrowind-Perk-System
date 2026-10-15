@@ -21,6 +21,11 @@ local C = {
     STEADY_GUARD = "mediumarmor_steady_guard",
     ARMORED_POISE = "mediumarmor_tempered_stride",
     BATTLE_READY = "mediumarmor_battle_ready",
+    -- Hidden: Imperial, Medium Armor major, Block class skill. Being hit in
+    -- medium armor above half fatigue trains the skill twice as fast.
+    LEGION_DISCIPLINE = "mediumarmor_legion_discipline",
+    LEGION_MIN_FATIGUE = 0.5,
+    LEGION_GAIN_MULTIPLIER = 2,
     ARMORED_POISE_ABILITY = "sps_armoredpoise",
     BALANCED_FIT_BONUS = 5,
     LAYERED_PADDING_ARMOR_PER_PIECE = 1,
@@ -40,6 +45,7 @@ local state = {
     battle = 0,
     ability = false,
     stacks = {},
+    skillHandlerRegistered = false,
 }
 
 local function enabled(perkId)
@@ -260,6 +266,36 @@ local function refresh()
     state.ability = setAbility(C.ARMORED_POISE_ABILITY, enabled(C.ARMORED_POISE) and hasCuirass())
 end
 
+local function onSkillUsed(skillId, params)
+    if skillId ~= "mediumarmor" or not enabled(C.LEGION_DISCIPLINE) then
+        return
+    end
+    local useTypes = interfaces.SkillProgression ~= nil and interfaces.SkillProgression.SKILL_USE_TYPES or nil
+    local wanted = useTypes ~= nil and useTypes.Armor_HitByOpponent or nil
+    if wanted ~= nil and type(params) == "table" and params.useType ~= nil and params.useType ~= wanted then
+        return
+    end
+    if type(params) ~= "table" or type(params.skillGain) ~= "number" then
+        return
+    end
+    if fatiguePercent() > C.LEGION_MIN_FATIGUE then
+        params.skillGain = params.skillGain * C.LEGION_GAIN_MULTIPLIER
+    end
+end
+
+-- Registered from the refresh rather than at load: the interface is not
+-- resolved when this module is required.
+local function ensureSkillUsedHandler()
+    if state.skillHandlerRegistered then
+        return
+    end
+    local progression = interfaces.SkillProgression
+    if progression ~= nil and type(progression.addSkillUsedHandler) == "function" then
+        progression.addSkillUsedHandler(onSkillUsed)
+        state.skillHandlerRegistered = true
+    end
+end
+
 local function onHit(attack)
     if type(attack) ~= "table" or attack.attacker == nil or attack.successful == false or not enabled(C.STEADY_GUARD) then
         return
@@ -287,6 +323,7 @@ __basepack_subsystem_result = {
             state.refreshTimer = state.refreshTimer + (tonumber(dt) or 0)
             if #state.stacks > 0 or state.refreshTimer >= C.UPDATE_INTERVAL then
                 state.refreshTimer = 0
+                ensureSkillUsedHandler()
                 refresh()
             end
         end,

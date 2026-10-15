@@ -62,11 +62,12 @@ local function minimumSkillLevelRequirement(skillID, minimumLevel)
     }
 end
 
--- Hidden perks: shown only to a character with a particular race and class
--- skill combination. A perk carries
+-- Hidden perks: shown only to a character with a particular race, birthsign
+-- and class skill combination. A perk carries
 --
 --     hiddenUnless = {
 --         race = "wood elf",                 -- race record id, spacing ignored
+--         birthsign = "atronach",            -- record id or name, "the" optional
 --         majorSkills = { "conjuration" },   -- every one must be a major skill
 --         classSkills = { "athletics" },     -- every one must be major or minor
 --         classSkillsAny = { "illusion", "mercantile" }, -- at least one major or minor
@@ -86,6 +87,30 @@ end
 local function playerNpcRecord()
     local ok, record = pcall(function() return types.NPC.record(pself) end)
     return ok and record or nil
+end
+
+-- The player's birthsign, as both its record id and its display name, so a
+-- rule may say "atronach" or "The Atronach". A leading "the" is dropped on
+-- both sides before comparing.
+local function stripThe(value)
+    local out = normalizeName(value):gsub("^the", "")
+    return out
+end
+
+local function playerBirthsignMatches(wanted)
+    local ok, id = pcall(function() return types.Player.getBirthSign(pself) end)
+    if not ok or type(id) ~= "string" or id == "" then
+        return false
+    end
+    local target = stripThe(wanted)
+    if stripThe(id) == target then
+        return true
+    end
+    local okRecord, record = pcall(function() return types.Player.birthSigns.records[id] end)
+    if okRecord and record ~= nil and type(record.name) == "string" then
+        return stripThe(record.name) == target
+    end
+    return false
 end
 
 local function playerClassSkills()
@@ -120,6 +145,9 @@ local function buildVisibleCheck(rule)
             if record == nil or normalizeName(record.race) ~= normalizeName(rule.race) then
                 return false
             end
+        end
+        if type(rule.birthsign) == "string" and not playerBirthsignMatches(rule.birthsign) then
+            return false
         end
         if type(rule.majorSkills) == "table" or type(rule.classSkills) == "table"
                 or type(rule.classSkillsAny) == "table" then

@@ -28,6 +28,11 @@ local BREAKING_FIST_PERK_ID = "handtohand_breaking_fist"
 -- Claws (hidden: Khajiit, Hand-to-hand major, Sneak class skill). Resolved on
 -- the target like the other hit perks; only the flag is published here.
 local CLAWS_PERK_ID = "handtohand_claws"
+-- Pounce (hidden Acrobatics perk: Khajiit, Acrobatics major, Hand-to-hand
+-- class skill). An unarmed hit landed while airborne deals double damage;
+-- resolved on the target, which can ask whether the attacker is on the
+-- ground at the moment of the hit.
+local POUNCE_PERK_ID = "acrobatics_pounce"
 local CENTERED_STANCE_BONUS = 3
 local FLOWING_COUNTER_ABILITY_ID = "sps_DeflectingPalm"
 local FLOWING_COUNTER_HEAVY_AGILITY_PENALTY = 10
@@ -606,12 +611,14 @@ local function refreshHandToHandState(force)
     local breakingFistEnabled = hasEnabledPerk(BREAKING_FIST_PERK_ID)
     local emptyBodyMasteryEnabled = hasEnabledPerk(EMPTY_BODY_MASTERY_PERK_ID)
     local clawsEnabled = hasEnabledPerk(CLAWS_PERK_ID)
+    local pounceEnabled = hasEnabledPerk(POUNCE_PERK_ID)
     local flowingCounterMode = hasEnabledPerk(FLOWING_COUNTER_PERK_ID) and cachedFlowingCounterMode() or "none"
     local stateKey = tostring(openPalmEnabled) .. ":"
         .. tostring(ironKnucklesEnabled) .. ":"
         .. tostring(breakingFistEnabled) .. ":"
         .. tostring(emptyBodyMasteryEnabled) .. ":"
         .. tostring(clawsEnabled) .. ":"
+        .. tostring(pounceEnabled) .. ":"
         .. tostring(flowingCounterMode)
     if not force and stateKey == lastHandToHandStateKey then
         return
@@ -626,6 +633,7 @@ local function refreshHandToHandState(force)
         breakingFistEnabled = breakingFistEnabled,
         emptyBodyMasteryEnabled = emptyBodyMasteryEnabled,
         clawsEnabled = clawsEnabled,
+        pounceEnabled = pounceEnabled,
         flowingCounterMode = flowingCounterMode,
     })
 end
@@ -679,6 +687,7 @@ local HAND_TO_HAND_STATE_PERKS = {
     handtohand_empty_body_mastery = true,
     handtohand_breaking_fist = true,
     handtohand_claws = true,
+    acrobatics_pounce = true,
 }
 
 local function markHandToHandDirty(scanWindow)

@@ -266,7 +266,9 @@ local function onSkillUsed(skillId, params)
     -- Study: raise the gain in place; later handlers read the changed value.
     if enabled(C.ATTENTIVE_ENCHANTER) and type(params) == "table"
             and type(params.skillGain) == "number" then
+        local before = params.skillGain
         params.skillGain = params.skillGain * C.STUDY_MULTIPLIER
+        debugPrint(string.format("attentive enchanter: skill gain %.3f -> %.3f", before, params.skillGain))
     end
     if useTypeIs(params, "Enchant_UseMagicItem") then
         noteCast()

@@ -399,7 +399,9 @@ local function onSkillUsed(skillId, params)
         return
     end
     if enabled(C.KEEN_TRADER) and type(params) == "table" and type(params.skillGain) == "number" then
+        local before = params.skillGain
         params.skillGain = params.skillGain * C.STUDY_MULTIPLIER
+        debugPrint(string.format("keen trader: skill gain %.3f -> %.3f", before, params.skillGain))
     end
     if enabled(C.REGULAR_CUSTOMER) and state.merchant ~= nil and useTypeIs(params, "Mercantile_Success") then
         core.sendGlobalEvent("SkillPerkSystem_BasePack_Mercantile_Loyalty", {

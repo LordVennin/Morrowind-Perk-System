@@ -419,7 +419,9 @@ local function onSkillUsed(skillId, params)
         return
     end
     if enabled(C.ATTENTIVE_EAR) and type(params) == "table" and type(params.skillGain) == "number" then
+        local before = params.skillGain
         params.skillGain = params.skillGain * C.STUDY_MULTIPLIER
+        debugPrint(string.format("attentive ear: skill gain %.3f -> %.3f", before, params.skillGain))
     end
     if state.npc == nil then
         return

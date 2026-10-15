@@ -57,6 +57,9 @@ local C = {
     SOUL_SIPHON_MAGICKA_PER_LEVEL = 6,
     -- In-game seconds in a day, for the once-per-day power checks.
     SECONDS_PER_DAY = 86400,
+    -- Powers give no skill experience on their own. Using one counts as one
+    -- successful cast while the skill is below 100.
+    POWER_SKILL_GAIN = 2,
 }
 
 -- Paths Between: a Mysticism spell whose effects all sit in this set costs
@@ -289,6 +292,22 @@ end
 -- Watches for a granted daily power taking effect. Matching the granted
 -- record id rather than the effect means an ordinary Spell Absorption or
 -- Detect spell the player also knows never spends the daily use.
+local function awardPowerSkillUse()
+    local stat = stats.skillStat("mysticism")
+    if stat == nil or (tonumber(stat.base) or 0) >= 100 then
+        return
+    end
+    local progression = interfaces.SkillProgression
+    if progression == nil or type(progression.skillUsed) ~= "function" then
+        return
+    end
+    local useTypes = progression.SKILL_USE_TYPES
+    pcall(progression.skillUsed, "mysticism", {
+        skillGain = C.POWER_SKILL_GAIN,
+        useType = useTypes ~= nil and useTypes.Spellcast_Success or 0,
+    })
+end
+
 local function notePowerUse(day)
     local ok, active = pcall(function() return Actor.activeSpells(pself) end)
     if not ok or active == nil then
@@ -309,6 +328,7 @@ local function notePowerUse(day)
             end
             if isActive then
                 state.powerUsedDay[family] = day
+                awardPowerSkillUse()
             end
         end
     end

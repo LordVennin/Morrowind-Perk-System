@@ -71,6 +71,10 @@ local C = {
     GRAND_CONJURER_REFUND_FRACTION = 0.25,
     -- In-game seconds in a day, for the once-per-day pact check.
     SECONDS_PER_DAY = 86400,
+    -- Powers give no skill experience on their own. Using a pact counts as
+    -- one successful cast (the magic schools' cast use value is 2), while
+    -- the skill is below 100.
+    POWER_SKILL_GAIN = 2,
 }
 
 -- Vanilla bound weapon record ids map onto weapon skills by name.
@@ -313,6 +317,23 @@ end
 -- Watches for a granted pact power taking effect. Matching the granted record
 -- id rather than the summon effect means an ordinary summon spell the player
 -- also knows never spends the daily pact.
+-- A power taking effect awards the progress a successful cast would have.
+local function awardPowerSkillUse()
+    local stat = stats.skillStat("conjuration")
+    if stat == nil or (tonumber(stat.base) or 0) >= 100 then
+        return
+    end
+    local progression = interfaces.SkillProgression
+    if progression == nil or type(progression.skillUsed) ~= "function" then
+        return
+    end
+    local useTypes = progression.SKILL_USE_TYPES
+    pcall(progression.skillUsed, "conjuration", {
+        skillGain = C.POWER_SKILL_GAIN,
+        useType = useTypes ~= nil and useTypes.Spellcast_Success or 0,
+    })
+end
+
 local function notePactUse(day)
     local ok, active = pcall(function() return Actor.activeSpells(pself) end)
     if not ok or active == nil then
@@ -333,6 +354,7 @@ local function notePactUse(day)
             end
             if isActive then
                 state.pactUsedDay[family] = day
+                awardPowerSkillUse()
             end
         end
     end

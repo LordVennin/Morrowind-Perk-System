@@ -72,7 +72,7 @@ return {
             x = 220,
             y = 280,
             title = "Omniscience",
-            description = "Grants a power: Detect Animal, Key and Enchantment for 60 seconds, once per day.",
+            description = "Grants a power: Detect Animal, Key and Enchantment for 60 seconds, once per day. Using it counts as a successful Mysticism cast.",
         },
         {
             id = "mysticism_devour_magic",
@@ -84,7 +84,7 @@ return {
             x = -220,
             y = 420,
             title = "Devour Magic",
-            description = "Grants a power: Spell Absorption 50 for 30 seconds, once per day.",
+            description = "Grants a power: Spell Absorption 50 for 30 seconds, once per day. Using it counts as a successful Mysticism cast.",
         },
         {
             -- Hidden: Breton, Mysticism major, Restoration major or minor.

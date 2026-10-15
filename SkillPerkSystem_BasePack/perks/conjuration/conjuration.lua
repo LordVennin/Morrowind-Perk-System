@@ -12,7 +12,7 @@ return {
             x = -220,
             y = 0,
             title = "Ancestral Pact",
-            description = "Grants a power: call an Ancestral Ghost to serve you for 60 seconds, once per day.",
+            description = "Grants a power: call an Ancestral Ghost to serve you for 60 seconds, once per day. Using it counts as a successful Conjuration cast.",
         },
         {
             id = "conjuration_daedric_pact",
@@ -24,7 +24,7 @@ return {
             x = 220,
             y = 0,
             title = "Daedric Pact",
-            description = "Grants a power: call a Scamp to serve you for 60 seconds, once per day.",
+            description = "Grants a power: call a Scamp to serve you for 60 seconds, once per day. Using it counts as a successful Conjuration cast.",
         },
         {
             id = "conjuration_spectral_edge",

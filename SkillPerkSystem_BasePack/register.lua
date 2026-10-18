@@ -68,6 +68,8 @@ end
 --     hiddenUnless = {
 --         race = "wood elf",                 -- race record id, spacing ignored
 --         birthsign = "atronach",            -- record id or name, "the" optional
+--         faction = "fighters guild",        -- record id or name; expelled never counts
+--         factionRank = 3,                   -- optional minimum rank, 1 is the lowest
 --         majorSkills = { "conjuration" },   -- every one must be a major skill
 --         classSkills = { "athletics" },     -- every one must be major or minor
 --         classSkillsAny = { "illusion", "mercantile" }, -- at least one major or minor
@@ -138,6 +140,37 @@ local function contentFileLoaded(name)
     return ok and has == true
 end
 
+-- Faction membership, by record id or display name, never while expelled,
+-- and at or above a minimum rank when one is asked for. Ranks are 1-based.
+local function playerFactionMatches(wanted, minRank)
+    local okList, factions = pcall(types.NPC.getFactions, pself)
+    if not okList or type(factions) ~= "table" then
+        return false
+    end
+    local target = normalizeName(wanted)
+    for _, factionId in ipairs(factions) do
+        local id = tostring(factionId)
+        local name = nil
+        pcall(function() name = core.factions.records[id].name end)
+        if normalizeName(id) == target or (name ~= nil and normalizeName(name) == target) then
+            local okExpelled, expelled = pcall(types.NPC.isExpelled, pself, id)
+            if okExpelled and expelled == true then
+                return false
+            end
+            local okRank, rank = pcall(types.NPC.getFactionRank, pself, id)
+            rank = okRank and (tonumber(rank) or 0) or 0
+            if rank <= 0 then
+                return false
+            end
+            if type(minRank) == "number" and rank < minRank then
+                return false
+            end
+            return true
+        end
+    end
+    return false
+end
+
 local function buildVisibleCheck(rule)
     return function()
         if type(rule.race) == "string" then
@@ -147,6 +180,9 @@ local function buildVisibleCheck(rule)
             end
         end
         if type(rule.birthsign) == "string" and not playerBirthsignMatches(rule.birthsign) then
+            return false
+        end
+        if type(rule.faction) == "string" and not playerFactionMatches(rule.faction, rule.factionRank) then
             return false
         end
         if type(rule.majorSkills) == "table" or type(rule.classSkills) == "table"

@@ -49,6 +49,11 @@ local C = {
     -- Living Enchantment ticks on its own slow clock inside the poll.
     REGEN_INTERVAL = 10.0,
     SPARE_VESSEL_CHANCE = 0.5,
+    -- Guild-Taught Recharge (hidden, Mages Guild): a recharge restores more.
+    -- The item that was recharged is the one whose charge rose since the
+    -- menu opened, found the same way Spare Vessel finds the spent gem.
+    GUILD_RECHARGE = "enchant_guild_taught_recharge",
+    GUILD_RECHARGE_BONUS = 0.25,
 }
 
 local debugLogging = false
@@ -64,6 +69,9 @@ local state = {
     -- skill use fires after the gem is already gone, so this is how the one
     -- that went is known.
     filledGems = {},
+    -- Enchanted items below full charge, by object id, taken when a menu
+    -- opens, for Guild-Taught Recharge.
+    chargeSnapshot = {},
     -- Thrifty Channeling watches the selected enchanted item's charge from
     -- the poll, so a cast can be measured as the drop between the reading
     -- before it and the reading after.
@@ -228,6 +236,50 @@ local function scanFilledGems()
     return counts
 end
 
+local function scanCharges()
+    local out = {}
+    local okInventory, inventory = pcall(Actor.inventory, pself)
+    if not okInventory or inventory == nil then
+        return out
+    end
+    for _, itemType in ipairs({ types.Weapon, types.Armor, types.Clothing }) do
+        pcall(function()
+            for _, item in ipairs(inventory:getAll(itemType)) do
+                local charge, enchantment = readCharge(item)
+                if charge ~= nil and enchantment ~= nil and charge < (tonumber(enchantment.charge) or 0) then
+                    out[item.id] = { item = item, charge = charge }
+                end
+            end
+        end)
+    end
+    return out
+end
+
+-- Guild-Taught Recharge: whichever snapshotted item's charge rose is the one
+-- that was recharged; a share of the rise is added on top.
+local function onGuildRecharge()
+    if not enabled(C.GUILD_RECHARGE) then
+        return
+    end
+    local before = state.chargeSnapshot
+    for _, entry in pairs(before) do
+        local now = readCharge(entry.item)
+        if now ~= nil and now > entry.charge then
+            local bonus = math.floor((now - entry.charge) * C.GUILD_RECHARGE_BONUS)
+            if bonus > 0 then
+                core.sendGlobalEvent("SkillPerkSystem_BasePack_Enchant_AddCharge", {
+                    player = pself,
+                    item = entry.item,
+                    amount = bonus,
+                })
+                debugPrint("guild-taught recharge: +" .. bonus .. " on " .. tostring(entry.item.recordId))
+            end
+            break
+        end
+    end
+    state.chargeSnapshot = scanCharges()
+end
+
 -- Spare Vessel: a filled gem that was there when the menu opened and is not
 -- there now is the one the recharge consumed.
 local function onRecharge()
@@ -274,6 +326,7 @@ local function onSkillUsed(skillId, params)
         noteCast()
     elseif useTypeIs(params, "Enchant_Recharge") then
         onRecharge()
+        onGuildRecharge()
     end
 end
 
@@ -365,6 +418,9 @@ local function onUiModeChanged(data)
     -- dialog is one of them and cheap to cover along with the rest.
     if enabled(C.SPARE_VESSEL) and newMode ~= nil then
         state.filledGems = scanFilledGems()
+    end
+    if enabled(C.GUILD_RECHARGE) and newMode ~= nil then
+        state.chargeSnapshot = scanCharges()
     end
     applyBinding(isEnchantingMode(newMode))
 end

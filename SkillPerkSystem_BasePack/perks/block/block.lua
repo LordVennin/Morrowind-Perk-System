@@ -105,5 +105,19 @@ return {
                 label = "Imperial with Block as a major skill and Long Blade as a class skill",
             },
         },
+        {
+            -- Hidden: Imperial Legion, rank 2 or higher.
+            id = "block_legion_standard",
+            tab = "Block",
+            effectId = "demo_noop",
+            minimumSkill = 30,
+            requires = {},
+            cost = 1,
+            x = -120,
+            y = 400,
+            title = "Legion Standard",
+            description = "A successful block fortifies Attack by 10 for 5 seconds.",
+            hiddenUnless = { faction = "Imperial Legion", factionRank = 2, label = "Imperial Legion, rank 2 or higher" },
+        },
     },
 }

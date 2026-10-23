@@ -47,6 +47,10 @@ local C = {
     -- on the player this side holds Summon Wolf instances on them, sized by
     -- Conjuration; they run for the effect's own duration.
     CALL_OF_THE_WILD = "conjuration_call_of_the_wild",
+    -- Hidden: Temple member. The Ancestral Pact twice a day; the global side
+    -- swaps in a twin record after the first use, and this side reports when
+    -- that twin was spent.
+    ANCESTORS_FAVOUR = "conjuration_ancestors_favour",
     WILD_EFFECT_ID = "sps_callofthewild",
     WILD_SPELL_ID = "sps_callofthewild",
     WILD_SECONDS = 60,
@@ -95,7 +99,9 @@ local state = {
     -- Record ids the global side says we currently hold, per pact family, and
     -- the game day each pact was last seen actually taking effect.
     grantedPactIds = {},
+    grantedFavour = {},
     pactUsedDay = { undead = -1, daedra = -1 },
+    pactFavourUsedDay = { undead = -1 },
 }
 
 local function isBoundRecordId(recordId)
@@ -340,7 +346,9 @@ local function notePactUse(day)
         return
     end
     for family, recordId in pairs(state.grantedPactIds) do
-        if recordId ~= nil and state.pactUsedDay[family] ~= day then
+        -- A held twin is the day's second use; it is booked separately.
+        local book = state.grantedFavour[family] and state.pactFavourUsedDay or state.pactUsedDay
+        if recordId ~= nil and book[family] ~= day then
             local isActive = false
             if type(active.isSpellActive) == "function" then
                 local okActive, result = pcall(function() return active:isSpellActive(recordId) end)
@@ -353,7 +361,7 @@ local function notePactUse(day)
                 end
             end
             if isActive then
-                state.pactUsedDay[family] = day
+                book[family] = day
                 awardPowerSkillUse()
             end
         end
@@ -369,10 +377,12 @@ local function publishGrants()
     local wardTier = (enabled(C.SPECTRAL_WARD) and wearingBoundArmor()) and 1 or 0
     local tetherTier = enabled(C.SOUL_TETHER) and 1 or 0
     local wild = wildTier()
+    local favour = enabled(C.ANCESTORS_FAVOUR)
 
     local grantsKey = table.concat({
         undeadTier, daedraTier, wardTier, tetherTier, wild, day,
         state.pactUsedDay.undead, state.pactUsedDay.daedra,
+        tostring(favour), state.pactFavourUsedDay.undead,
     }, ":")
     if grantsKey == state.lastGrantsKey then
         return
@@ -388,6 +398,8 @@ local function publishGrants()
         currentDay = day,
         undeadUsedDay = state.pactUsedDay.undead,
         daedraUsedDay = state.pactUsedDay.daedra,
+        ancestorsFavour = favour,
+        undeadFavourUsedDay = state.pactFavourUsedDay.undead,
     })
 end
 
@@ -395,6 +407,9 @@ local function onGranted(data)
     state.grantedPactIds = {
         undead = type(data) == "table" and data.undead or nil,
         daedra = type(data) == "table" and data.daedra or nil,
+    }
+    state.grantedFavour = {
+        undead = type(data) == "table" and data.undeadFavour == true,
     }
 end
 
@@ -526,6 +541,10 @@ __basepack_subsystem_result = {
                 undead = math.floor(tonumber(data.conjurationUndeadUsedDay) or -1),
                 daedra = math.floor(tonumber(data.conjurationDaedraUsedDay) or -1),
             }
+            state.grantedFavour = {}
+            state.pactFavourUsedDay = {
+                undead = math.floor(tonumber(data.conjurationUndeadFavourUsedDay) or -1),
+            }
             refresh(0)
         end,
         onSave = function()
@@ -534,6 +553,7 @@ __basepack_subsystem_result = {
                 conjurationAppliedSkillBonus = state.appliedSkillBonus,
                 conjurationUndeadUsedDay = state.pactUsedDay.undead,
                 conjurationDaedraUsedDay = state.pactUsedDay.daedra,
+                conjurationUndeadFavourUsedDay = state.pactFavourUsedDay.undead,
                 conjurationWildPackCalled = state.wildPackCalled == true,
             }
         end,

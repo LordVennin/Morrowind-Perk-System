@@ -134,5 +134,19 @@ return {
                 label = "Wood Elf with Conjuration as a major skill (Bloodmoon)",
             },
         },
+        {
+            -- Hidden: Temple member. Needs the pact it extends.
+            id = "conjuration_ancestors_favour",
+            tab = "Conjuration",
+            effectId = "demo_noop",
+            minimumSkill = 30,
+            requires = { "conjuration_ancestral_pact" },
+            cost = 1,
+            x = -220,
+            y = 420,
+            title = "Ancestor's Favour",
+            description = "The Ancestral Pact power can be used twice a day.",
+            hiddenUnless = { faction = "Temple", label = "Member of the Tribunal Temple" },
+        },
     },
 }

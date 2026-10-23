@@ -34,6 +34,9 @@ local C = {
     INVESTOR = "mercantile_investor",
     DIVIDENDS = "mercantile_dividends",
     TRADE_PRINCE = "mercantile_trade_prince",
+    -- Hidden, by guild. Both resolve on the global side when a barter opens.
+    GUILD_CONTRACT = "mercantile_guild_contract",
+    FENCES_FAVOUR = "mercantile_fences_favour",
 
     POLL_INTERVAL = 0.5,
     STUDY_MULTIPLIER = 1.25,
@@ -348,12 +351,14 @@ local function onUiModeChanged(data)
     if isBarterMode(newMode) and arg ~= nil then
         state.merchant = arg
         state.status = nil
-        if enabled(C.INVESTOR) or enabled(C.DIVIDENDS) then
+        if enabled(C.INVESTOR) or enabled(C.DIVIDENDS) or enabled(C.FENCES_FAVOUR) then
             core.sendGlobalEvent("SkillPerkSystem_BasePack_Mercantile_BarterOpened", {
                 player = pself,
                 npc = arg,
                 dividends = enabled(C.DIVIDENDS),
                 tradePrince = enabled(C.TRADE_PRINCE),
+                guildContract = enabled(C.GUILD_CONTRACT),
+                fence = enabled(C.FENCES_FAVOUR),
             })
         end
         debugPrint("bartering with " .. merchantName(arg))

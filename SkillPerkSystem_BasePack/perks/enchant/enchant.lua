@@ -99,5 +99,19 @@ return {
             title = "Soul-Fed Blade",
             description = "Killing a foe with an enchanted weapon recharges every equipped enchanted item by 6 per level of the foe.",
         },
+        {
+            -- Hidden: Mages Guild member.
+            id = "enchant_guild_taught_recharge",
+            tab = "Enchant",
+            effectId = "demo_noop",
+            minimumSkill = 30,
+            requires = {},
+            cost = 1,
+            x = 0,
+            y = 420,
+            title = "Guild-Taught Recharge",
+            description = "Recharging an item with a soul gem restores 25% more charge.",
+            hiddenUnless = { faction = "Mages Guild", label = "Member of the Mages Guild" },
+        },
     },
 }

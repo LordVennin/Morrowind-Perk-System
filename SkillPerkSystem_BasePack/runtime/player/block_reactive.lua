@@ -23,6 +23,11 @@ local REACTIVE_ENCHANTING_PERK_ID = "block_reactive_enchanting"
 -- through the generic target rider (one second of Damage Health).
 local SHIELD_BASH_PERK_ID = "block_shield_bash"
 local SHIELD_BASH_MAX_DAMAGE = 15
+-- Legion Standard (hidden: Imperial Legion rank 2+). A successful block
+-- fortifies Attack for a few seconds, through the self rider; non-stacking.
+local LEGION_PERK_ID = "block_legion_standard"
+local LEGION_ATTACK = 10
+local LEGION_SECONDS = 5
 
 local function perkEnabled(perkId)
     local playerApi = interfaces[PLAYER_INTERFACE_NAME]
@@ -264,7 +269,8 @@ end
 local function onHit(attack)
     local reactive = perkEnabled(REACTIVE_ENCHANTING_PERK_ID)
     local bash = perkEnabled(SHIELD_BASH_PERK_ID)
-    if not reactive and not bash then
+    local legion = perkEnabled(LEGION_PERK_ID)
+    if not reactive and not bash and not legion then
         return
     end
     if not wasSuccessfulShieldBlock(attack) then
@@ -272,6 +278,16 @@ local function onHit(attack)
     end
     if bash then
         shieldBash(attack)
+    end
+    if legion then
+        core.sendGlobalEvent("SkillPerkSystem_BasePack_SkillBase_SelfRider", {
+            player = selfObj,
+            kind = "legion",
+            name = "Legion Standard",
+            effects = {
+                { effect = "FortifyAttack", fallback = "fortifyattack", magnitude = LEGION_ATTACK, seconds = LEGION_SECONDS },
+            },
+        })
     end
     if not reactive then
         return

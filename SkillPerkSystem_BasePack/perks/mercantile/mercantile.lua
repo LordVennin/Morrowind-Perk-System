@@ -62,5 +62,33 @@ return {
             title = "Trade Prince",
             description = "Dividends rise to 20% per week, and you may invest up to 1000 gold in each merchant.",
         },
+        {
+            -- Hidden: Fighters Guild member.
+            id = "mercantile_guild_contract",
+            tab = "Mercantile",
+            effectId = "demo_noop",
+            minimumSkill = 30,
+            requires = {},
+            cost = 1,
+            x = 220,
+            y = 420,
+            title = "Guild Contract",
+            description = "Investments pay a third more in dividends.",
+            hiddenUnless = { faction = "Fighters Guild", label = "Member of the Fighters Guild" },
+        },
+        {
+            -- Hidden: Thieves Guild member.
+            id = "mercantile_fences_favour",
+            tab = "Mercantile",
+            effectId = "demo_noop",
+            minimumSkill = 30,
+            requires = {},
+            cost = 1,
+            x = -220,
+            y = 280,
+            title = "Fence's Favour",
+            description = "Merchants you trade with carry 25% more gold, raised once per merchant per day.",
+            hiddenUnless = { faction = "Thieves Guild", label = "Member of the Thieves Guild" },
+        },
     },
 }

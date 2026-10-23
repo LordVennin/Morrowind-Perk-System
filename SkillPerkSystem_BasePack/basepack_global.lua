@@ -2748,6 +2748,24 @@ for family, keys in pairs(FAMILIES) do
     for _, key in ipairs(keys) do FAMILY_OF_KEY[key] = family end
 end
 
+-- Ancestor's Favour (hidden, Temple): the Ancestral Pact twice a day. The
+-- engine remembers a power's daily use by spell id, so re-adding the same
+-- record gives nothing back; a twin record with the same name and effects
+-- does. After the first use of the day the held record is swapped for its
+-- twin, and swapped back when the day turns.
+local FAVOUR_FAMILY = "undead"
+local function favourKey(key) return key .. "f" end
+local function baseKey(key)
+    local out = tostring(key or ""):gsub("f$", "")
+    return out
+end
+for _, key in ipairs(FAMILIES[FAVOUR_FAMILY]) do
+    local base = GRANTS[key]
+    GRANTS[favourKey(key)] = { name = base.name, type = base.type, cost = base.cost, effects = base.effects }
+    FAMILY_OF_KEY[favourKey(key)] = FAVOUR_FAMILY
+end
+local conjFavourUsedDay = {}
+
 -- Every record id this pack has ever issued, mapped to its family. Tier swaps
 -- must be able to take back a record created in an earlier session, so this is
 -- persisted alongside the current-id cache and is the authority on what may be
@@ -2828,13 +2846,14 @@ end
 -- and the desired one added: adding a spell already held is a no-op, and
 -- removing one not held is harmless. That makes the outcome independent of
 -- what the engine is willing to report back to us.
-local function reconcileFamily(spells, family, desiredIndex)
+local function reconcileFamily(spells, family, desiredIndex, desiredKey)
     local keys = FAMILIES[family]
     if keys == nil then return end
 
     local desiredId = nil
-    if desiredIndex >= 1 and keys[desiredIndex] ~= nil then
-        desiredId = ensureGrantRecord(keys[desiredIndex])
+    local key = desiredKey or keys[desiredIndex]
+    if desiredIndex >= 1 and key ~= nil then
+        desiredId = ensureGrantRecord(key)
     end
 
     -- Take back every record this pack has issued for the family, including
@@ -2871,7 +2890,7 @@ local function dailyGate(family, tierIndex, currentDay)
     end
     local keys = FAMILIES[family]
     local desiredKey = keys[tierIndex]
-    if desiredKey ~= nil and conjHeldKey[family] ~= desiredKey
+    if desiredKey ~= nil and baseKey(conjHeldKey[family]) ~= desiredKey
             and conjUsedDay[family] == currentDay then
         log(family .. " pact already spent today; withholding until tomorrow")
         return 0
@@ -2905,15 +2924,28 @@ local function onSetGrants(data)
             conjUsedDay[family] = reported
         end
     end
+    local favourReported = math.floor(tonumber(data[FAVOUR_FAMILY .. "FavourUsedDay"]) or -1)
+    if favourReported >= 0 and favourReported > (conjFavourUsedDay[FAVOUR_FAMILY] or -1) then
+        conjFavourUsedDay[FAVOUR_FAMILY] = favourReported
+    end
+    local favour = data.ancestorsFavour == true
 
     local granted = {}
     for _, family in ipairs({ "undead", "daedra", "ward", "tether", "wild" }) do
         local requested = tier(data[family .. "Tier"], #FAMILIES[family])
         local allowed = dailyGate(family, requested, currentDay)
-        reconcileFamily(spells, family, allowed)
         local heldKey = allowed >= 1 and FAMILIES[family][allowed] or nil
+        -- First use spent today and the favour not yet: hand over the twin.
+        if heldKey ~= nil and family == FAVOUR_FAMILY and favour
+                and conjUsedDay[family] == currentDay and conjFavourUsedDay[family] ~= currentDay then
+            heldKey = favourKey(heldKey)
+        end
+        reconcileFamily(spells, family, allowed, heldKey)
         conjHeldKey[family] = heldKey
         granted[family] = heldKey and conjRecords[heldKey] or nil
+        if family == FAVOUR_FAMILY then
+            granted[family .. "Favour"] = heldKey ~= nil and heldKey ~= baseKey(heldKey)
+        end
     end
 
     -- Tell the player which record ids it now holds, so it can watch for them
@@ -2934,6 +2966,7 @@ subsystems.conjuration = {
                 conjIssued = conjIssued,
                 conjHeldKey = conjHeldKey,
                 conjUsedDay = conjUsedDay,
+                conjFavourUsedDay = conjFavourUsedDay,
             }
         end,
         onLoad = function(data)
@@ -2941,6 +2974,13 @@ subsystems.conjuration = {
             conjIssued = {}
             conjHeldKey = {}
             conjUsedDay = {}
+            conjFavourUsedDay = {}
+            local savedFavour = type(data) == "table" and data.conjFavourUsedDay or nil
+            if type(savedFavour) == "table" then
+                for family, day in pairs(savedFavour) do
+                    if type(day) == "number" then conjFavourUsedDay[family] = day end
+                end
+            end
             local savedHeld = type(data) == "table" and data.conjHeldKey or nil
             if type(savedHeld) == "table" then
                 for family, key in pairs(savedHeld) do
@@ -5394,6 +5434,13 @@ local MAX_MERCHANTS = 5
 -- Paid per whole week elapsed, as a share of the investment.
 local DIVIDEND_RATE, DIVIDEND_RATE_PRINCE = 0.10, 0.20
 local DAYS_PER_PAYOUT = 7
+-- Guild Contract (hidden, Fighters Guild): dividends pay a third more.
+local GUILD_CONTRACT_MULTIPLIER = 4 / 3
+-- Fence's Favour (hidden, Thieves Guild): a merchant's barter gold is raised
+-- by a share of their base gold the first time the player trades with them
+-- each day. Which merchants were raised today is persisted.
+local FENCE_GOLD_FRACTION = 0.25
+local fenceBumped = {}
 local SECONDS_PER_DAY = 86400
 
 -- The ledger: one line per invested merchant, by object id. Persisted.
@@ -5463,7 +5510,7 @@ end
 -- Dividends: whole weeks since the last collection, at the rate the
 -- player's perks allow, paid in gold on the way into the barter window. The
 -- unpaid remainder of a week carries over rather than being lost.
-local function payDividends(player, npc, tradePrince)
+local function payDividends(player, npc, tradePrince, guildContract)
     local line = investments[npc.id]
     if line == nil or line.amount <= 0 then
         return 0
@@ -5474,6 +5521,9 @@ local function payDividends(player, npc, tradePrince)
         return 0
     end
     local rate = tradePrince and DIVIDEND_RATE_PRINCE or DIVIDEND_RATE
+    if guildContract then
+        rate = rate * GUILD_CONTRACT_MULTIPLIER
+    end
     local paid = math.floor(line.amount * rate * weeks)
     line.lastPaidDay = (line.lastPaidDay or today) + weeks * DAYS_PER_PAYOUT
     if paid > 0 and giveGold(player, paid) then
@@ -5483,15 +5533,40 @@ local function payDividends(player, npc, tradePrince)
     return 0
 end
 
+local function fenceBump(npc)
+    local today = currentDay()
+    if fenceBumped[npc.id] == today then
+        return
+    end
+    local okRecord, record = pcall(function() return npc.type.record(npc) end)
+    local base = okRecord and record ~= nil and (tonumber(record.baseGold) or 0) or 0
+    local bonus = math.floor(base * FENCE_GOLD_FRACTION)
+    if bonus <= 0 then
+        return
+    end
+    local okGold, current = pcall(Actor.getBarterGold, npc)
+    if not okGold then
+        return
+    end
+    local ok = pcall(Actor.setBarterGold, npc, (tonumber(current) or 0) + bonus)
+    if ok then
+        fenceBumped[npc.id] = today
+        mercLog(string.format("fence's favour: %s carries %d more gold today", tostring(npc.recordId), bonus))
+    end
+end
+
 local function onBarterOpened(data)
     local player = type(data) == "table" and data.player or nil
     local npc = type(data) == "table" and data.npc or nil
     if not validPlayerObject(player) or npc == nil then
         return
     end
+    if data.fence == true then
+        fenceBump(npc)
+    end
     local paid = 0
     if data.dividends == true then
-        paid = payDividends(player, npc, data.tradePrince == true)
+        paid = payDividends(player, npc, data.tradePrince == true, data.guildContract == true)
     end
     sendStatus(player, npc, { paid = paid, tradePrince = data.tradePrince == true })
 end
@@ -5578,10 +5653,17 @@ subsystems.mercantile = {
     },
     engineHandlers = {
         onSave = function()
-            return { investments = investments }
+            return { investments = investments, fenceBumped = fenceBumped }
         end,
         onLoad = function(data)
             investments = {}
+            fenceBumped = {}
+            local savedFence = type(data) == "table" and data.fenceBumped or nil
+            if type(savedFence) == "table" then
+                for id, day in pairs(savedFence) do
+                    if type(id) == "string" and type(day) == "number" then fenceBumped[id] = day end
+                end
+            end
             local saved = type(data) == "table" and data.investments or nil
             if type(saved) == "table" then
                 for id, line in pairs(saved) do
